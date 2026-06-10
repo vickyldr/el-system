@@ -6,6 +6,10 @@ self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
+self.addEventListener("message", (e) => {
+  if (e.data === "skip-waiting") self.skipWaiting();
+});
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {

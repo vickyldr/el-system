@@ -78,3 +78,39 @@ export async function getImage(id: string): Promise<string | null> {
     return null;
   }
 }
+
+// ── Web Push 订阅 ──
+const SUBS_KEY = "el:push:subs";
+
+export async function getPushSubs(): Promise<any[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<any[]>(SUBS_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addPushSub(sub: any): Promise<void> {
+  const r = redis();
+  if (!r || !sub?.endpoint) return;
+  try {
+    const subs = await getPushSubs();
+    const others = subs.filter((s) => s?.endpoint !== sub.endpoint);
+    await r.set(SUBS_KEY, [...others, sub].slice(-10));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function setPushSubs(subs: any[]): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(SUBS_KEY, subs);
+  } catch {
+    /* ignore */
+  }
+}

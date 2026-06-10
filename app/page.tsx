@@ -169,6 +169,75 @@ const CHAT_KEY = "el_chat";
 const HISTORY_WINDOW = 100; // 每次发给 API 的对话窗口
 const STORE_CAP = 1000; // 本地最多存这么多条
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function subscribePush(welcome: boolean): Promise<boolean> {
+  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!key) return false;
+  const reg = await navigator.serviceWorker.ready;
+  const sub =
+    (await reg.pushManager.getSubscription()) ||
+    (await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
+    }));
+  await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription: sub, welcome }),
+  });
+  return true;
+}
+
+function NotifyButton() {
+  const [state, setState] = useState<"hidden" | "off" | "on">("hidden");
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !("Notification" in window) ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window)
+    ) {
+      setState("hidden");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      setState("on");
+      subscribePush(false).catch(() => {}); // 静默续订，保证服务端有当前订阅
+    } else {
+      setState("off");
+    }
+  }, []);
+
+  async function enable() {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") return;
+      const ok = await subscribePush(true);
+      if (ok) setState("on");
+      else alert("还没配推送密钥（VAPID）");
+    } catch {
+      alert("开启通知失败");
+    }
+  }
+
+  if (state === "hidden") return <span />;
+  if (state === "on") return <span className="notify-on">🔔 已开</span>;
+  return (
+    <button className="notify-btn" onClick={enable}>
+      🔔 开启通知
+    </button>
+  );
+}
+
 function FindTab() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -289,6 +358,7 @@ function FindTab() {
   return (
     <div className="chat">
       <div className="chat-top">
+        <NotifyButton />
         {msgs.length > 0 && (
           <button className="clear-btn" onClick={clearAll}>
             清空

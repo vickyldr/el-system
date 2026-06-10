@@ -13,5 +13,6 @@ export function getClaude(): Anthropic {
   return new Anthropic({
     apiKey,
     baseURL: normalizeBaseURL(process.env.CLAUDE_BASE_URL),
+    maxRetries: 3, // 中转站偶尔 429/5xx，自动退避重试几次
   });
 }

@@ -66,10 +66,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
-      return NextResponse.json(
-        { error: err.message },
-        { status: err.status ?? 502 },
-      );
+      const friendly =
+        err.status === 429
+          ? "中转站那边正忙，等一下再发一次～"
+          : err.message;
+      return NextResponse.json({ error: friendly }, { status: err.status ?? 502 });
     }
     const message = err instanceof Error ? err.message : "未知错误";
     return NextResponse.json({ error: message }, { status: 500 });

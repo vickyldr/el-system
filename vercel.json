@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/generate-status",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

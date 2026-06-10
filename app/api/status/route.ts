@@ -43,6 +43,38 @@ function weatherNote(temp: number, desc: string): string {
   return "今天还行，照顾好自己。";
 }
 
+// 解析 cron 生成的「此刻」三行：心情 / 在想 / 歌：《X》— 理由
+function parseNow(text: string): {
+  mood: string;
+  thought: string;
+  song_recommendation: string;
+  song_reason: string;
+} {
+  const lines = text.split(/\n+/).map((l) => l.trim());
+  const pick = (label: string) => {
+    const l = lines.find((x) => x.replace(/\s/g, "").startsWith(label));
+    return l ? l.replace(/^[^：:]*[：:]/, "").trim() : "";
+  };
+  const mood = pick("心情") || lines[0] || "";
+  const thought = pick("在想") || pick("在想什么");
+  const songLine = pick("歌") || pick("想让你听");
+  let song_recommendation = "";
+  let song_reason = "";
+  if (songLine) {
+    const end = songLine.indexOf("》");
+    if (end >= 0) {
+      song_recommendation = songLine.slice(0, end + 1).trim();
+      song_reason = songLine
+        .slice(end + 1)
+        .replace(/^[—\-、,，:：\s]+/, "")
+        .trim();
+    } else {
+      song_recommendation = songLine;
+    }
+  }
+  return { mood, thought, song_recommendation, song_reason };
+}
+
 async function getWeather(): Promise<
   { temp: number; desc: string; city: string; note: string } | null
 > {
@@ -74,8 +106,19 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  const { mood, thought } = splitDiary(latest?.elDiary ?? "");
-  const { song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? "");
+  // 优先用 cron 生成的「此刻」；没有就回落到日记/网易云观察。
+  const nowText = (latest?.now ?? "").trim();
+  let mood: string;
+  let thought: string;
+  let song_recommendation: string;
+  let song_reason: string;
+  if (nowText) {
+    ({ mood, thought, song_recommendation, song_reason } = parseNow(nowText));
+  } else {
+    ({ mood, thought } = splitDiary(latest?.elDiary ?? ""));
+    ({ song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? ""));
+  }
+
   const weather = await getWeather();
 
   return NextResponse.json({

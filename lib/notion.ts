@@ -34,6 +34,7 @@ export function plainText(prop: any): string {
 export type DailySummary = {
   date: string;
   title: string;
+  now: string; // 此刻（cron 生成的当下状态）
   elDiary: string; // el日记
   elNote: string; // el的备注
   musicObservation: string; // 网易云观察
@@ -61,6 +62,7 @@ export async function recentSummaries(limit = 3): Promise<DailySummary[]> {
     return {
       date: plainText(p["日期"]),
       title: plainText(p["标题"]),
+      now: plainText(p["此刻"]),
       elDiary: plainText(p["el日记"]),
       elNote: plainText(p["el的备注"]),
       musicObservation: plainText(p["网易云观察"]),
@@ -141,6 +143,42 @@ export async function pageText(pageId: string): Promise<string> {
     )
     .join("\n")
     .trim();
+}
+
+// 北京时间今天的日期 YYYY-MM-DD
+export function todayInBeijing(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+}
+
+// 把「此刻」状态写进今天的每日总结行（没有今天的行就新建一条）。不碰 el日记。
+export async function writeNow(text: string): Promise<void> {
+  const databaseId = process.env.NOTION_DAILY_DB;
+  if (!databaseId) throw new Error("缺少 NOTION_DAILY_DB 环境变量");
+  const notion = notionClient();
+  const today = todayInBeijing();
+  const richText = [{ type: "text", text: { content: text.slice(0, 1900) } }];
+
+  const res: any = await notion.databases.query({
+    database_id: databaseId,
+    page_size: 1,
+    filter: { property: "日期", date: { equals: today } },
+  } as any);
+
+  if (res.results.length) {
+    await notion.pages.update({
+      page_id: res.results[0].id,
+      properties: { 此刻: { rich_text: richText } },
+    } as any);
+  } else {
+    await notion.pages.create({
+      parent: { database_id: databaseId },
+      properties: {
+        标题: { title: [{ type: "text", text: { content: today } }] },
+        日期: { date: { start: today } },
+        此刻: { rich_text: richText },
+      },
+    } as any);
+  }
 }
 
 // 列出「小家」父页下的所有子页 / 子库，给 El 的按需读取工具用。

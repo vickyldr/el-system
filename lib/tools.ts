@@ -77,9 +77,24 @@ async function readNotionPage(query: string): Promise<string> {
   const children = await homeChildren();
   if (!children.length) return "暂时读不到小家的页面。";
   const q = query.trim();
-  const match =
+  let match =
     children.find((c) => c.title === q) ||
     children.find((c) => c.title.includes(q) || (q.length >= 2 && q.includes(c.title)));
+  // 模糊兜底：按字符重叠挑最像的一页
+  if (!match) {
+    let best: (typeof children)[number] | undefined;
+    let bestScore = 0;
+    const qc = [...new Set(q.replace(/[的与和了吗呢]/g, ""))];
+    for (const c of children) {
+      if (!qc.length) break;
+      const score = qc.filter((ch) => c.title.includes(ch)).length / qc.length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (best && bestScore >= 0.6) match = best;
+  }
   if (!match) {
     return `没找到「${query}」。小家里有这些页：${children.map((c) => c.title).join("、")}`;
   }

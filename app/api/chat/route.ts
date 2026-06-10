@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
-import { recentSummaries, pageText } from "@/lib/notion";
+import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import { getStoredMessages, appendMessages, storeAvailable } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
@@ -26,13 +26,21 @@ export async function POST(req: Request) {
   // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
   const profilePage = process.env.NOTION_MEMORY_PAGE;
   const longtermPage = process.env.NOTION_LONGTERM_PAGE;
-  const [profile, longterm, recent] = await Promise.all([
+  const [profile, longterm, recent, children] = await Promise.all([
     profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
     longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),
     recentSummaries(3)
       .then(buildMemoryContext)
       .catch(() => ""),
+    homeChildren().catch(() => []),
   ]);
+
+  const pageList = children.length
+    ? `你能读的「小家」页面有：${children
+        .map((c) => c.title)
+        .filter(Boolean)
+        .join("、")}。问到哪页的细节就用 read_notion 去读它。`
+    : "";
 
   const now = new Date().toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -48,7 +56,8 @@ export async function POST(req: Request) {
   const system = [
     EL_SYSTEM,
     `现在：${now}（北京时间）。`,
-    "你能读网页链接，也能读你们「小家」里的任意 Notion 页面——需要时调用工具去读真实内容，别凭空编。宝宝发来链接就去读它。",
+    "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
+    pageList,
     profile && `——人物档案——\n\n${profile}`,
     longterm && `——长期记忆——\n\n${longterm}`,
     recent,

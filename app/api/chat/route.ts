@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
-import { recentSummaries } from "@/lib/notion";
+import { recentSummaries, pageText } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 
 export const runtime = "nodejs";
@@ -21,14 +21,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
 
-  // 注入最近 3 条每日总结作为记忆上下文（拉不到也能聊）。
-  let memory = "";
-  try {
-    memory = buildMemoryContext(await recentSummaries(3));
-  } catch {
-    memory = "";
-  }
-  const system = memory ? `${EL_SYSTEM}\n\n${memory}` : EL_SYSTEM;
+  // 记忆上下文：人物档案（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
+  const memoryPage = process.env.NOTION_MEMORY_PAGE;
+  const [profile, recent] = await Promise.all([
+    memoryPage ? pageText(memoryPage).catch(() => "") : Promise.resolve(""),
+    recentSummaries(3)
+      .then(buildMemoryContext)
+      .catch(() => ""),
+  ]);
+
+  const system = [
+    EL_SYSTEM,
+    profile && `——人物档案——\n\n${profile}`,
+    recent,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   // history 可选：前端带上最近几轮，El 才有上下文连续性。
   const history = Array.isArray(body.history) ? body.history.slice(-20) : [];

@@ -237,3 +237,82 @@ body {
   border-color: var(--accent);
   color: #fff;
 }
+
+/* 时间轴 */
+.tl-item {
+  display: flex;
+  gap: 12px;
+}
+
+.tl-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  margin-top: 5px;
+}
+
+.tl-dot.now {
+  background: var(--accent);
+}
+
+.tl-line {
+  flex: 1;
+  width: 1px;
+  background: var(--line);
+  margin-top: 4px;
+}
+
+.tl-body {
+  padding-bottom: 20px;
+}
+
+.tl-date {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.tl-text {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* 愿望墙 */
+.wish-group {
+  margin-bottom: 20px;
+}
+
+.wish-group .card-label {
+  margin-bottom: 10px;
+}
+
+.wish {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.wish.done {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+
+/* 记忆 */
+.mem-title {
+  margin-bottom: 8px;
+}
+
+.mem-line {
+  margin-top: 4px;
+}

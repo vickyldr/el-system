@@ -73,3 +73,72 @@ export async function recentSummaries(limit = 3): Promise<DailySummary[]> {
     };
   });
 }
+
+// ── 读取普通页面的内容（时间线 / 愿望墙 / 人物档案都是页面，不是数据库）──
+
+export type NBlock = {
+  kind: "heading" | "para" | "bullet" | "todo" | "quote";
+  text: string;
+  checked?: boolean; // to_do 勾选
+  struck?: boolean; // 整行删除线（愿望墙里 = 已实现）
+};
+
+function richText(arr: any[]): { text: string; struck: boolean } {
+  const a = arr ?? [];
+  const text = a.map((t: any) => t.plain_text).join("");
+  const struck = a.length > 0 && a.every((t: any) => t.annotations?.strikethrough);
+  return { text, struck };
+}
+
+// 读一页的顶层 block，拍平成 NBlock[]（不递归嵌套子块）。
+export async function pageBlocks(pageId: string): Promise<NBlock[]> {
+  const notion = notionClient();
+  const out: NBlock[] = [];
+  let cursor: string | undefined;
+  do {
+    const res: any = await notion.blocks.children.list({
+      block_id: pageId,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const b of res.results as any[]) {
+      const t = b.type as string;
+      const data = b[t];
+      if (!data) continue;
+      if (t === "divider") continue;
+      if (t.startsWith("heading_")) {
+        const { text } = richText(data.rich_text);
+        if (text.trim()) out.push({ kind: "heading", text });
+      } else if (t === "paragraph") {
+        const { text } = richText(data.rich_text);
+        if (text.trim()) out.push({ kind: "para", text });
+      } else if (t === "bulleted_list_item" || t === "numbered_list_item") {
+        const { text, struck } = richText(data.rich_text);
+        if (text.trim()) out.push({ kind: "bullet", text, struck });
+      } else if (t === "to_do") {
+        const { text, struck } = richText(data.rich_text);
+        if (text.trim()) out.push({ kind: "todo", text, checked: !!data.checked, struck });
+      } else if (t === "quote") {
+        const { text } = richText(data.rich_text);
+        if (text.trim()) out.push({ kind: "quote", text });
+      }
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return out;
+}
+
+// 把一页拍平成纯文本（给 El 当记忆上下文用）。
+export async function pageText(pageId: string): Promise<string> {
+  const blocks = await pageBlocks(pageId);
+  return blocks
+    .map((b) =>
+      b.kind === "heading"
+        ? `\n# ${b.text}`
+        : b.kind === "bullet" || b.kind === "todo"
+          ? `- ${b.text}`
+          : b.text,
+    )
+    .join("\n")
+    .trim();
+}

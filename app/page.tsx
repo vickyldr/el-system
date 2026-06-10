@@ -128,11 +128,34 @@ function NowTab() {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+const CHAT_KEY = "el_chat";
+const HISTORY_WINDOW = 40; // 每次发给 API 的对话窗口
+const STORE_CAP = 400; // 本地最多存这么多条
+
 function FindTab() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // 开 app 时从本地恢复对话（关了再开还在）。
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_KEY);
+      if (saved) setMsgs(JSON.parse(saved));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // 对话变化时存回本地（截断到上限，避免无限增长）。
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-STORE_CAP)));
+    } catch {
+      /* ignore */
+    }
+  }, [msgs]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -143,7 +166,7 @@ function FindTab() {
     const text = input.trim();
     if (!text || sending) return;
 
-    const history = msgs.slice(-20);
+    const history = msgs.slice(-HISTORY_WINDOW);
     setMsgs((m) => [...m, { role: "user", content: text }]);
     setInput("");
     setSending(true);
@@ -222,7 +245,118 @@ function UsTab() {
           </button>
         ))}
       </div>
-      <div className="empty">{labels[sub]}（待搭建）</div>
+      {sub === "timeline" && <TimelineView />}
+      {sub === "wishlist" && <WishlistView />}
+      {sub === "memory" && <MemoryView />}
+      {sub === "things" && <ThingsView />}
     </>
+  );
+}
+
+function useJson<T>(url: string): { data: T | null; loading: boolean; err: string | null } {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr(null);
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (d?.error) setErr(d.error);
+        else setData(d);
+      })
+      .catch(() => alive && setErr("拉取失败"))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  return { data, loading, err };
+}
+
+function TimelineView() {
+  const { data, loading, err } = useJson<{ items: { date: string; text: string }[] }>(
+    "/api/notion/timeline",
+  );
+  if (loading) return <div className="empty">读取中…</div>;
+  if (err) return <div className="empty">{err}</div>;
+  const items = (data?.items ?? []).slice().reverse(); // 最新在上
+  if (!items.length) return <div className="empty">还没有记录</div>;
+  return (
+    <div className="timeline">
+      {items.map((it, i) => (
+        <div className="tl-item" key={i}>
+          <div className="tl-col">
+            <span className={`tl-dot ${i === 0 ? "now" : ""}`} />
+            {i < items.length - 1 && <span className="tl-line" />}
+          </div>
+          <div className="tl-body">
+            {it.date && <div className="tl-date">{it.date}</div>}
+            <div className="tl-text">{it.text}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WishlistView() {
+  const { data, loading, err } = useJson<{
+    groups: { title: string; items: { text: string; done: boolean }[] }[];
+  }>("/api/notion/wishlist");
+  if (loading) return <div className="empty">读取中…</div>;
+  if (err) return <div className="empty">{err}</div>;
+  const groups = data?.groups ?? [];
+  if (!groups.length) return <div className="empty">还没有愿望</div>;
+  return (
+    <>
+      {groups.map((g, gi) => (
+        <div key={gi} className="wish-group">
+          {g.title && <div className="card-label">{g.title}</div>}
+          {g.items.map((it, i) => (
+            <div className={`wish ${it.done ? "done" : ""}`} key={i}>
+              {it.text}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function MemoryView() {
+  const { data, loading, err } = useJson<{ sections: { title: string; lines: string[] }[] }>(
+    "/api/notion/memory",
+  );
+  if (loading) return <div className="empty">读取中…</div>;
+  if (err) return <div className="empty">{err}</div>;
+  const sections = data?.sections ?? [];
+  if (!sections.length) return <div className="empty">还没有记忆</div>;
+  return (
+    <>
+      {sections.map((s, i) => (
+        <div className="card" key={i}>
+          {s.title && <div className="card-value mem-title">{s.title}</div>}
+          {s.lines.map((ln, j) => (
+            <div className="meta mem-line" key={j}>
+              {ln}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ThingsView() {
+  return (
+    <div className="empty">
+      小事（待搭建）
+      <br />
+      月经周期预测、待办提醒等
+    </div>
   );
 }

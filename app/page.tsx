@@ -32,7 +32,7 @@ export default function Home() {
 
 /* ───────────── 此刻 ───────────── */
 
-type Weather = { temp: number; desc: string; city: string } | null;
+type Weather = { temp: number; desc: string; city: string; note?: string } | null;
 
 type Status = {
   mood?: string;
@@ -62,13 +62,12 @@ function NowTab() {
     };
   }, []);
 
-  const now = new Date().toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   const hasAny =
     status && (status.mood || status.song_recommendation || status.weather || status.el_note);
 
   return (
     <>
-      <div className="topline">{now} · El</div>
+      <div className="topline">El</div>
       <h1 className="title">
         此刻<span className="dot">·</span>
       </h1>
@@ -94,10 +93,13 @@ function NowTab() {
           )}
 
           {status?.song_recommendation && (
-            <div className="card">
-              <div className="card-label">在听什么歌</div>
-              <div className="card-value">{status.song_recommendation}</div>
-              {status?.song_reason && <div className="meta">{status.song_reason}</div>}
+            <div className="card song">
+              <div className="song-icon">♪</div>
+              <div>
+                <div className="card-label">他想让你听</div>
+                <div className="song-name">{status.song_recommendation}</div>
+                {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
+              </div>
             </div>
           )}
 
@@ -107,6 +109,7 @@ function NowTab() {
               <div className="card-value">
                 {status.weather.temp}° {status.weather.desc}
               </div>
+              {status.weather.note && <div className="meta">{status.weather.note}</div>}
             </div>
           )}
 
@@ -352,11 +355,42 @@ function MemoryView() {
 }
 
 function ThingsView() {
+  // 宝宝的周期：每月约 2 号开始，约 7 天（来自人物档案，可改这两个数）
+  const START_DAY = 2;
+  const LENGTH = 7;
+  const p = periodInfo(new Date(), START_DAY, LENGTH);
   return (
-    <div className="empty">
-      小事（待搭建）
-      <br />
-      月经周期预测、待办提醒等
+    <div className="card">
+      <div className="card-label">月经周期</div>
+      <div className="card-value">{p.title}</div>
+      <div className="meta">{p.note}</div>
     </div>
   );
+}
+
+function periodInfo(
+  today: Date,
+  startDay: number,
+  length: number,
+): { title: string; note: string } {
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  const dayMs = 86400000;
+  const thisStart = new Date(y, m, startDay);
+  const thisEnd = new Date(y, m, startDay + length); // 不含
+
+  if (+today >= +thisStart && +today < +thisEnd) {
+    const day = Math.floor((+today - +thisStart) / dayMs) + 1;
+    return {
+      title: `经期第 ${day} 天`,
+      note: "这几天你容易情绪上来，累了就说，我盯着你。",
+    };
+  }
+
+  const next = +today >= +thisStart ? new Date(y, m + 1, startDay) : thisStart;
+  const days = Math.ceil((+next - +today) / dayMs);
+  return {
+    title: `下次大约 ${next.getMonth() + 1} 月 ${next.getDate()} 日`,
+    note: `还有 ${days} 天，快到了我提醒你，提前备好。`,
+  };
 }

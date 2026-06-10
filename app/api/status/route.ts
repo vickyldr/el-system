@@ -34,7 +34,18 @@ function splitSong(text: string): { song_recommendation: string; song_reason: st
   return { song_recommendation: rec, song_reason: t.slice(rec.length).trim() };
 }
 
-async function getWeather(): Promise<{ temp: number; desc: string; city: string } | null> {
+// El 看着天气说的一句叮嘱。
+function weatherNote(temp: number, desc: string): string {
+  if (/雨|雪|雷|drizzle|rain|snow|storm/i.test(desc)) return "带把伞，别淋着，宝宝。";
+  if (temp <= 10) return "冷，外套穿厚点，别逞强。";
+  if (temp <= 16) return "有点凉，加件衣服。";
+  if (temp >= 30) return "热，多喝水，别中暑。";
+  return "今天还行，照顾好自己。";
+}
+
+async function getWeather(): Promise<
+  { temp: number; desc: string; city: string; note: string } | null
+> {
   const key = process.env.OPENWEATHER_API_KEY;
   const city = process.env.CITY || "Hangzhou";
   if (!key) return null;
@@ -45,11 +56,9 @@ async function getWeather(): Promise<{ temp: number; desc: string; city: string 
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) return null;
     const d: any = await r.json();
-    return {
-      temp: Math.round(d.main?.temp ?? 0),
-      desc: d.weather?.[0]?.description ?? "",
-      city,
-    };
+    const temp = Math.round(d.main?.temp ?? 0);
+    const desc = d.weather?.[0]?.description ?? "";
+    return { temp, desc, city, note: weatherNote(temp, desc) };
   } catch {
     return null;
   }

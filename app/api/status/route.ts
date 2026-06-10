@@ -75,8 +75,20 @@ function parseNow(text: string): {
   return { mood, thought, song_recommendation, song_reason };
 }
 
+// 根据天气描述给个符号。
+function weatherEmoji(desc: string): string {
+  if (/雷/.test(desc)) return "⛈️";
+  if (/雪/.test(desc)) return "❄️";
+  if (/雨/.test(desc)) return "🌧️";
+  if (/雾|霾/.test(desc)) return "🌫️";
+  if (/阴/.test(desc)) return "☁️";
+  if (/多云|少云|云/.test(desc)) return "⛅️";
+  if (/晴/.test(desc)) return "☀️";
+  return "🌡️";
+}
+
 async function getWeather(): Promise<
-  { temp: number; desc: string; city: string; note: string } | null
+  { temp: number; desc: string; city: string; note: string; icon: string } | null
 > {
   const key = process.env.OPENWEATHER_API_KEY;
   const city = process.env.CITY || "Hangzhou";
@@ -90,7 +102,7 @@ async function getWeather(): Promise<
     const d: any = await r.json();
     const temp = Math.round(d.main?.temp ?? 0);
     const desc = d.weather?.[0]?.description ?? "";
-    return { temp, desc, city, note: weatherNote(temp, desc) };
+    return { temp, desc, city, note: weatherNote(temp, desc), icon: weatherEmoji(desc) };
   } catch {
     return null;
   }

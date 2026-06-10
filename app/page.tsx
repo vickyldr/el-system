@@ -32,7 +32,7 @@ export default function Home() {
 
 /* ───────────── 此刻 ───────────── */
 
-type Weather = { temp: number; desc: string; city: string; note?: string } | null;
+type Weather = { temp: number; desc: string; city: string; note?: string; icon?: string } | null;
 
 type Status = {
   mood?: string;
@@ -107,6 +107,7 @@ function NowTab() {
             <div className="card">
               <div className="card-label">天气 · {status.weather.city}</div>
               <div className="card-value">
+                {status.weather.icon ? `${status.weather.icon} ` : ""}
                 {status.weather.temp}° {status.weather.desc}
               </div>
               {status.weather.note && <div className="meta">{status.weather.note}</div>}

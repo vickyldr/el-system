@@ -1,96 +1,82 @@
-import { Client } from "@notionhq/client";
 import { NextResponse } from "next/server";
+import { recentSummaries } from "@/lib/notion";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
 
-// 不缓存，每次都读最新状态
-export const dynamic = "force-dynamic";
-
-// 把一个 Notion property 拍平成纯文本，尽量兼容各种属性类型。
-function readProperty(prop: any): string {
-  if (!prop) return "";
-  switch (prop.type) {
-    case "title":
-      return (prop.title ?? []).map((t: any) => t.plain_text).join("").trim();
-    case "rich_text":
-      return (prop.rich_text ?? []).map((t: any) => t.plain_text).join("").trim();
-    case "select":
-      return prop.select?.name ?? "";
-    case "status":
-      return prop.status?.name ?? "";
-    case "multi_select":
-      return (prop.multi_select ?? []).map((s: any) => s.name).join(", ");
-    case "number":
-      return prop.number != null ? String(prop.number) : "";
-    case "url":
-      return prop.url ?? "";
-    case "date":
-      return prop.date?.start ?? "";
-    case "formula":
-      return prop.formula?.string ?? (prop.formula?.number != null ? String(prop.formula.number) : "");
-    case "people":
-      return (prop.people ?? []).map((p: any) => p.name).join(", ");
-    default:
-      return "";
-  }
+// el日记 是整段日记，启发式拆成 mood（第一句）+ thought（其余）。
+// cron 写入短状态后会更贴合。
+function splitDiary(text: string): { mood: string; thought: string } {
+  const t = (text || "").trim();
+  if (!t) return { mood: "", thought: "" };
+  const m = t.match(/^[^。！？!?\n]*[。！？!?]?/);
+  const mood = (m?.[0] || t).trim();
+  const thought = t.slice(mood.length).trim();
+  return { mood, thought };
 }
 
-// 在一条记录的 properties 里，按候选名（中英文都试）找出第一个有值的属性。
-function pick(properties: Record<string, any>, candidates: string[]): string {
-  for (const name of candidates) {
-    const match = Object.keys(properties).find(
-      (key) => key.toLowerCase() === name.toLowerCase(),
-    );
-    if (match) {
-      const value = readProperty(properties[match]);
-      if (value) return value;
-    }
+// 网易云观察 里歌名一般在《》中，《...》连同前面的歌手当推荐，其余当理由。
+function splitSong(text: string): { song_recommendation: string; song_reason: string } {
+  const t = (text || "").trim();
+  if (!t) return { song_recommendation: "", song_reason: "" };
+  const end = t.indexOf("》");
+  if (end >= 0) {
+    return {
+      song_recommendation: t.slice(0, end + 1).trim(),
+      song_reason: t
+        .slice(end + 1)
+        .replace(/^[。，,、\s]+/, "")
+        .trim(),
+    };
   }
-  return "";
+  const m = t.match(/^[^。！？!?\n]*[。！？!?]?/);
+  const rec = (m?.[0] || t).trim();
+  return { song_recommendation: rec, song_reason: t.slice(rec.length).trim() };
+}
+
+async function getWeather(): Promise<{ temp: number; desc: string; city: string } | null> {
+  const key = process.env.OPENWEATHER_API_KEY;
+  const city = process.env.CITY || "Hangzhou";
+  if (!key) return null;
+  try {
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(
+      city,
+    )}&appid=${key}&units=metric&lang=zh_cn`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return null;
+    const d: any = await r.json();
+    return {
+      temp: Math.round(d.main?.temp ?? 0),
+      desc: d.weather?.[0]?.description ?? "",
+      city,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function GET() {
-  const token = process.env.NOTION_TOKEN;
-  const databaseId = process.env.NOTION_DATABASE_ID;
-
-  if (!token) {
-    return NextResponse.json(
-      { error: "缺少 NOTION_TOKEN 环境变量" },
-      { status: 500 },
-    );
-  }
-  if (!databaseId) {
-    return NextResponse.json(
-      { error: "缺少 NOTION_DATABASE_ID 环境变量" },
-      { status: 500 },
-    );
-  }
-
-  const notion = new Client({ auth: token });
-
+  let latest;
   try {
-    // 读取数据库里最新编辑的一条记录作为「当前状态」
-    const res = await notion.databases.query({
-      database_id: databaseId,
-      page_size: 1,
-      sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-    });
-
-    const page: any = res.results[0];
-    if (!page) {
-      return NextResponse.json({ mood: "", song: "", weather: "", updatedAt: null });
-    }
-
-    const properties = page.properties ?? {};
-
-    return NextResponse.json({
-      mood: pick(properties, ["心情", "mood"]),
-      song: pick(properties, ["在听什么歌", "歌", "song", "music", "听歌"]),
-      weather: pick(properties, ["天气", "weather"]),
-      updatedAt: page.last_edited_time ?? null,
-    });
+    const rows = await recentSummaries(1);
+    latest = rows[0];
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知错误";
+    const message = err instanceof Error ? err.message : "读取 Notion 失败";
     return NextResponse.json({ error: message }, { status: 502 });
   }
+
+  const { mood, thought } = splitDiary(latest?.elDiary ?? "");
+  const { song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? "");
+  const weather = await getWeather();
+
+  return NextResponse.json({
+    mood,
+    thought,
+    song_recommendation,
+    song_reason,
+    el_note: latest?.elNote ?? "", // 「El说」那一句
+    her_state: latest?.herState ?? "", // 你的状态：好/一般/累了/难过
+    weather,
+    date: latest?.date ?? null,
+  });
 }

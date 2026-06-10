@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+type Weather = { temp: number; desc: string; city: string } | null;
+
 type Status = {
   mood?: string;
-  song?: string;
-  weather?: string;
-  updatedAt?: string | null;
+  thought?: string;
+  song_recommendation?: string;
+  song_reason?: string;
+  el_note?: string;
+  her_state?: string;
+  weather?: Weather;
+  date?: string | null;
   error?: string;
 };
 
@@ -45,21 +51,17 @@ function NowTab() {
     let alive = true;
     fetch("/api/status")
       .then((r) => r.json())
-      .then((d) => {
-        if (alive) setStatus(d);
-      })
-      .catch(() => {
-        if (alive) setStatus({ error: "拉不到状态" });
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+      .then((d) => alive && setStatus(d))
+      .catch(() => alive && setStatus({ error: "拉不到状态" }))
+      .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
   }, []);
 
-  const hasAny = status && (status.mood || status.song || status.weather);
+  const hasAny =
+    status &&
+    (status.mood || status.song_recommendation || status.weather || status.el_note);
 
   return (
     <>
@@ -73,30 +75,48 @@ function NowTab() {
         <div className="empty">
           还没接上她的状态～
           <br />
-          配好 Notion 状态库（和接下来的网易云）就会出现在这里。
+          每日总结写好、cron 跑起来后就会出现在这里。
         </div>
       )}
 
       {!loading && hasAny && (
         <>
-          <StatusCard label="心情" value={status?.mood} />
-          <StatusCard label="在听什么歌" value={status?.song} />
-          <StatusCard label="天气" value={status?.weather} />
-          {status?.updatedAt && (
-            <div className="meta">更新于 {new Date(status.updatedAt).toLocaleString("zh-CN")}</div>
+          {(status?.mood || status?.thought) && (
+            <div className="card">
+              <div className="card-label">心情</div>
+              <div className="card-value">{status?.mood || <span className="muted">—</span>}</div>
+              {status?.thought && <div className="meta">{status.thought}</div>}
+            </div>
           )}
+
+          {status?.song_recommendation && (
+            <div className="card">
+              <div className="card-label">在听什么歌</div>
+              <div className="card-value">{status.song_recommendation}</div>
+              {status?.song_reason && <div className="meta">{status.song_reason}</div>}
+            </div>
+          )}
+
+          {status?.weather && (
+            <div className="card">
+              <div className="card-label">天气 · {status.weather.city}</div>
+              <div className="card-value">
+                {status.weather.temp}° {status.weather.desc}
+              </div>
+            </div>
+          )}
+
+          {status?.el_note && (
+            <div className="card">
+              <div className="card-label">El 说</div>
+              <div className="card-value">{status.el_note}</div>
+            </div>
+          )}
+
+          {status?.date && <div className="meta">{status.date}</div>}
         </>
       )}
     </>
-  );
-}
-
-function StatusCard({ label, value }: { label: string; value?: string }) {
-  return (
-    <div className="card">
-      <div className="card-label">{label}</div>
-      <div className="card-value">{value || <span className="muted">—</span>}</div>
-    </div>
   );
 }
 

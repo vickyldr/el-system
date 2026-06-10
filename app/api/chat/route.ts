@@ -1,72 +1,62 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { getClaude } from "@/lib/claude";
+import { recentSummaries } from "@/lib/notion";
+import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 
 export const runtime = "nodejs";
 
-// 中转站给的 base URL 形如 https://jeniya.chat/v1。
-// Anthropic SDK 自己会在路径上拼 /v1/messages，所以这里把结尾多余的 /v1
-// （以及末尾斜杠）去掉，避免出现 .../v1/v1/messages。
-function normalizeBaseURL(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  return raw.replace(/\/+$/, "").replace(/\/v1$/, "");
-}
-
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
+type ChatTurn = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: Request) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "缺少 CLAUDE_API_KEY 环境变量" },
-      { status: 500 },
-    );
-  }
-
-  let body: { messages?: ChatMessage[]; system?: string };
+  let body: { message?: string; history?: ChatTurn[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
 
-  const { messages, system } = body;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return NextResponse.json(
-      { error: "messages 必须是非空数组" },
-      { status: 400 },
-    );
+  const message = body.message?.trim();
+  if (!message) {
+    return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
 
-  const client = new Anthropic({
-    apiKey,
-    baseURL: normalizeBaseURL(process.env.CLAUDE_BASE_URL),
-  });
+  // 注入最近 3 条每日总结作为记忆上下文（拉不到也能聊）。
+  let memory = "";
+  try {
+    memory = buildMemoryContext(await recentSummaries(3));
+  } catch {
+    memory = "";
+  }
+  const system = memory ? `${EL_SYSTEM}\n\n${memory}` : EL_SYSTEM;
+
+  // history 可选：前端带上最近几轮，El 才有上下文连续性。
+  const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+  const messages = [
+    ...history.map((t) => ({ role: t.role, content: t.content })),
+    { role: "user" as const, content: message },
+  ];
 
   try {
-    const response = await client.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 8192,
-      ...(system ? { system } : {}),
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    const claude = getClaude();
+    const res = await claude.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      system,
+      messages,
     });
 
-    const reply = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("");
+    const reply = res.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
 
-    return NextResponse.json({
-      reply,
-      stop_reason: response.stop_reason,
-      usage: response.usage,
-    });
+    return NextResponse.json({ reply });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
       return NextResponse.json(
-        { error: err.message, type: err.name },
+        { error: err.message },
         { status: err.status ?? 502 },
       );
     }

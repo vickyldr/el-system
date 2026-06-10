@@ -140,6 +140,31 @@ function fmtTime(ts?: number): string {
   });
 }
 
+// 在手机上把图缩小并转成 base64 data URL（省流量、绕开存储），直接发给 El 看。
+function downscale(file: File, max: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > max || height > max) {
+        const r = Math.min(max / width, max / height);
+        width = Math.round(width * r);
+        height = Math.round(height * r);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no ctx"));
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 const CHAT_KEY = "el_chat";
 const HISTORY_WINDOW = 100; // 每次发给 API 的对话窗口
 const STORE_CAP = 1000; // 本地最多存这么多条
@@ -164,14 +189,9 @@ function FindTab() {
   async function pickImage(file: File) {
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/upload", { method: "POST", body: fd });
-      const d = await r.json();
-      if (d.url) setPendingImage(d.url);
-      else alert(d.error || "图片上传失败");
+      setPendingImage(await downscale(file, 1280, 0.82));
     } catch {
-      alert("图片上传失败");
+      alert("图片处理失败");
     } finally {
       setUploading(false);
     }
@@ -235,9 +255,8 @@ function FindTab() {
     const image = pendingImage;
     if ((!text && !image) || sending) return;
 
-    const history = msgs
-      .slice(-HISTORY_WINDOW)
-      .map((m) => ({ role: m.role, content: m.content, image: m.image }));
+    // 历史只发文字（不把图片 base64 反复塞进每次请求）
+    const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
     setMsgs((m) => [
       ...m,
       { role: "user", content: text, image: image || undefined, ts: Date.now() },

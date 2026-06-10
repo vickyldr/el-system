@@ -11,11 +11,17 @@ export const runtime = "nodejs";
 type ChatTurn = { role: "user" | "assistant"; content: string; image?: string };
 
 // 把一条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
+// image 支持 base64 data URL（手机直传）或普通 http(s) url。
 function toContent(text: string, image?: string): Anthropic.MessageParam["content"] {
   if (!image) return text;
-  const blocks: Anthropic.ContentBlockParam[] = [
-    { type: "image", source: { type: "url", url: image } },
-  ];
+  const data = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image);
+  const imgBlock: Anthropic.ContentBlockParam = data
+    ? {
+        type: "image",
+        source: { type: "base64", media_type: data[1] as any, data: data[2] },
+      }
+    : { type: "image", source: { type: "url", url: image } };
+  const blocks: Anthropic.ContentBlockParam[] = [imgBlock];
   if (text) blocks.push({ type: "text", text });
   return blocks;
 }
@@ -129,9 +135,10 @@ export async function POST(req: Request) {
 
     // 云端存档：把这轮一问一答追加进去。
     if (cloud) {
+      // 不把图片 base64 存进云端（太占空间）；只存文字。
       const ts = Date.now();
       await appendMessages([
-        { role: "user", content: message, image, ts },
+        { role: "user", content: message || (image ? "[图片]" : ""), ts },
         { role: "assistant", content: reply, ts: ts + 1 },
       ]);
     }

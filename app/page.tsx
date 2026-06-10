@@ -79,7 +79,7 @@ function NowTab() {
         <div className="empty">
           还没接上他的状态～
           <br />
-          每日总结写好、cron 跑起来后就会出现在这里。
+          连上 Notion（或等 cron 写入「此刻」）后就会出现在这里。
         </div>
       )}
 

@@ -6,7 +6,7 @@
   --accent: #534ab7;
   --el-bubble: rgba(255, 255, 255, 0.08);
   --line: rgba(255, 255, 255, 0.08);
-  --tabbar-h: calc(52px + env(safe-area-inset-bottom));
+  --tabbar-h: calc(50px + env(safe-area-inset-bottom));
 }
 
 * {
@@ -29,17 +29,13 @@ body {
 }
 
 .app {
-  display: flex;
-  flex-direction: column;
-  height: var(--app-h, 100dvh);
+  display: block;
 }
 
+/* 此刻 / 我们：普通文档流，整页滚动，底部留出钉死的 tab 栏的位置 */
 .content {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: calc(28px + env(safe-area-inset-top)) 20px 24px;
+  min-height: var(--app-h, 100dvh);
+  padding: calc(28px + env(safe-area-inset-top)) 20px calc(var(--tabbar-h) + 16px);
 }
 
 .title {
@@ -98,7 +94,11 @@ body {
 
 /* ── 底部 tab 栏 ── */
 .tabbar {
-  flex-shrink: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
   display: flex;
   padding-bottom: env(safe-area-inset-bottom);
   background: #1a1e2e;
@@ -110,7 +110,7 @@ body {
   appearance: none;
   background: none;
   border: none;
-  padding: 15px 0;
+  padding: 16px 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -125,12 +125,12 @@ body {
   font-weight: 700;
 }
 
-/* ── 找我（聊天） ── */
+/* ── 找我（聊天）：占满真实屏高，底部留出钉死的 tab 栏 ── */
 .chat {
-  flex: 1;
-  min-height: 0;
+  height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
+  padding-bottom: var(--tabbar-h);
 }
 
 .messages {

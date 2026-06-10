@@ -32,8 +32,20 @@ export async function POST(req: Request) {
       .catch(() => ""),
   ]);
 
+  const now = new Date().toLocaleString("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
   const system = [
     EL_SYSTEM,
+    `现在：${now}（北京时间）。`,
     profile && `——人物档案——\n\n${profile}`,
     longterm && `——长期记忆——\n\n${longterm}`,
     recent,

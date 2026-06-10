@@ -129,7 +129,16 @@ function NowTab() {
 
 /* ───────────── 找我（聊天） ───────────── */
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; ts?: number };
+
+function fmtTime(ts?: number): string {
+  if (!ts) return "";
+  return new Date(ts).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
 
 const CHAT_KEY = "el_chat";
 const HISTORY_WINDOW = 100; // 每次发给 API 的对话窗口
@@ -169,8 +178,8 @@ function FindTab() {
     const text = input.trim();
     if (!text || sending) return;
 
-    const history = msgs.slice(-HISTORY_WINDOW);
-    setMsgs((m) => [...m, { role: "user", content: text }]);
+    const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
+    setMsgs((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
     setInput("");
     setSending(true);
 
@@ -181,9 +190,12 @@ function FindTab() {
         body: JSON.stringify({ message: text, history }),
       });
       const d = await r.json();
-      setMsgs((m) => [...m, { role: "assistant", content: d.reply || d.error || "……" }]);
+      setMsgs((m) => [
+        ...m,
+        { role: "assistant", content: d.reply || d.error || "……", ts: Date.now() },
+      ]);
     } catch {
-      setMsgs((m) => [...m, { role: "assistant", content: "连不上，等下再说。" }]);
+      setMsgs((m) => [...m, { role: "assistant", content: "连不上，等下再说。", ts: Date.now() }]);
     } finally {
       setSending(false);
     }
@@ -195,7 +207,10 @@ function FindTab() {
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
-            <div className="bubble">{m.content}</div>
+            <div className="bubble-col">
+              <div className="bubble">{m.content}</div>
+              {m.ts && <div className="msg-time">{fmtTime(m.ts)}</div>}
+            </div>
           </div>
         ))}
         {sending && (

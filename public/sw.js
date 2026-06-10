@@ -1,6 +1,6 @@
 // el-system service worker —— 先做最小可用版（套壳 + 离线兜底）。
 // 主动推送（Web Push）会在后面的块里往这里加 push / notificationclick 监听。
-const CACHE = "el-shell-v1";
+const CACHE = "el-shell-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

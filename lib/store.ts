@@ -165,3 +165,41 @@ export async function setLastSeen(ts: number): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 提醒（el 从聊天里记下的事 / 日程，显示在「小事」、到点推送）──
+export type Reminder = { id: string; date: string; text: string; pushed?: boolean };
+const REMINDERS_KEY = "el:reminders";
+
+export async function getReminders(): Promise<Reminder[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<Reminder[]>(REMINDERS_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setReminders(list: Reminder[]): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(REMINDERS_KEY, list.slice(-200));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function addReminder(date: string, text: string): Promise<boolean> {
+  const r = redis();
+  if (!r) return false;
+  try {
+    const list = await getReminders();
+    list.push({ id: randomUUID(), date, text });
+    await setReminders(list);
+    return true;
+  } catch {
+    return false;
+  }
+}

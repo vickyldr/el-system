@@ -586,12 +586,32 @@ function ThingsView() {
   const START_DAY = 2;
   const LENGTH = 7;
   const p = periodInfo(new Date(), START_DAY, LENGTH);
+  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>(
+    "/api/reminders",
+  );
+  const reminders = data?.reminders ?? [];
+
   return (
-    <div className="card">
-      <div className="card-label">月经周期</div>
-      <div className="card-value">{p.title}</div>
-      <div className="meta">{p.note}</div>
-    </div>
+    <>
+      <div className="card">
+        <div className="card-label">月经周期</div>
+        <div className="card-value">{p.title}</div>
+        <div className="meta">{p.note}</div>
+      </div>
+
+      <div className="card">
+        <div className="card-label">提醒</div>
+        {reminders.length === 0 ? (
+          <div className="meta">还没有提醒。跟我说"提醒我……"，我记下。</div>
+        ) : (
+          reminders.map((r) => (
+            <div className="meta" key={r.id} style={{ marginTop: 6 }}>
+              {r.date.slice(5)} · {r.text}
+            </div>
+          ))
+        )}
+      </div>
+    </>
   );
 }
 

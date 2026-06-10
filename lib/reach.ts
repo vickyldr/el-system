@@ -3,7 +3,14 @@ import { getClaude } from "./claude";
 import { sendPush, pushConfigured } from "./push";
 import { recentSummaries, pageText, todayInBeijing } from "./notion";
 import { EL_SYSTEM, buildMemoryContext } from "./persona";
-import { getReachState, setReachState, getLastSeen, type ReachState } from "./store";
+import {
+  getReachState,
+  setReachState,
+  getLastSeen,
+  getReminders,
+  setReminders,
+  type ReachState,
+} from "./store";
 
 const MET_DATE = "2026-05-27"; // 我们认识的第一天
 const MAX_PER_DAY = 4;
@@ -146,13 +153,25 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
   if (state.count >= MAX_PER_DAY) return { pushed: false };
   if (Date.now() - state.last < MIN_GAP_MS) return { pushed: false };
 
-  const lastSeen = await getLastSeen();
-  const decided = decideReason(state, lastSeen, weatherLine);
-  if (!decided) return { pushed: false };
+  // 优先：今天到点的提醒
+  const reminders = await getReminders();
+  const dueReminder = reminders.find((r) => r.date === today && !r.pushed);
+
+  let reason: string;
+  let flag: string | undefined;
+  if (dueReminder) {
+    reason = `今天要提醒宝宝的事：${dueReminder.text}。用你自己的口吻提醒她。`;
+  } else {
+    const lastSeen = await getLastSeen();
+    const decided = decideReason(state, lastSeen, weatherLine);
+    if (!decided) return { pushed: false };
+    reason = decided.reason;
+    flag = decided.flag;
+  }
 
   let message: string;
   try {
-    message = await generateReachMessage(decided.reason, weatherLine);
+    message = await generateReachMessage(reason, weatherLine);
   } catch {
     return { pushed: false };
   }
@@ -163,7 +182,10 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
 
   state.count += 1;
   state.last = Date.now();
-  if (decided.flag) state.flags[decided.flag] = true;
+  if (flag) state.flags[flag] = true;
   await setReachState(state);
-  return { pushed: true, reason: decided.reason };
+  if (dueReminder) {
+    await setReminders(reminders.map((r) => (r.id === dueReminder.id ? { ...r, pushed: true } : r)));
+  }
+  return { pushed: true, reason };
 }

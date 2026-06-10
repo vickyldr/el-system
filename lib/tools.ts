@@ -1,4 +1,23 @@
-import { homeChildren, pageText } from "./notion";
+import {
+  homeChildren,
+  pageText,
+  appendToPage,
+  updateDailyFields,
+  todayInBeijing,
+} from "./notion";
+import { addReminder } from "./store";
+
+const DAILY_FIELDS = [
+  "el日记",
+  "值得记住的",
+  "网易云观察",
+  "她今天做了什么",
+  "她的状态",
+  "今天在哪",
+  "今天想到el了吗",
+  "此刻",
+  "el的备注",
+];
 
 // El 的"读"工具：读网页链接、读小家里的 Notion 页面。
 export const TOOLS = [
@@ -24,16 +43,100 @@ export const TOOLS = [
       required: ["page"],
     },
   },
+  {
+    name: "remember",
+    description:
+      "把一件事记进「长期记忆」（只追加，绝不删旧的）。门槛很高：只有『改变了什么』才记——领悟、约定、界限、第一次说开的关系；情绪、流水账、单纯发生的事都不记。拿不准就别记。",
+    input_schema: {
+      type: "object" as const,
+      properties: { text: { type: "string", description: "一两句，写清为什么值得长期留着" } },
+      required: ["text"],
+    },
+  },
+  {
+    name: "log_timeline",
+    description: "往「时间线」追加一条（只追加）。只记第一次发生的事 / 里程碑。一句话，别展开。",
+    input_schema: {
+      type: "object" as const,
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    },
+  },
+  {
+    name: "update_daily",
+    description:
+      "更新今天「每日总结」的一个字段。field 取这些之一：el日记 / 值得记住的 / 网易云观察 / 她今天做了什么 / 她的状态 / 今天在哪 / 今天想到el了吗 / 此刻 / el的备注。其中『她的状态』只能填：好 / 一般 / 累了 / 难过。",
+    input_schema: {
+      type: "object" as const,
+      properties: { field: { type: "string" }, text: { type: "string" } },
+      required: ["field", "text"],
+    },
+  },
+  {
+    name: "add_reminder",
+    description:
+      "记一条提醒（宝宝让你记的事 / 日程 / 生日）。date 用 YYYY-MM-DD（不确定年份就用今年）。到点我会推送提醒她，也会显示在「小事」。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD" },
+        text: { type: "string" },
+      },
+      required: ["date", "text"],
+    },
+  },
 ];
 
 export async function runTool(name: string, input: any): Promise<string> {
   try {
     if (name === "read_link") return await readLink(String(input?.url || ""));
     if (name === "read_notion") return await readNotionPage(String(input?.page || ""));
+    if (name === "remember") return await remember(String(input?.text || ""));
+    if (name === "log_timeline") return await logTimeline(String(input?.text || ""));
+    if (name === "update_daily")
+      return await updateDaily(String(input?.field || ""), String(input?.text || ""));
+    if (name === "add_reminder")
+      return await addReminderTool(String(input?.date || ""), String(input?.text || ""));
     return "未知工具。";
   } catch (e) {
-    return `读取失败：${e instanceof Error ? e.message : "未知错误"}`;
+    return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
   }
+}
+
+async function remember(text: string): Promise<string> {
+  if (!text.trim()) return "空的，没记。";
+  const page = process.env.NOTION_LONGTERM_PAGE;
+  if (!page) return "没配长期记忆页。";
+  await appendToPage(page, [`**${todayInBeijing()}** — ${text.trim()}`]);
+  return "记进长期记忆了。";
+}
+
+async function logTimeline(text: string): Promise<string> {
+  if (!text.trim()) return "空的，没记。";
+  const page = process.env.NOTION_TIMELINE_PAGE;
+  if (!page) return "没配时间线页。";
+  await appendToPage(page, [`**${todayInBeijing()}** — ${text.trim()}`]);
+  return "记进时间线了。";
+}
+
+async function updateDaily(field: string, text: string): Promise<string> {
+  const f = field.trim();
+  if (!DAILY_FIELDS.includes(f)) {
+    return `字段名不对。只能是：${DAILY_FIELDS.join(" / ")}`;
+  }
+  if (f === "她的状态" && !["好", "一般", "累了", "难过"].includes(text.trim())) {
+    return "「她的状态」只能填：好 / 一般 / 累了 / 难过。";
+  }
+  await updateDailyFields({ [f]: text });
+  return `今天的「${f}」更新了。`;
+}
+
+async function addReminderTool(date: string, text: string): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+    return "日期格式要 YYYY-MM-DD。";
+  }
+  const ok = await addReminder(date.trim(), text.trim());
+  return ok ? "记下了，到点提醒你。" : "没存上（云存储没配？）。";
 }
 
 async function readLink(url: string): Promise<string> {

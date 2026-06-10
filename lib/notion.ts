@@ -150,13 +150,20 @@ export function todayInBeijing(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
 }
 
-// 把「此刻」状态写进今天的每日总结行（没有今天的行就新建一条）。不碰 el日记。
-export async function writeNow(text: string): Promise<void> {
+// 更新今天「每日总结」行的字段（没有今天的行就新建）。只写传入的字段，不动别的。
+export async function updateDailyFields(fields: Record<string, string>): Promise<void> {
   const databaseId = process.env.NOTION_DAILY_DB;
   if (!databaseId) throw new Error("缺少 NOTION_DAILY_DB 环境变量");
   const notion = notionClient();
   const today = todayInBeijing();
-  const richText = [{ type: "text", text: { content: text.slice(0, 1900) } }];
+
+  const props: any = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (!v) continue;
+    if (k === "她的状态") props[k] = { select: { name: v } };
+    else props[k] = { rich_text: [{ type: "text", text: { content: v.slice(0, 1900) } }] };
+  }
+  if (!Object.keys(props).length) return;
 
   const res: any = await notion.databases.query({
     database_id: databaseId,
@@ -165,20 +172,36 @@ export async function writeNow(text: string): Promise<void> {
   } as any);
 
   if (res.results.length) {
-    await notion.pages.update({
-      page_id: res.results[0].id,
-      properties: { 此刻: { rich_text: richText } },
-    } as any);
+    await notion.pages.update({ page_id: res.results[0].id, properties: props } as any);
   } else {
     await notion.pages.create({
       parent: { database_id: databaseId },
       properties: {
         标题: { title: [{ type: "text", text: { content: today } }] },
         日期: { date: { start: today } },
-        此刻: { rich_text: richText },
+        ...props,
       },
     } as any);
   }
+}
+
+// 把「此刻」写进今天那行。
+export async function writeNow(text: string): Promise<void> {
+  await updateDailyFields({ 此刻: text });
+}
+
+// 往一页末尾追加段落（长期记忆 / 时间线等）。只追加，不删旧的。
+export async function appendToPage(pageId: string, lines: string[]): Promise<void> {
+  const notion = notionClient();
+  const children = lines
+    .filter((t) => t && t.trim())
+    .map((t) => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1900) } }] },
+    }));
+  if (!children.length) return;
+  await notion.blocks.children.append({ block_id: pageId, children } as any);
 }
 
 // 列出「小家」父页下的所有子页 / 子库，给 El 的按需读取工具用。

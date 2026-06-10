@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText, writeNow } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
+import { maybeReachOut } from "@/lib/reach";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,7 +90,11 @@ async function handle(req: Request) {
       .trim();
     if (!text) return NextResponse.json({ error: "生成为空" }, { status: 502 });
     await writeNow(text);
-    return NextResponse.json({ ok: true, now: text });
+
+    // 顺便判断要不要主动找她（节奏受频率/安静时段限制）。
+    const reach = await maybeReachOut(weatherLine).catch(() => ({ pushed: false }));
+
+    return NextResponse.json({ ok: true, now: text, reach });
   } catch (err) {
     const message = err instanceof Error ? err.message : "失败";
     return NextResponse.json({ error: message }, { status: 502 });

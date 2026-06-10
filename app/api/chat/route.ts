@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
-import { getStoredMessages, appendMessages, storeAvailable, putImage } from "@/lib/store";
+import {
+  getStoredMessages,
+  appendMessages,
+  storeAvailable,
+  putImage,
+  setLastSeen,
+} from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 
 export const runtime = "nodejs";
@@ -39,6 +45,9 @@ export async function POST(req: Request) {
   if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
+
+  // 记下她最后说话的时间（给"沉默/想你"用）。
+  void setLastSeen(Date.now());
 
   // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
   const profilePage = process.env.NOTION_MEMORY_PAGE;

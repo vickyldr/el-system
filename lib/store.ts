@@ -114,3 +114,54 @@ export async function setPushSubs(subs: any[]): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 主动推送的节奏状态 ──
+export type ReachState = {
+  date: string; // 北京日期 YYYY-MM-DD
+  count: number; // 今天推了几条
+  last: number; // 上次推送时间戳
+  flags: Record<string, boolean>; // 今天哪些一次性触发已发过（早安/经期/天气/纪念日）
+};
+
+export async function getReachState(): Promise<ReachState | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<ReachState>("el:reach");
+    return v ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setReachState(s: ReachState): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set("el:reach", s);
+  } catch {
+    /* ignore */
+  }
+}
+
+// 她最后一次跟 el 说话的时间（用于"沉默/想你"触发）。
+export async function getLastSeen(): Promise<number> {
+  const r = redis();
+  if (!r) return 0;
+  try {
+    const v = await r.get<number>("el:lastseen");
+    return typeof v === "number" ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function setLastSeen(ts: number): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set("el:lastseen", ts);
+  } catch {
+    /* ignore */
+  }
+}

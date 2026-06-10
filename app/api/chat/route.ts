@@ -75,8 +75,8 @@ export async function POST(req: Request) {
     `现在：${now}（北京时间）。`,
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
     pageList,
-    profile && `——人物档案——\n\n${profile}`,
-    longterm && `——长期记忆——\n\n${longterm}`,
+    profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
+    longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,
   ]
     .filter(Boolean)

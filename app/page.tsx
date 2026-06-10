@@ -96,7 +96,7 @@ function NowTab() {
             <div className="card song">
               <div className="song-icon">♪</div>
               <div>
-                <div className="card-label">他想让你听</div>
+                <div className="card-label">我想让你听</div>
                 <div className="song-name">{status.song_recommendation}</div>
                 {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
               </div>

@@ -4,6 +4,7 @@ import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import { getStoredMessages, appendMessages, storeAvailable } from "@/lib/store";
+import { TOOLS, runTool } from "@/lib/tools";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
   const system = [
     EL_SYSTEM,
     `现在：${now}（北京时间）。`,
+    "你能读网页链接，也能读你们「小家」里的任意 Notion 页面——需要时调用工具去读真实内容，别凭空编。宝宝发来链接就去读它。",
     profile && `——人物档案——\n\n${profile}`,
     longterm && `——长期记忆——\n\n${longterm}`,
     recent,
@@ -68,18 +70,42 @@ export async function POST(req: Request) {
 
   try {
     const claude = getClaude();
-    const res = await claude.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system,
-      messages,
-    });
+    const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+    const loop: Anthropic.MessageParam[] = [...messages];
+    let reply = "";
 
-    const reply = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
+    // 工具循环：El 需要时读链接 / 读 Notion，最多几轮。
+    for (let i = 0; i < 4; i++) {
+      const res = await claude.messages.create({
+        model,
+        max_tokens: 1024,
+        system,
+        tools: TOOLS,
+        messages: loop,
+      });
+
+      if (res.stop_reason === "tool_use") {
+        loop.push({ role: "assistant", content: res.content });
+        const results: Anthropic.ToolResultBlockParam[] = [];
+        for (const b of res.content) {
+          if (b.type === "tool_use") {
+            const out = await runTool(b.name, b.input);
+            results.push({ type: "tool_result", tool_use_id: b.id, content: out });
+          }
+        }
+        loop.push({ role: "user", content: results });
+        continue;
+      }
+
+      reply = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      break;
+    }
+
+    if (!reply) reply = "……";
 
     // 云端存档：把这轮一问一答追加进去。
     if (cloud) {

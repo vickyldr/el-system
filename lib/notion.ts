@@ -142,3 +142,30 @@ export async function pageText(pageId: string): Promise<string> {
     .join("\n")
     .trim();
 }
+
+// 列出「小家」父页下的所有子页 / 子库，给 El 的按需读取工具用。
+export async function homeChildren(): Promise<
+  { title: string; id: string; type: "page" | "database" }[]
+> {
+  const home = process.env.NOTION_HOME_PAGE;
+  if (!home) return [];
+  const notion = notionClient();
+  const out: { title: string; id: string; type: "page" | "database" }[] = [];
+  let cursor: string | undefined;
+  do {
+    const res: any = await notion.blocks.children.list({
+      block_id: home,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const b of res.results as any[]) {
+      if (b.type === "child_page") {
+        out.push({ title: b.child_page?.title ?? "", id: b.id, type: "page" });
+      } else if (b.type === "child_database") {
+        out.push({ title: b.child_database?.title ?? "", id: b.id, type: "database" });
+      }
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return out;
+}

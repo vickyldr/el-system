@@ -129,8 +129,8 @@ function NowTab() {
 type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_KEY = "el_chat";
-const HISTORY_WINDOW = 40; // 每次发给 API 的对话窗口
-const STORE_CAP = 400; // 本地最多存这么多条
+const HISTORY_WINDOW = 100; // 每次发给 API 的对话窗口
+const STORE_CAP = 1000; // 本地最多存这么多条
 
 function FindTab() {
   const [msgs, setMsgs] = useState<Msg[]>([]);

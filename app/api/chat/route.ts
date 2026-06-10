@@ -21,10 +21,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
 
-  // 记忆上下文：人物档案（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
-  const memoryPage = process.env.NOTION_MEMORY_PAGE;
-  const [profile, recent] = await Promise.all([
-    memoryPage ? pageText(memoryPage).catch(() => "") : Promise.resolve(""),
+  // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
+  const profilePage = process.env.NOTION_MEMORY_PAGE;
+  const longtermPage = process.env.NOTION_LONGTERM_PAGE;
+  const [profile, longterm, recent] = await Promise.all([
+    profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
+    longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),
     recentSummaries(3)
       .then(buildMemoryContext)
       .catch(() => ""),
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
   const system = [
     EL_SYSTEM,
     profile && `——人物档案——\n\n${profile}`,
+    longterm && `——长期记忆——\n\n${longterm}`,
     recent,
   ]
     .filter(Boolean)

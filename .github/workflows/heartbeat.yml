@@ -1,0 +1,17 @@
+name: heartbeat
+
+# 每小时让 el 生成一次"此刻"（Vercel 免费版 cron 一天只能一次，用这个补上每小时）
+on:
+  schedule:
+    - cron: "0 * * * *" # 每小时；想改频率就改这里，比如每2小时 "0 */2 * * *"
+  workflow_dispatch: {} # 也可在 Actions 页手动点一下
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: trigger generate-status
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://el-system-mu.vercel.app/api/cron/generate-status

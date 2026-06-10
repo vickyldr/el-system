@@ -200,13 +200,13 @@ body {
 .composer {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
   padding: 12px 16px;
   border-top: 1px solid var(--line);
 }
 
-.composer input {
+.composer textarea {
   flex: 1;
   background: rgba(255, 255, 255, 0.06);
   border: none;
@@ -216,9 +216,13 @@ body {
   font-size: 15px;
   font-family: inherit;
   outline: none;
+  resize: none;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
-.composer input::placeholder {
+.composer textarea::placeholder {
   color: var(--ink-soft);
 }
 

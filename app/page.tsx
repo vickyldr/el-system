@@ -149,6 +149,14 @@ function FindTab() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  function grow() {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+  }
 
   // 开 app 时优先从云端拉对话（跨设备同步、重装不丢）；没云端就用本地。
   useEffect(() => {
@@ -195,6 +203,9 @@ function FindTab() {
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
     setMsgs((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
     setInput("");
+    requestAnimationFrame(() => {
+      if (taRef.current) taRef.current.style.height = "auto";
+    });
     setSending(true);
 
     try {
@@ -236,11 +247,22 @@ function FindTab() {
       </div>
 
       <form className="composer" onSubmit={send}>
-        <input
+        <textarea
+          ref={taRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="说点什么…"
-          enterKeyHint="send"
+          rows={1}
+          onChange={(e) => {
+            setInput(e.target.value);
+            grow();
+          }}
+          onKeyDown={(e) => {
+            // Enter 换行；⌘/Ctrl+Enter 发送（电脑端）
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              send(e);
+            }
+          }}
+          placeholder="说点什么…（Enter 换行，↑ 发送）"
         />
         <button type="submit" aria-label="发送" disabled={sending || !input.trim()}>
           ↑

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
+import { getStoredMessages, appendMessages, storeAvailable } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -53,10 +54,15 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  // history 可选：前端带上最近几轮，El 才有上下文连续性。
-  const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
+  // 有云存储就以云端为准（跨设备同步）；否则用前端带来的 history。
+  const cloud = storeAvailable();
+  const prior = cloud
+    ? await getStoredMessages()
+    : Array.isArray(body.history)
+      ? body.history
+      : [];
   const messages = [
-    ...history.map((t) => ({ role: t.role, content: t.content })),
+    ...prior.slice(-100).map((t) => ({ role: t.role, content: t.content })),
     { role: "user" as const, content: message },
   ];
 
@@ -75,7 +81,16 @@ export async function POST(req: Request) {
       .join("")
       .trim();
 
-    return NextResponse.json({ reply });
+    // 云端存档：把这轮一问一答追加进去。
+    if (cloud) {
+      const ts = Date.now();
+      await appendMessages([
+        { role: "user", content: message, ts },
+        { role: "assistant", content: reply, ts: ts + 1 },
+      ]);
+    }
+
+    return NextResponse.json({ reply, cloud });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
       const friendly =

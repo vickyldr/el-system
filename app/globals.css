@@ -104,8 +104,7 @@ body {
   display: flex;
   height: var(--tabbar-h);
   padding-bottom: env(safe-area-inset-bottom);
-  background: rgba(26, 30, 46, 0.94);
-  backdrop-filter: blur(12px);
+  background: #1a1e2e;
   border-top: 1px solid var(--line);
 }
 

@@ -150,14 +150,28 @@ function FindTab() {
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // 开 app 时从本地恢复对话（关了再开还在）。
+  // 开 app 时优先从云端拉对话（跨设备同步、重装不丢）；没云端就用本地。
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CHAT_KEY);
-      if (saved) setMsgs(JSON.parse(saved));
-    } catch {
-      /* ignore */
-    }
+    let alive = true;
+    const loadLocal = () => {
+      try {
+        const saved = localStorage.getItem(CHAT_KEY);
+        if (saved && alive) setMsgs(JSON.parse(saved));
+      } catch {
+        /* ignore */
+      }
+    };
+    fetch("/api/messages")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (d.cloud) setMsgs(Array.isArray(d.messages) ? d.messages : []);
+        else loadLocal();
+      })
+      .catch(loadLocal);
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // 对话变化时存回本地（截断到上限，避免无限增长）。

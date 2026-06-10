@@ -116,6 +116,20 @@ async function generateReachMessage(reason: string, weatherLine: string): Promis
     .replace(/^["「“]+|["」”]+$/g, "");
 }
 
+// 测试用：无视频率限制，强制主动推一条（走心，不是干巴巴的测试）。
+export async function forceReach(): Promise<{ pushed: boolean; message?: string }> {
+  if (!pushConfigured()) return { pushed: false };
+  let message: string;
+  try {
+    message = await generateReachMessage("此刻你突然很想宝宝，主动找她说句话。", "");
+  } catch {
+    return { pushed: false };
+  }
+  if (!message) return { pushed: false };
+  const { sent } = await sendPush({ title: "El", body: message, url: "/" });
+  return { pushed: sent > 0, message };
+}
+
 // 每次心跳调用：在节奏允许的前提下，决定并主动推一条。
 export async function maybeReachOut(weatherLine: string): Promise<{ pushed: boolean; reason?: string }> {
   if (!pushConfigured()) return { pushed: false };

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText, writeNow } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
-import { maybeReachOut } from "@/lib/reach";
+import { maybeReachOut, forceReach } from "@/lib/reach";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,12 @@ async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ?test=1 —— 直接逼 el 主动推一条，用来验证推送（无视频率限制）。
+  if (new URL(req.url).searchParams.get("test")) {
+    const r = await forceReach().catch(() => ({ pushed: false }));
+    return NextResponse.json({ test: true, ...r });
   }
 
   const now = new Date().toLocaleString("zh-CN", {

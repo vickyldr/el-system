@@ -9,6 +9,7 @@ import {
   getLastSeen,
   getReminders,
   setReminders,
+  appendMessages,
   type ReachState,
 } from "./store";
 
@@ -134,6 +135,9 @@ export async function forceReach(): Promise<{ pushed: boolean; message?: string 
   }
   if (!message) return { pushed: false };
   const { sent } = await sendPush({ title: "El", body: message, url: "/" });
+  if (sent > 0) {
+    await appendMessages([{ role: "assistant", content: message, ts: Date.now() }]).catch(() => {});
+  }
   return { pushed: sent > 0, message };
 }
 
@@ -179,6 +183,9 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
 
   const { sent } = await sendPush({ title: "El", body: message, url: "/" });
   if (sent <= 0) return { pushed: false };
+
+  // 把我主动发的话也存进对话，这样「找我」里能看到，不只是个通知。
+  await appendMessages([{ role: "assistant", content: message, ts: Date.now() }]).catch(() => {});
 
   state.count += 1;
   state.last = Date.now();

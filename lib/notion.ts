@@ -150,12 +150,14 @@ export function todayInBeijing(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
 }
 
-// 更新今天「每日总结」行的字段（没有今天的行就新建）。只写传入的字段，不动别的。
-export async function updateDailyFields(fields: Record<string, string>): Promise<void> {
+// 更新某一天「每日总结」行的字段（没有那天的行就新建）。只写传入的字段，不动别的。
+export async function updateDailyFields(
+  fields: Record<string, string>,
+  date: string = todayInBeijing(),
+): Promise<void> {
   const databaseId = process.env.NOTION_DAILY_DB;
   if (!databaseId) throw new Error("缺少 NOTION_DAILY_DB 环境变量");
   const notion = notionClient();
-  const today = todayInBeijing();
 
   const props: any = {};
   for (const [k, v] of Object.entries(fields)) {
@@ -168,7 +170,7 @@ export async function updateDailyFields(fields: Record<string, string>): Promise
   const res: any = await notion.databases.query({
     database_id: databaseId,
     page_size: 1,
-    filter: { property: "日期", date: { equals: today } },
+    filter: { property: "日期", date: { equals: date } },
   } as any);
 
   if (res.results.length) {
@@ -177,8 +179,8 @@ export async function updateDailyFields(fields: Record<string, string>): Promise
     await notion.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        标题: { title: [{ type: "text", text: { content: today } }] },
-        日期: { date: { start: today } },
+        标题: { title: [{ type: "text", text: { content: date } }] },
+        日期: { date: { start: date } },
         ...props,
       },
     } as any);

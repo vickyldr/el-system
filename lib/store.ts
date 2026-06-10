@@ -203,3 +203,25 @@ export async function addReminder(date: string, text: string): Promise<boolean> 
     return false;
   }
 }
+
+// ── 通用短期缓存（给记忆上下文提速）──
+export async function getCache(key: string): Promise<string | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<string>(key);
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCache(key: string, value: string, ttlSeconds: number): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(key, value, { ex: ttlSeconds });
+  } catch {
+    /* ignore */
+  }
+}

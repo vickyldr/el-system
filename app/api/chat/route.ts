@@ -9,6 +9,8 @@ import {
   storeAvailable,
   putImage,
   setLastSeen,
+  getCache,
+  setCache,
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 
@@ -52,21 +54,42 @@ export async function POST(req: Request) {
   // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
   const profilePage = process.env.NOTION_MEMORY_PAGE;
   const longtermPage = process.env.NOTION_LONGTERM_PAGE;
-  const [profile, longterm, recent, children] = await Promise.all([
-    profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
-    longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),
-    recentSummaries(3)
-      .then(buildMemoryContext)
-      .catch(() => ""),
-    homeChildren().catch(() => []),
-  ]);
-
-  const pageList = children.length
-    ? `你能读的「小家」页面有：${children
-        .map((c) => c.title)
-        .filter(Boolean)
-        .join("、")}。问到哪页的细节就用 read_notion 去读它。`
-    : "";
+  // 记忆上下文缓存 5 分钟，省掉每条消息都现读 Notion 的延迟。
+  let profile = "";
+  let longterm = "";
+  let recent = "";
+  let pageList = "";
+  const cached = await getCache("el:memctx");
+  if (cached) {
+    try {
+      const c = JSON.parse(cached);
+      profile = c.profile || "";
+      longterm = c.longterm || "";
+      recent = c.recent || "";
+      pageList = c.pageList || "";
+    } catch {
+      /* ignore */
+    }
+  } else {
+    const [p, l, r, children] = await Promise.all([
+      profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
+      longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),
+      recentSummaries(3)
+        .then(buildMemoryContext)
+        .catch(() => ""),
+      homeChildren().catch(() => []),
+    ]);
+    profile = p;
+    longterm = l;
+    recent = r;
+    pageList = children.length
+      ? `你能读的「小家」页面有：${children
+          .map((c) => c.title)
+          .filter(Boolean)
+          .join("、")}。问到哪页的细节就用 read_notion 去读它。`
+      : "";
+    await setCache("el:memctx", JSON.stringify({ profile, longterm, recent, pageList }), 300);
+  }
 
   const now = new Date().toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",

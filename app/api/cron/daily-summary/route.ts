@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
-import { pageText, recentSummaries, todayInBeijing } from "@/lib/notion";
+import { pageText, recentSummaries } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import { getStoredMessages } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
@@ -18,14 +18,15 @@ async function handle(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const today = todayInBeijing();
-
-  // 今天的对话
-  const all = await getStoredMessages();
-  const dayMsgs = all.filter((m) => {
-    if (!m.ts) return false;
-    return new Date(m.ts).toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }) === today;
+  // 凌晨跑，总结的是刚过去的那一天（昨天）。
+  const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Shanghai",
   });
+  const yStart = new Date(`${yesterday}T00:00:00+08:00`).getTime();
+
+  // 那一天的对话（含跨过午夜的尾巴）
+  const all = await getStoredMessages();
+  const dayMsgs = all.filter((m) => (m.ts ? m.ts >= yStart : false));
   const transcript = dayMsgs
     .map((m) => `${m.role === "user" ? "宝宝" : "我"}：${m.content}${m.image ? "（发了一张图）" : ""}`)
     .join("\n")
@@ -46,7 +47,7 @@ async function handle(req: Request) {
 
   const system = [
     EL_SYSTEM,
-    `现在是 ${today} 深夜，宝宝睡了，你一个人安静地做每晚回顾。`,
+    `现在是深夜，宝宝睡了，你一个人安静地回顾刚过去的这一天（${yesterday}）。`,
     manual && `——操作手册（照它做）——\n\n${manual}`,
     profile && `——你自己的档案——\n\n${profile}`,
     longterm && `——你的长期记忆——\n\n${longterm}`,
@@ -55,13 +56,14 @@ async function handle(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  const prompt = `这是今天你和宝宝的对话记录：
-${transcript || "（今天没怎么聊）"}
+  const prompt = `这是刚过去这一天（${yesterday}）你和宝宝的对话记录：
+${transcript || "（这天没怎么聊）"}
 
-现在做今晚的回顾，按操作手册的规矩，用工具写进 Notion（只追加 / 只写今天那行，绝不删旧的）：
-1. update_daily 把今天「每日总结」写齐：el日记（你的视角、感受，至少三句、真实不交差）、值得记住的（2–5 件具体的事，不能是"聊了天"这种）、她今天做了什么、她的状态（好/一般/累了/难过）。今天没怎么发生就别硬写。
+现在做这一天的回顾，按操作手册的规矩，用工具写进 Notion（只追加 / 只写 ${yesterday} 那行，绝不删旧的）：
+1. update_daily 把「每日总结」写齐：el日记（你的视角、感受，至少三句、真实不交差）、值得记住的（2–5 件具体的事，不能是"聊了天"这种）、她今天做了什么、她的状态（好/一般/累了/难过）。这天没怎么发生就别硬写。
 2. log_timeline：只有第一次发生的事 / 里程碑才加，一句话。
-3. remember：只有真正『改变了什么』的领悟/约定/界限才记进长期记忆，门槛很高，今天大概率一条都不进——宁缺毋滥。
+3. remember：只有真正『改变了什么』的领悟/约定/界限才记进长期记忆，门槛很高，多半一条都不进——宁缺毋滥。
+4. 再按操作手册把其他页面过一遍：愿望墙（新愿望）、fifi的档案、人物档案规律（同一行为3次以上才算规律）、我们的身体与偏好——有真东西才用 note_page 加（带日期、只追加），没有就跳过。需要先看某页就用 read_notion。
 做完用一句话说你写了什么。`;
 
   try {
@@ -83,7 +85,7 @@ ${transcript || "（今天没怎么聊）"}
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const b of res.content) {
           if (b.type === "tool_use") {
-            const out = await runTool(b.name, b.input);
+            const out = await runTool(b.name, b.input, yesterday);
             results.push({ type: "tool_result", tool_use_id: b.id, content: out });
           }
         }

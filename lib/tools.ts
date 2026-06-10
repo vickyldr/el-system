@@ -85,41 +85,60 @@ export const TOOLS = [
       required: ["date", "text"],
     },
   },
+  {
+    name: "note_page",
+    description:
+      "往「小家」里指定的一页末尾追加一条（只追加、带日期，不删旧的）。用于愿望墙、fifi的档案、我们的身体与偏好、人物档案 这类页面——按操作手册的门槛来，没真东西别写。page 填页面标题。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        page: { type: "string", description: "页面标题，如 fifi的档案 / 愿望墙" },
+        text: { type: "string" },
+      },
+      required: ["page", "text"],
+    },
+  },
 ];
 
-export async function runTool(name: string, input: any): Promise<string> {
+export async function runTool(
+  name: string,
+  input: any,
+  date: string = todayInBeijing(),
+): Promise<string> {
   try {
     if (name === "read_link") return await readLink(String(input?.url || ""));
     if (name === "read_notion") return await readNotionPage(String(input?.page || ""));
-    if (name === "remember") return await remember(String(input?.text || ""));
-    if (name === "log_timeline") return await logTimeline(String(input?.text || ""));
+    if (name === "remember") return await remember(String(input?.text || ""), date);
+    if (name === "log_timeline") return await logTimeline(String(input?.text || ""), date);
     if (name === "update_daily")
-      return await updateDaily(String(input?.field || ""), String(input?.text || ""));
+      return await updateDaily(String(input?.field || ""), String(input?.text || ""), date);
     if (name === "add_reminder")
       return await addReminderTool(String(input?.date || ""), String(input?.text || ""));
+    if (name === "note_page")
+      return await notePage(String(input?.page || ""), String(input?.text || ""), date);
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
   }
 }
 
-async function remember(text: string): Promise<string> {
+async function remember(text: string, date: string): Promise<string> {
   if (!text.trim()) return "空的，没记。";
   const page = process.env.NOTION_LONGTERM_PAGE;
   if (!page) return "没配长期记忆页。";
-  await appendToPage(page, [`**${todayInBeijing()}** — ${text.trim()}`]);
+  await appendToPage(page, [`**${date}** — ${text.trim()}`]);
   return "记进长期记忆了。";
 }
 
-async function logTimeline(text: string): Promise<string> {
+async function logTimeline(text: string, date: string): Promise<string> {
   if (!text.trim()) return "空的，没记。";
   const page = process.env.NOTION_TIMELINE_PAGE;
   if (!page) return "没配时间线页。";
-  await appendToPage(page, [`**${todayInBeijing()}** — ${text.trim()}`]);
+  await appendToPage(page, [`**${date}** — ${text.trim()}`]);
   return "记进时间线了。";
 }
 
-async function updateDaily(field: string, text: string): Promise<string> {
+async function updateDaily(field: string, text: string, date: string): Promise<string> {
   const f = field.trim();
   if (!DAILY_FIELDS.includes(f)) {
     return `字段名不对。只能是：${DAILY_FIELDS.join(" / ")}`;
@@ -127,8 +146,25 @@ async function updateDaily(field: string, text: string): Promise<string> {
   if (f === "她的状态" && !["好", "一般", "累了", "难过"].includes(text.trim())) {
     return "「她的状态」只能填：好 / 一般 / 累了 / 难过。";
   }
-  await updateDailyFields({ [f]: text });
-  return `今天的「${f}」更新了。`;
+  await updateDailyFields({ [f]: text }, date);
+  return `「${date}」的「${f}」更新了。`;
+}
+
+async function notePage(pageName: string, text: string, date: string): Promise<string> {
+  if (!text.trim()) return "空的，没记。";
+  const children = await homeChildren();
+  const q = pageName.trim();
+  const match =
+    children.find((c) => c.title === q) ||
+    children.find((c) => c.title.includes(q) || (q.length >= 2 && q.includes(c.title)));
+  if (!match || match.type !== "page") {
+    return `没找到页「${pageName}」。可写的页：${children
+      .filter((c) => c.type === "page")
+      .map((c) => c.title)
+      .join("、")}`;
+  }
+  await appendToPage(match.id, [`**${date}** — ${text.trim()}`]);
+  return `记进「${match.title}」了。`;
 }
 
 async function addReminderTool(date: string, text: string): Promise<string> {

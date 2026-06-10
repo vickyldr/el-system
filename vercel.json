@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/generate-status",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "0 19 * * *"
     }
   ]
 }

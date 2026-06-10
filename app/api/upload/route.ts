@@ -5,9 +5,6 @@ export const runtime = "nodejs";
 
 // 上传图片/文件到 Vercel Blob，返回公开 URL。
 export async function POST(req: Request) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json({ error: "未配置存储（Blob 没连）" }, { status: 500 });
-  }
   let form: FormData;
   try {
     form = await req.formData();
@@ -26,6 +23,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: blob.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "上传失败";
+    if (/token/i.test(message)) {
+      return NextResponse.json(
+        { error: "Blob 没接上：环境变量缺 BLOB_READ_WRITE_TOKEN" },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

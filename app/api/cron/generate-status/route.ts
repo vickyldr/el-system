@@ -22,6 +22,14 @@ async function handle(req: Request) {
     return NextResponse.json({ test: true, ...r });
   }
 
+  // 后半夜（北京 2–8 点）不更新，跟宝宝一起睡。这样外部定时哪怕整点戳，我也不会半夜醒。
+  const bjHour = Number(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }),
+  );
+  if (bjHour >= 2 && bjHour < 8) {
+    return NextResponse.json({ skipped: "sleeping" });
+  }
+
   const now = new Date().toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",
     month: "long",

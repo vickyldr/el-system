@@ -8,18 +8,29 @@ import { TOOLS, runTool } from "@/lib/tools";
 
 export const runtime = "nodejs";
 
-type ChatTurn = { role: "user" | "assistant"; content: string };
+type ChatTurn = { role: "user" | "assistant"; content: string; image?: string };
+
+// 把一条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
+function toContent(text: string, image?: string): Anthropic.MessageParam["content"] {
+  if (!image) return text;
+  const blocks: Anthropic.ContentBlockParam[] = [
+    { type: "image", source: { type: "url", url: image } },
+  ];
+  if (text) blocks.push({ type: "text", text });
+  return blocks;
+}
 
 export async function POST(req: Request) {
-  let body: { message?: string; history?: ChatTurn[] };
+  let body: { message?: string; image?: string; history?: ChatTurn[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
 
-  const message = body.message?.trim();
-  if (!message) {
+  const message = (body.message ?? "").trim();
+  const image = typeof body.image === "string" && body.image ? body.image : undefined;
+  if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
 
@@ -72,9 +83,9 @@ export async function POST(req: Request) {
     : Array.isArray(body.history)
       ? body.history
       : [];
-  const messages = [
-    ...prior.slice(-100).map((t) => ({ role: t.role, content: t.content })),
-    { role: "user" as const, content: message },
+  const messages: Anthropic.MessageParam[] = [
+    ...prior.slice(-100).map((t: any) => ({ role: t.role, content: toContent(t.content, t.image) })),
+    { role: "user", content: toContent(message, image) },
   ];
 
   try {
@@ -120,7 +131,7 @@ export async function POST(req: Request) {
     if (cloud) {
       const ts = Date.now();
       await appendMessages([
-        { role: "user", content: message, ts },
+        { role: "user", content: message, image, ts },
         { role: "assistant", content: reply, ts: ts + 1 },
       ]);
     }

@@ -129,7 +129,7 @@ function NowTab() {
 
 /* ───────────── 找我（聊天） ───────────── */
 
-type Msg = { role: "user" | "assistant"; content: string; ts?: number };
+type Msg = { role: "user" | "assistant"; content: string; ts?: number; image?: string };
 
 function fmtTime(ts?: number): string {
   if (!ts) return "";
@@ -148,14 +148,48 @@ function FindTab() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function grow() {
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+  }
+
+  async function pickImage(file: File) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const d = await r.json();
+      if (d.url) setPendingImage(d.url);
+      else alert(d.error || "图片上传失败");
+    } catch {
+      alert("图片上传失败");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function clearAll() {
+    if (!window.confirm("清空和 el 的对话？")) return;
+    setMsgs([]);
+    try {
+      localStorage.removeItem(CHAT_KEY);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await fetch("/api/messages", { method: "DELETE" });
+    } catch {
+      /* ignore */
+    }
   }
 
   // 开 app 时优先从云端拉对话（跨设备同步、重装不丢）；没云端就用本地。
@@ -198,11 +232,18 @@ function FindTab() {
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || sending) return;
+    const image = pendingImage;
+    if ((!text && !image) || sending) return;
 
-    const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
-    setMsgs((m) => [...m, { role: "user", content: text, ts: Date.now() }]);
+    const history = msgs
+      .slice(-HISTORY_WINDOW)
+      .map((m) => ({ role: m.role, content: m.content, image: m.image }));
+    setMsgs((m) => [
+      ...m,
+      { role: "user", content: text, image: image || undefined, ts: Date.now() },
+    ]);
     setInput("");
+    setPendingImage(null);
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
@@ -212,7 +253,7 @@ function FindTab() {
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, image, history }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -228,12 +269,24 @@ function FindTab() {
 
   return (
     <div className="chat">
+      <div className="chat-top">
+        {msgs.length > 0 && (
+          <button className="clear-btn" onClick={clearAll}>
+            清空
+          </button>
+        )}
+      </div>
+
       <div className="messages">
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
             <div className="bubble-col">
-              <div className="bubble">{m.content}</div>
+              {m.image && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="msg-img" src={m.image} alt="" />
+              )}
+              {m.content && <div className="bubble">{m.content}</div>}
               {m.ts && <div className="msg-time">{fmtTime(m.ts)}</div>}
             </div>
           </div>
@@ -246,7 +299,37 @@ function FindTab() {
         <div ref={endRef} />
       </div>
 
+      {pendingImage && (
+        <div className="img-preview">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pendingImage} alt="" />
+          <button onClick={() => setPendingImage(null)} aria-label="移除">
+            ✕
+          </button>
+        </div>
+      )}
+
       <form className="composer" onSubmit={send}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) pickImage(f);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="attach-btn"
+          aria-label="发图片"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? "…" : "＋"}
+        </button>
         <textarea
           ref={taRef}
           value={input}
@@ -264,7 +347,11 @@ function FindTab() {
           }}
           placeholder="说点什么…（Enter 换行，↑ 发送）"
         />
-        <button type="submit" aria-label="发送" disabled={sending || !input.trim()}>
+        <button
+          type="submit"
+          aria-label="发送"
+          disabled={sending || (!input.trim() && !pendingImage)}
+        >
           ↑
         </button>
       </form>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStoredMessages, storeAvailable } from "@/lib/store";
+import { getStoredMessages, storeAvailable, clearMessages } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,4 +10,10 @@ export async function GET() {
     cloud: storeAvailable(),
     messages: await getStoredMessages(),
   });
+}
+
+// 清空云端对话。
+export async function DELETE() {
+  await clearMessages();
+  return NextResponse.json({ ok: true });
 }

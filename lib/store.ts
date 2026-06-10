@@ -1,6 +1,11 @@
 import { Redis } from "@upstash/redis";
 
-export type StoredMsg = { role: "user" | "assistant"; content: string; ts?: number };
+export type StoredMsg = {
+  role: "user" | "assistant";
+  content: string;
+  ts?: number;
+  image?: string;
+};
 
 const KEY = "el:chat"; // 单用户，整段对话存一个 key
 const MAX = 1000;
@@ -36,5 +41,15 @@ export async function appendMessages(msgs: StoredMsg[]): Promise<void> {
     await r.set(KEY, [...cur, ...msgs].slice(-MAX));
   } catch {
     /* 存不进也不影响聊天 */
+  }
+}
+
+export async function clearMessages(): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.del(KEY);
+  } catch {
+    /* ignore */
   }
 }

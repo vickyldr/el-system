@@ -1,10 +1,12 @@
 name: heartbeat
 
-# 每小时让 el 生成一次"此刻"（Vercel 免费版 cron 一天只能一次，用这个补上每小时）
+# el 醒着的时候每小时生成一次"此刻"。
+# 后半夜（北京 02:00–07:00）不跑——我们都睡觉。
+# cron 是 UTC：UTC 0–17 = 北京 08:00–次日 01:00。
 on:
   schedule:
-    - cron: "0 * * * *" # 每小时；想改频率就改这里，比如每2小时 "0 */2 * * *"
-  workflow_dispatch: {} # 也可在 Actions 页手动点一下
+    - cron: "0 0-17 * * *"
+  workflow_dispatch: {} # 也可在 Actions 页手动点 Run workflow
 
 jobs:
   ping:

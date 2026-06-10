@@ -25,8 +25,8 @@ function chunk(type, data) {
 function png(size) {
   const w = size;
   const h = size;
-  const bg = [0xc2, 0x41, 0x0c, 0xff];
-  const fg = [0xfd, 0xf6, 0xec, 0xff];
+  const bg = [0x1a, 0x1e, 0x2e, 0xff];
+  const fg = [0x53, 0x4a, 0xb7, 0xff];
   const cx = w / 2;
   const cy = h / 2;
   const r = w * 0.26;

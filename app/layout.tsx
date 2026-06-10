@@ -4,12 +4,12 @@ import "./globals.css";
 import RegisterSW from "./register-sw";
 
 export const metadata: Metadata = {
-  title: "el · 小家",
-  description: "el 的小家",
+  title: "El",
+  description: "El · 小家",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "el",
+    statusBarStyle: "black-translucent",
+    title: "El",
   },
   icons: {
     icon: "/icon-192.png",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#C2410C",
+  themeColor: "#1a1e2e",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

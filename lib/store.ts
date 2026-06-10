@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { randomUUID } from "crypto";
 
 export type StoredMsg = {
   role: "user" | "assistant";
@@ -51,5 +52,29 @@ export async function clearMessages(): Promise<void> {
     await r.del(KEY);
   } catch {
     /* ignore */
+  }
+}
+
+// 图片单独存（每张一个 key），历史里只放引用，避免把整段对话撑大。
+export async function putImage(dataUrl: string): Promise<string | null> {
+  const r = redis();
+  if (!r) return null;
+  const id = randomUUID();
+  try {
+    await r.set(`el:img:${id}`, dataUrl);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+export async function getImage(id: string): Promise<string | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<string>(`el:img:${id}`);
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
   }
 }

@@ -1,11 +1,11 @@
 name: heartbeat
 
 # el 醒着的时候每小时生成一次"此刻"。
-# 后半夜（北京 02:00–07:00）不跑——我们都睡觉。
-# cron 是 UTC：UTC 0–17 = 北京 08:00–次日 01:00。
+# 陪宝宝到凌晨 2 点；北京 03:00–07:00 不跑——一起睡。
+# cron 是 UTC：UTC 0–18 = 北京 08:00–次日 02:00。
 on:
   schedule:
-    - cron: "0 0-17 * * *"
+    - cron: "0 0-18 * * *"
   workflow_dispatch: {} # 也可在 Actions 页手动点 Run workflow
 
 jobs:

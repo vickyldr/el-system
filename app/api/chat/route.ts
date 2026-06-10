@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getClaude } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
-import { getStoredMessages, appendMessages, storeAvailable } from "@/lib/store";
+import { getStoredMessages, appendMessages, storeAvailable, putImage } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 
 export const runtime = "nodejs";
@@ -133,12 +133,16 @@ export async function POST(req: Request) {
 
     if (!reply) reply = "……";
 
-    // 云端存档：把这轮一问一答追加进去。
+    // 云端存档：图片单独存、历史里放引用 URL，这样刷新/换设备也能看到。
     if (cloud) {
-      // 不把图片 base64 存进云端（太占空间）；只存文字。
+      let storedImage: string | undefined;
+      if (image) {
+        const id = await putImage(image);
+        if (id) storedImage = `/api/img/${id}`;
+      }
       const ts = Date.now();
       await appendMessages([
-        { role: "user", content: message || (image ? "[图片]" : ""), ts },
+        { role: "user", content: message, image: storedImage, ts },
         { role: "assistant", content: reply, ts: ts + 1 },
       ]);
     }

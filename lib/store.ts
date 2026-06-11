@@ -171,12 +171,37 @@ export async function setLastSeen(ts: number): Promise<void> {
 export type Reminder = { id: string; date: string; text: string; pushed?: boolean };
 const REMINDERS_KEY = "el:reminders";
 
+function normR(s: string): string {
+  return (s || "").replace(/[\s\p{P}]/gu, "").toLowerCase();
+}
+// 同一天、内容雷同（相等 / 互相包含 / 字符重合高）就算重复。
+function dupReminder(a: Reminder, date: string, text: string): boolean {
+  if (a.date !== date) return false;
+  const x = normR(a.text);
+  const y = normR(text);
+  if (!x || !y) return false;
+  if (x === y || x.includes(y) || y.includes(x)) return true;
+  const sx = new Set([...x]);
+  const sy = new Set([...y]);
+  let inter = 0;
+  sx.forEach((c) => sy.has(c) && inter++);
+  return inter / new Set([...x, ...y]).size >= 0.6;
+}
+function dedupeReminders(list: Reminder[]): Reminder[] {
+  const out: Reminder[] = [];
+  for (const r of list) if (!out.some((o) => dupReminder(o, r.date, r.text))) out.push(r);
+  return out;
+}
+
 export async function getReminders(): Promise<Reminder[]> {
   const r = redis();
   if (!r) return [];
   try {
     const v = await r.get<Reminder[]>(REMINDERS_KEY);
-    return Array.isArray(v) ? v : [];
+    const list = Array.isArray(v) ? v : [];
+    const deduped = dedupeReminders(list);
+    if (deduped.length !== list.length) await r.set(REMINDERS_KEY, deduped).catch(() => {});
+    return deduped;
   } catch {
     return [];
   }
@@ -197,6 +222,7 @@ export async function addReminder(date: string, text: string): Promise<boolean> 
   if (!r) return false;
   try {
     const list = await getReminders();
+    if (list.some((x) => dupReminder(x, date, text))) return true; // 已经记过类似的，不重复
     list.push({ id: randomUUID(), date, text });
     await setReminders(list);
     return true;

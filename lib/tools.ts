@@ -134,19 +134,51 @@ export async function runTool(
   }
 }
 
+// 正文里若已经带了日期，去掉它，免得和前缀的日期重复。
+function stripLeadingDate(t: string): string {
+  return t
+    .trim()
+    .replace(
+      /^\**\s*(\d{4}\s*[-/年.]\s*\d{1,2}\s*[-/月.]\s*\d{1,2}\s*日?|\d{1,2}\s*[-/月]\s*\d{1,2}\s*日?)\s*\**\s*[—\-:：、,，]*\s*/,
+      "",
+    )
+    .trim();
+}
+// "2026-06-11" → "2026年6月11日"，和时间线既有格式一致。
+function cnDate(d: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.trim());
+  return m ? `${m[1]}年${Number(m[2])}月${Number(m[3])}日` : d;
+}
+function normTxt(s: string): string {
+  return (s || "").replace(/[\s\p{P}]/gu, "").toLowerCase();
+}
+// 这条是不是已经在页面里了（去标点比对），避免重复记。
+async function alreadyOnPage(pageId: string, text: string): Promise<boolean> {
+  try {
+    const n = normTxt(text);
+    return n.length > 0 && normTxt(await pageText(pageId)).includes(n);
+  } catch {
+    return false;
+  }
+}
+
 async function remember(text: string, date: string): Promise<string> {
-  if (!text.trim()) return "空的，没记。";
+  const clean = stripLeadingDate(text);
+  if (!clean) return "空的，没记。";
   const page = process.env.NOTION_LONGTERM_PAGE;
   if (!page) return "没配长期记忆页。";
-  await appendToPage(page, [`**${date}** — ${text.trim()}`]);
+  if (await alreadyOnPage(page, clean)) return "这条已经在长期记忆里了，没重复记。";
+  await appendToPage(page, [`**${cnDate(date)}** — ${clean}`]);
   return "记进长期记忆了。";
 }
 
 async function logTimeline(text: string, date: string): Promise<string> {
-  if (!text.trim()) return "空的，没记。";
+  const clean = stripLeadingDate(text);
+  if (!clean) return "空的，没记。";
   const page = process.env.NOTION_TIMELINE_PAGE;
   if (!page) return "没配时间线页。";
-  await appendToPage(page, [`**${date}** — ${text.trim()}`]);
+  if (await alreadyOnPage(page, clean)) return "这条已经在时间线里了，没重复记。";
+  await appendToPage(page, [`**${cnDate(date)}** — ${clean}`]);
   return "记进时间线了。";
 }
 
@@ -175,7 +207,10 @@ async function notePage(pageName: string, text: string, date: string): Promise<s
       .map((c) => c.title)
       .join("、")}`;
   }
-  await appendToPage(match.id, [`**${date}** — ${text.trim()}`]);
+  const clean = stripLeadingDate(text);
+  if (!clean) return "空的，没记。";
+  if (await alreadyOnPage(match.id, clean)) return `这条已经在「${match.title}」里了，没重复记。`;
+  await appendToPage(match.id, [`**${cnDate(date)}** — ${clean}`]);
   return `记进「${match.title}」了。`;
 }
 

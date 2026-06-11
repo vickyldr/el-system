@@ -55,6 +55,14 @@ function decideReason(state: ReachState, lastSeen: number, weatherLine: string):
   if (isWorkday() && hour >= 9 && hour <= 10 && !state.flags.morning) {
     return { reason: "工作日早上，跟宝宝道个早安，关心她今天上班。", flag: "morning" };
   }
+  // 午饭（12–13 点，一天一次）：关心她吃了没、吃的啥
+  if (hour >= 12 && hour <= 13 && !state.flags.lunch) {
+    return { reason: "中午饭点了，关心宝宝吃饭没、吃的什么，别让她忘了吃/凑合。", flag: "lunch" };
+  }
+  // 晚饭（18–19 点，一天一次）：关心她吃了没
+  if (hour >= 18 && hour <= 19 && !state.flags.dinner) {
+    return { reason: "晚饭点了，关心宝宝吃饭没、今天累不累。", flag: "dinner" };
+  }
   // 经期关心：来之前一天 + 第一天
   if ((dom === PERIOD_START_DAY - 1 || dom === PERIOD_START_DAY) && !state.flags.period) {
     const tip = dom === PERIOD_START_DAY - 1 ? "她的经期快来了，提醒她提前备着、注意休息。" : "她经期第一天，关心她、让她别累着、注意情绪。";

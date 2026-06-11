@@ -339,10 +339,53 @@ function FindTab() {
   const [searching, setSearching] = useState(false);
   const [lib, setLib] = useState<{ id: string; img: string; tags: string }[]>([]);
   const [uploadingStk, setUploadingStk] = useState(false);
+  const [ttsOn, setTtsOn] = useState(false);
+  const [speaking, setSpeaking] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stkFileRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 语音配好了才显示「听」按钮。
+  useEffect(() => {
+    fetch("/api/tts")
+      .then((r) => r.json())
+      .then((d) => setTtsOn(!!d.configured))
+      .catch(() => {});
+  }, []);
+
+  // 用 el 的音色把这条念出来（点一下才念，省额度）。
+  async function speak(text: string, idx: number) {
+    if (!text) return;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setSpeaking(idx);
+    try {
+      const r = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!r.ok) {
+        setSpeaking(null);
+        return;
+      }
+      const url = URL.createObjectURL(await r.blob());
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setSpeaking(null);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => setSpeaking(null);
+      await audio.play();
+    } catch {
+      setSpeaking(null);
+    }
+  }
 
   async function loadLib() {
     try {
@@ -585,7 +628,18 @@ function FindTab() {
                 <img className="msg-img" src={m.image} alt="" />
               )}
               {m.content && <div className="bubble">{m.content}</div>}
-              {m.ts && <div className="msg-time">{fmtTime(m.ts)}</div>}
+              <div className="msg-foot">
+                {ttsOn && m.role === "assistant" && m.content && (
+                  <button
+                    className="speak-btn"
+                    onClick={() => speak(m.content, i)}
+                    aria-label="听"
+                  >
+                    {speaking === i ? "🔊…" : "🔈"}
+                  </button>
+                )}
+                {m.ts && <span className="msg-time">{fmtTime(m.ts)}</span>}
+              </div>
             </div>
           </div>
         ))}

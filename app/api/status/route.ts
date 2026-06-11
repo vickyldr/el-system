@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { recentSummaries } from "@/lib/notion";
+import { recentSummaries, todayInBeijing } from "@/lib/notion";
 import { resolveNeteaseSong } from "@/lib/netease";
+import { getDailySong } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
@@ -130,6 +131,26 @@ export async function GET() {
   } else {
     ({ mood, thought } = splitDiary(latest?.elDiary ?? ""));
     ({ song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? ""));
+  }
+
+  // 歌以"每日一首"的稳定存档为准，别被每小时的心情文字覆盖丢了。
+  try {
+    const ds = await getDailySong(todayInBeijing());
+    if (ds) {
+      const end = ds.indexOf("》");
+      if (end >= 0) {
+        song_recommendation = ds.slice(0, end + 1).trim();
+        song_reason = ds
+          .slice(end + 1)
+          .replace(/^[—\-、,，:：\s]+/, "")
+          .trim();
+      } else {
+        song_recommendation = ds;
+        song_reason = "";
+      }
+    }
+  } catch {
+    /* 拿不到就用上面解析的 */
   }
 
   const [weather, song] = await Promise.all([

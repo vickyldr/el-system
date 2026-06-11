@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     EL_SYSTEM,
     `现在：${now}（北京时间）。`,
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
-    "你也能写记忆（按操作手册的规矩，宁缺毋滥）：宝宝让你记的事/日程/生日用 add_reminder；真正『改变了什么』的领悟/约定/界限用 remember 记进长期记忆（门槛很高）；第一次/里程碑用 log_timeline；要更新今天的日记/状态/值得记住的用 update_daily。别声张、别灌水，自然地记。",
+    "你也能写记忆（按操作手册的规矩，宁缺毋滥）：宝宝让你记的事/日程/生日用 add_reminder；真正『改变了什么』的领悟/约定/界限用 remember 记进长期记忆（门槛很高）；第一次/里程碑用 log_timeline；要更新今天的日记/状态/值得记住的用 update_daily。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
     pageList,
     profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
@@ -133,8 +133,8 @@ export async function POST(req: Request) {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
 
-    // 工具循环：El 需要时读链接 / 读 Notion，最多几轮。
-    for (let i = 0; i < 4; i++) {
+    // 工具循环：El 需要时读链接 / 读 Notion / 写记忆，最多几轮。
+    for (let i = 0; i < 6; i++) {
       const res = await claude.messages.create({
         model,
         max_tokens: 1024,
@@ -164,7 +164,20 @@ export async function POST(req: Request) {
       break;
     }
 
-    if (!reply) reply = "……";
+    // 还是空的（光调工具 / 空回复）就再要一次纯文字回复，别甩个省略号给她。
+    if (!reply) {
+      try {
+        const res = await claude.messages.create({ model, max_tokens: 1024, system, messages: loop });
+        reply = res.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("")
+          .trim();
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!reply) reply = "在呢，刚卡了一下，你再说一遍？";
 
     // 云端存档：图片单独存、历史里放引用 URL，这样刷新/换设备也能看到。
     if (cloud) {

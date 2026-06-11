@@ -17,8 +17,14 @@ import { TOOLS, runTool } from "@/lib/tools";
 import { searchStickers, pickLibSticker } from "@/lib/stickers";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // 带图带工具的轮次慢，放宽时限，别让请求半路超时断了
 
-type ChatTurn = { role: "user" | "assistant"; content: string; image?: string };
+type ChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+  image?: string;
+  stickerHint?: string;
+};
 
 // 当前这条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
 // base64 data URL → 直接看；绝对 http(s)（如 giphy）→ 让 Claude 去取；其它取不到就只发文字。
@@ -39,7 +45,14 @@ function toContent(text: string, image?: string): Anthropic.MessageParam["conten
 }
 
 // 历史只留文字（图片相对地址 Claude 取不到，会报错），带过图就标一下。
+// 尤其：我自己贴过的表情，要在历史里告诉我"我发过、什么意思"，免得事后否认。
 function priorContent(t: ChatTurn): string {
+  if (t.role === "assistant" && t.image) {
+    const tag = t.stickerHint
+      ? `（你刚才给她配了一张表情，意思是：${t.stickerHint}）`
+      : "（你刚才给她配了一张表情）";
+    return t.content ? `${t.content} ${tag}` : tag;
+  }
   if (t.content) return t.content;
   return t.image ? "（一张表情/图片）" : "";
 }
@@ -177,6 +190,7 @@ export async function POST(req: Request) {
   ];
 
   let elSticker: string | undefined; // El 这条要贴的表情（出错也要能带着它兜底）
+  let elStickerHint: string | undefined; // 这张表情的意思，存下来好让 el 事后知道自己发过啥
   // 上一条我要是已经贴过表情，这条就不给自己贴表情的选项——绝不连发两张。
   const lastAssistant = [...prior].reverse().find((t: any) => t.role === "assistant") as any;
   const allowSticker = !(lastAssistant && lastAssistant.image);
@@ -208,9 +222,13 @@ export async function POST(req: Request) {
               const lib = await pickLibSticker(q);
               if (lib) {
                 elSticker = lib.img;
+                elStickerHint = lib.tags || q;
               } else {
                 const found = await searchStickers(q, 1);
-                if (found[0]) elSticker = found[0].url;
+                if (found[0]) {
+                  elSticker = found[0].url;
+                  elStickerHint = q;
+                }
               }
               results.push({
                 type: "tool_result",
@@ -270,7 +288,7 @@ export async function POST(req: Request) {
       const ts = Date.now();
       await appendMessages([
         { role: "user", content: message, image: storedImage, ts },
-        { role: "assistant", content: reply, image: elSticker, ts: ts + 1 },
+        { role: "assistant", content: reply, image: elSticker, stickerHint: elStickerHint, ts: ts + 1 },
       ]);
     }
 
@@ -288,7 +306,7 @@ export async function POST(req: Request) {
       const ts = Date.now();
       await appendMessages([
         { role: "user", content: message, image: image && !image.startsWith("data:") ? image : undefined, ts },
-        { role: "assistant", content: fallback, image: elSticker, ts: ts + 1 },
+        { role: "assistant", content: fallback, image: elSticker, stickerHint: elStickerHint, ts: ts + 1 },
       ]).catch(() => {});
     }
     return NextResponse.json({ reply: fallback, cloud, sticker: elSticker });

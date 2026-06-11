@@ -51,7 +51,9 @@ export async function POST(req: Request) {
 }
 
 function mp3(buf: Buffer): Response {
-  return new Response(buf, {
+  const body = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  // Node 的 Buffer/Uint8Array 在 DOM BodyInit 类型下会被拒；运行时没问题，cast 一下。
+  return new Response(body as unknown as BodyInit, {
     headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
   });
 }

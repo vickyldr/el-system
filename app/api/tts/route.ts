@@ -36,8 +36,8 @@ export async function POST(req: Request) {
   const text = (body.text ?? "").trim().slice(0, 600); // 限长省额度
   if (!text) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
 
-  // 缓存键 = 家 + 音色 + 模型 + 文本。命中就直接放，不再生成、不扣额度。
-  const sig = [which, voiceOf(which), modelOf(which), text].join("|");
+  // 缓存键 = 家 + 音色 + 模型 + 调性参数 + 文本。命中就直接放，不再生成、不扣额度。
+  const sig = [which, voiceOf(which), modelOf(which), paramsOf(which), text].join("|");
   const cacheKey = "el:tts:" + createHash("sha256").update(sig).digest("hex");
   const cached = await getCache(cacheKey).catch(() => null);
   if (cached) return mp3(Buffer.from(cached, "base64"));
@@ -69,6 +69,22 @@ function modelOf(which: string): string {
     : process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
 }
 
+// 海螺的"调性"：语速/音高/情绪。默认压低、放慢，让 el 沉一点、闷一点（不那么阳光）。
+function minimaxTuning() {
+  const speed = Number(process.env.MINIMAX_SPEED) || 0.95;
+  const pitch =
+    process.env.MINIMAX_PITCH != null && process.env.MINIMAX_PITCH !== ""
+      ? Number(process.env.MINIMAX_PITCH)
+      : -3;
+  const emotion = process.env.MINIMAX_EMOTION || ""; // 想更冷可设 neutral / sad
+  return { speed, pitch, emotion };
+}
+function paramsOf(which: string): string {
+  if (which !== "minimax") return "";
+  const t = minimaxTuning();
+  return `${t.speed},${t.pitch},${t.emotion}`;
+}
+
 // ── 海螺 MiniMax T2A v2 ──（返回 hex 编码音频，要解码成字节）
 async function synthMiniMax(text: string): Promise<Synth> {
   const key = process.env.MINIMAX_API_KEY!;
@@ -76,6 +92,7 @@ async function synthMiniMax(text: string): Promise<Synth> {
   const voiceId = process.env.MINIMAX_VOICE_ID!;
   const model = modelOf("minimax");
   const host = process.env.MINIMAX_API_HOST || "https://api.minimaxi.com";
+  const tuning = minimaxTuning();
   try {
     const r = await fetch(`${host}/v1/t2a_v2?GroupId=${encodeURIComponent(group)}`, {
       method: "POST",
@@ -85,7 +102,13 @@ async function synthMiniMax(text: string): Promise<Synth> {
         text,
         stream: false,
         language_boost: "auto",
-        voice_setting: { voice_id: voiceId, speed: 1, vol: 1, pitch: 0 },
+        voice_setting: {
+          voice_id: voiceId,
+          speed: tuning.speed,
+          vol: 1,
+          pitch: tuning.pitch,
+          ...(tuning.emotion ? { emotion: tuning.emotion } : {}),
+        },
         audio_setting: { sample_rate: 44100, bitrate: 128000, format: "mp3", channel: 1 },
       }),
     });

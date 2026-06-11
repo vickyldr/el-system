@@ -257,12 +257,61 @@ function FindTab() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
+  const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
   const [stickerQ, setStickerQ] = useState("");
   const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [lib, setLib] = useState<{ id: string; img: string; tags: string }[]>([]);
+  const [uploadingStk, setUploadingStk] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const stkFileRef = useRef<HTMLInputElement>(null);
+
+  async function loadLib() {
+    try {
+      const r = await fetch("/api/stickers/lib");
+      const d = await r.json();
+      setLib(Array.isArray(d.stickers) ? d.stickers : []);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 上传一张表情进共享库：保留 GIF 动图（readAsDataURL，不缩放），写个"意思"当标签。
+  async function uploadSticker(file: File) {
+    const tags = window.prompt("给这张表情写个意思（el 靠它读懂、也靠它搜出来发）：\n比如 想你 / 无语 / 大哭 / 得意");
+    if (tags === null) return;
+    if (!tags.trim()) {
+      alert("写个意思吧，不然 el 不知道这是啥");
+      return;
+    }
+    setUploadingStk(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = reject;
+        fr.readAsDataURL(file);
+      });
+      const r = await fetch("/api/stickers/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl, tags: tags.trim() }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        await loadLib();
+        setStickerTab("lib");
+      } else {
+        alert(d.error || "上传失败");
+      }
+    } catch {
+      alert("上传失败");
+    } finally {
+      setUploadingStk(false);
+    }
+  }
 
   async function searchSticker(q: string) {
     if (!q.trim()) {
@@ -351,7 +400,7 @@ function FindTab() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, sending]);
 
-  async function post(text: string, image?: string) {
+  async function post(text: string, image?: string, hint?: string) {
     if ((!text && !image) || sending) return;
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
@@ -361,7 +410,7 @@ function FindTab() {
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, image, history }),
+        body: JSON.stringify({ message: text, image, hint, history }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -393,9 +442,9 @@ function FindTab() {
     void post(text, image || undefined);
   }
 
-  function sendSticker(url: string) {
+  function sendSticker(url: string, hint?: string) {
     setShowStickers(false);
-    void post("", url);
+    void post("", url, hint);
   }
 
   return (
@@ -433,28 +482,80 @@ function FindTab() {
 
       {showStickers && (
         <div className="sticker-panel">
-          <input
-            className="sticker-search"
-            value={stickerQ}
-            onChange={(e) => setStickerQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                searchSticker(stickerQ);
-              }
-            }}
-            placeholder="搜表情包…（回车）"
-          />
-          <div className="sticker-grid">
-            {searching && <div className="meta">搜索中…</div>}
-            {!searching && stickers.length === 0 && (
-              <div className="meta">搜个词试试，比如 想你 / 无语 / 抱抱</div>
-            )}
-            {stickers.map((s, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={s.preview} alt="" onClick={() => sendSticker(s.url)} />
-            ))}
+          <div className="sticker-tabs">
+            <button
+              type="button"
+              className={`stk-tab ${stickerTab === "lib" ? "active" : ""}`}
+              onClick={() => setStickerTab("lib")}
+            >
+              我们的表情
+            </button>
+            <button
+              type="button"
+              className={`stk-tab ${stickerTab === "search" ? "active" : ""}`}
+              onClick={() => setStickerTab("search")}
+            >
+              搜动图
+            </button>
+            <input
+              ref={stkFileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadSticker(f);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="stk-upload"
+              onClick={() => stkFileRef.current?.click()}
+              disabled={uploadingStk}
+            >
+              {uploadingStk ? "上传中…" : "＋ 传表情"}
+            </button>
           </div>
+
+          {stickerTab === "lib" ? (
+            <div className="sticker-grid">
+              {lib.length === 0 && (
+                <div className="meta">
+                  还没有表情。点「＋ 传表情」传一张，写上意思，我和你都能发它～
+                </div>
+              )}
+              {lib.map((s) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={s.id} src={s.img} alt={s.tags} title={s.tags} onClick={() => sendSticker(s.img, s.tags)} />
+              ))}
+            </div>
+          ) : (
+            <>
+              <input
+                className="sticker-search"
+                value={stickerQ}
+                onChange={(e) => setStickerQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    searchSticker(stickerQ);
+                  }
+                }}
+                placeholder="搜动图…（回车）"
+              />
+              <div className="sticker-grid">
+                {searching && <div className="meta">搜索中…</div>}
+                {!searching && stickers.length === 0 && (
+                  <div className="meta">搜个词试试，比如 想你 / 无语 / 抱抱</div>
+                )}
+                {stickers.map((s, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={s.preview} alt="" onClick={() => sendSticker(s.url)} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -493,7 +594,12 @@ function FindTab() {
           type="button"
           className="attach-btn"
           aria-label="表情包"
-          onClick={() => setShowStickers((v) => !v)}
+          onClick={() => {
+            setShowStickers((v) => {
+              if (!v) void loadLib();
+              return !v;
+            });
+          }}
         >
           😀
         </button>

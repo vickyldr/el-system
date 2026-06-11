@@ -13,30 +13,33 @@ import {
   setCache,
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
-import { searchStickers } from "@/lib/stickers";
+import { searchStickers, pickLibSticker } from "@/lib/stickers";
 
 export const runtime = "nodejs";
 
 type ChatTurn = { role: "user" | "assistant"; content: string; image?: string };
 
-// 把一条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
-// image 支持 base64 data URL（手机直传）或普通 http(s) url。
+// 当前这条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
+// 只有 base64 data URL 能直接给 Claude 看；相对地址（/api/img、表情库）它取不到，
+// 所以那种情况靠 hint 文字让 el 读懂。
 function toContent(text: string, image?: string): Anthropic.MessageParam["content"] {
-  if (!image) return text;
-  const data = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image);
-  const imgBlock: Anthropic.ContentBlockParam = data
-    ? {
-        type: "image",
-        source: { type: "base64", media_type: data[1] as any, data: data[2] },
-      }
-    : { type: "image", source: { type: "url", url: image } };
-  const blocks: Anthropic.ContentBlockParam[] = [imgBlock];
+  const data = image ? /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image) : null;
+  if (!data) return text || "（发了一张图）";
+  const blocks: Anthropic.ContentBlockParam[] = [
+    { type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } },
+  ];
   if (text) blocks.push({ type: "text", text });
   return blocks;
 }
 
+// 历史只留文字（图片相对地址 Claude 取不到，会报错），带过图就标一下。
+function priorContent(t: ChatTurn): string {
+  if (t.content) return t.content;
+  return t.image ? "（一张表情/图片）" : "";
+}
+
 export async function POST(req: Request) {
-  let body: { message?: string; image?: string; history?: ChatTurn[] };
+  let body: { message?: string; image?: string; hint?: string; history?: ChatTurn[] };
   try {
     body = await req.json();
   } catch {
@@ -45,6 +48,8 @@ export async function POST(req: Request) {
 
   const message = (body.message ?? "").trim();
   const image = typeof body.image === "string" && body.image ? body.image : undefined;
+  // hint：她发的是表情库里的表情/外链表情时，前端把这张的"意思"带过来，让 el 读懂。
+  const hint = typeof body.hint === "string" ? body.hint.trim() : "";
   if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
@@ -123,9 +128,17 @@ export async function POST(req: Request) {
     : Array.isArray(body.history)
       ? body.history
       : [];
+  // 当前这条：base64 图直接给看；表情库/外链表情用 hint 文字说明它是什么意思。
+  const curText = hint
+    ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
+    : message;
+  const curImage = image && image.startsWith("data:") ? image : undefined;
   const messages: Anthropic.MessageParam[] = [
-    ...prior.slice(-100).map((t: any) => ({ role: t.role, content: toContent(t.content, t.image) })),
-    { role: "user", content: toContent(message, image) },
+    ...prior
+      .slice(-100)
+      .map((t: any) => ({ role: t.role, content: priorContent(t) }))
+      .filter((m) => m.content),
+    { role: "user", content: toContent(curText, curImage) },
   ];
 
   try {
@@ -151,8 +164,15 @@ export async function POST(req: Request) {
         for (const b of res.content) {
           if (b.type === "tool_use") {
             if (b.name === "sticker") {
-              const found = await searchStickers(String((b.input as any)?.query || ""), 1);
-              if (found[0]) elSticker = found[0].url;
+              const q = String((b.input as any)?.query || "");
+              // 先翻共享表情库（你俩传的，带"意思"），没有再去 Giphy 搜动图。
+              const lib = await pickLibSticker(q);
+              if (lib) {
+                elSticker = lib.img;
+              } else {
+                const found = await searchStickers(q, 1);
+                if (found[0]) elSticker = found[0].url;
+              }
               results.push({
                 type: "tool_result",
                 tool_use_id: b.id,

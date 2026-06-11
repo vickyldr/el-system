@@ -225,3 +225,29 @@ export async function setCache(key: string, value: string, ttlSeconds: number): 
     /* ignore */
   }
 }
+
+// ── 共享表情库（你和 el 都能传、都能发；靠 tags 认）──
+export type LibSticker = { id: string; img: string; tags: string };
+const STK_KEY = "el:stickerlib";
+
+export async function getStickerLib(): Promise<LibSticker[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<LibSticker[]>(STK_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addStickerLib(s: LibSticker): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    const list = await getStickerLib();
+    await r.set(STK_KEY, [s, ...list].slice(0, 300));
+  } catch {
+    /* ignore */
+  }
+}

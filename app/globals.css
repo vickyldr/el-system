@@ -232,6 +232,46 @@ body {
   gap: 8px;
 }
 
+.sticker-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stk-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.stk-tab.active {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.stk-upload {
+  margin-left: auto;
+  appearance: none;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.stk-upload:disabled {
+  opacity: 0.5;
+}
+
 .sticker-search {
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.06);

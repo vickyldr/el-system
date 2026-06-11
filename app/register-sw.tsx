@@ -23,15 +23,22 @@ export default function RegisterSW() {
         .catch(() => {});
     }
 
-    // iOS standalone 下 100dvh/100% 有时算短，用真实可视高度撑满屏幕。
-    const setH = () =>
-      document.documentElement.style.setProperty("--app-h", `${window.innerHeight}px`);
+    // iOS standalone 下 100dvh 有时算不准；用真实可视高度撑满屏幕。
+    // 优先 visualViewport.height —— 键盘弹出时它会缩，输入框就不会被挡。
+    const setH = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--app-h", `${Math.round(h)}px`);
+    };
     setH();
     window.addEventListener("resize", setH);
     window.addEventListener("orientationchange", setH);
+    window.visualViewport?.addEventListener("resize", setH);
+    window.visualViewport?.addEventListener("scroll", setH);
     return () => {
       window.removeEventListener("resize", setH);
       window.removeEventListener("orientationchange", setH);
+      window.visualViewport?.removeEventListener("resize", setH);
+      window.visualViewport?.removeEventListener("scroll", setH);
     };
   }, []);
 

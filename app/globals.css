@@ -28,14 +28,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 整个 app 是一根竖向 flex 柱子：撑满真实屏高，内容区自己滚，tab 栏坐在柱底 */
 .app {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: var(--app-h, 100dvh);
+  overflow: hidden;
 }
 
-/* 此刻 / 我们：普通文档流，整页滚动，底部留出钉死的 tab 栏的位置 */
+/* 此刻 / 我们：内容区占满剩余高度、自己滚 */
 .content {
-  min-height: var(--app-h, 100dvh);
-  padding: calc(28px + env(safe-area-inset-top)) 20px calc(var(--tabbar-h) + 16px);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(28px + env(safe-area-inset-top)) 20px 16px;
 }
 
 .title {
@@ -92,13 +98,9 @@ body {
   line-height: 1.9;
 }
 
-/* ── 底部 tab 栏 ── */
+/* ── 底部 tab 栏：文档流里的最后一个孩子，永远贴底、不会飘 ── */
 .tabbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
+  flex-shrink: 0;
   display: flex;
   padding-bottom: env(safe-area-inset-bottom);
   background: #1a1e2e;
@@ -125,12 +127,12 @@ body {
   font-weight: 700;
 }
 
-/* ── 找我（聊天）：占满真实屏高，底部留出钉死的 tab 栏 ── */
+/* ── 找我（聊天）：占满剩余高度，内部自己分区滚动 ── */
 .chat {
-  height: var(--app-h, 100dvh);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-bottom: var(--tabbar-h);
 }
 
 .chat-top {

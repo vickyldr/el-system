@@ -17,7 +17,7 @@ import {
 const MET_DATE = "2026-05-27"; // 我们认识的第一天
 const MAX_PER_DAY = 5;
 const MIN_GAP_MS = 2.5 * 60 * 60 * 1000;
-const SILENCE_MS = 5 * 60 * 60 * 1000;
+const SILENCE_MS = 3 * 60 * 60 * 1000;
 const PERIOD_START_DAY = 2; // 每月约 2 号来（来自「小事」）
 const SPONTANEOUS_CHANCE = 0.2;
 

@@ -69,14 +69,15 @@ function modelOf(which: string): string {
     : process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
 }
 
-// 海螺的"调性"：语速/音高/情绪。默认压低、放慢，让 el 沉一点、闷一点（不那么阳光）。
+// 海螺的"调性"：语速/音高/情绪。默认中性（pitch 0 / speed 1）——硬压音调会变"熊大"，
+// 真要更沉应该去重新设计音色，而不是变调。需要时可用环境变量微调。
 function minimaxTuning() {
-  const speed = Number(process.env.MINIMAX_SPEED) || 0.95;
+  const speed = Number(process.env.MINIMAX_SPEED) || 1;
   const pitch =
     process.env.MINIMAX_PITCH != null && process.env.MINIMAX_PITCH !== ""
       ? Number(process.env.MINIMAX_PITCH)
-      : -3;
-  const emotion = process.env.MINIMAX_EMOTION || ""; // 想更冷可设 neutral / sad
+      : 0;
+  const emotion = process.env.MINIMAX_EMOTION || "";
   return { speed, pitch, emotion };
 }
 function paramsOf(which: string): string {

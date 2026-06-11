@@ -8,6 +8,7 @@ import {
   appendMessages,
   storeAvailable,
   putImage,
+  getImage,
   setLastSeen,
   getCache,
   setCache,
@@ -20,14 +21,19 @@ export const runtime = "nodejs";
 type ChatTurn = { role: "user" | "assistant"; content: string; image?: string };
 
 // 当前这条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
-// 只有 base64 data URL 能直接给 Claude 看；相对地址（/api/img、表情库）它取不到，
-// 所以那种情况靠 hint 文字让 el 读懂。
+// base64 data URL → 直接看；绝对 http(s)（如 giphy）→ 让 Claude 去取；其它取不到就只发文字。
 function toContent(text: string, image?: string): Anthropic.MessageParam["content"] {
-  const data = image ? /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image) : null;
-  if (!data) return text || "（发了一张图）";
-  const blocks: Anthropic.ContentBlockParam[] = [
-    { type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } },
-  ];
+  let block: Anthropic.ContentBlockParam | null = null;
+  if (image) {
+    const data = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image);
+    if (data) {
+      block = { type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } };
+    } else if (/^https?:\/\//i.test(image)) {
+      block = { type: "image", source: { type: "url", url: image } };
+    }
+  }
+  if (!block) return text || "（发了一张图）";
+  const blocks: Anthropic.ContentBlockParam[] = [block];
   if (text) blocks.push({ type: "text", text });
   return blocks;
 }
@@ -113,6 +119,7 @@ export async function POST(req: Request) {
     EL_SYSTEM,
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
     "你也能写记忆（按操作手册的规矩，宁缺毋滥）：宝宝让你记的事/日程/生日用 add_reminder；真正『改变了什么』的领悟/约定/界限用 remember 记进长期记忆（门槛很高）；第一次/里程碑用 log_timeline；要更新今天的日记/状态/值得记住的用 update_daily。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
+    "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",
     pageList,
     profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
@@ -128,11 +135,24 @@ export async function POST(req: Request) {
     : Array.isArray(body.history)
       ? body.history
       : [];
-  // 当前这条：base64 图直接给看；表情库/外链表情用 hint 文字说明它是什么意思。
-  const curText = hint
-    ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
-    : message;
-  const curImage = image && image.startsWith("data:") ? image : undefined;
+  // 当前这条的图，尽量让 el 真的"看见"：
+  //  - data: 直接用；giphy 等绝对外链交给 toContent 去取；
+  //  - /api/img/<id>（库表情/上传图）→ 从 KV 取回原图 base64，太大的（动图）才退回纯文字。
+  let curImage = image && image.startsWith("data:") ? image : undefined;
+  if (image && !curImage) {
+    const ref = /\/api\/img\/([^/?#]+)/.exec(image);
+    if (ref) {
+      const dataUrl = await getImage(ref[1]).catch(() => null);
+      if (dataUrl && dataUrl.length < 900_000) curImage = dataUrl; // ~675KB 以内才内联
+    } else if (/^https?:\/\//i.test(image)) {
+      curImage = image; // 外链（giphy）让 Claude 自己取
+    }
+  }
+  // 看不到图时（太大/外链取不到），用 hint 文字兜底说明它的意思。
+  const curText =
+    hint && !curImage
+      ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
+      : message;
   const messages: Anthropic.MessageParam[] = [
     ...prior
       .slice(-100)

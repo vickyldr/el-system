@@ -1,6 +1,6 @@
 // el-system service worker —— 先做最小可用版（套壳 + 离线兜底）。
 // 主动推送（Web Push）会在后面的块里往这里加 push / notificationclick 监听。
-const CACHE = "el-shell-v2";
+const CACHE = "el-shell-v3";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -28,15 +28,27 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) return;
 
-  // 其余资源：网络优先，断网时回落到缓存。
+  // 页面导航：永远走网络，拿最新 HTML——避免旧壳引用已失效的脚本导致白屏。
+  // 只有断网时才回落到缓存。
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(request).then((r) => r || caches.match("/"))),
+    );
+    return;
+  }
+
+  // 其它静态资源（_next 下都是带哈希的，永不串味）：缓存优先 + 后台更新。
   event.respondWith(
-    fetch(request)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
-        return res;
-      })
-      .catch(() => caches.match(request)),
+    caches.match(request).then((cached) => {
+      const net = fetch(request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => cached);
+      return cached || net;
+    }),
   );
 });
 

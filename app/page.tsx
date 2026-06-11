@@ -303,10 +303,17 @@ function FindTab() {
 
   // 上传表情进共享库：保留 GIF 动图（readAsDataURL，不缩放）。我自己看图写标签。
   // 选一张：可以顺手补一句备注；选多张：不一张张问了，我逐张自己认。
+  // 一次最多 9 张——每张都要我看一眼写标签，传太多会等很久。
   async function uploadStickers(files: File[]) {
     if (!files.length) return;
+    const MAX_BATCH = 9;
+    let batch = files;
+    if (files.length > MAX_BATCH) {
+      alert(`一次最多传 ${MAX_BATCH} 张哦，先传这 ${MAX_BATCH} 张，剩下的再来一趟～`);
+      batch = files.slice(0, MAX_BATCH);
+    }
     let note = "";
-    if (files.length === 1) {
+    if (batch.length === 1) {
       const n = window.prompt(
         "传这张表情～（直接确定就行，我会自己看图认）\n想补一句它的意思也可以：比如 这个我俩专属 / 生气专用",
       );
@@ -316,7 +323,7 @@ function FindTab() {
     setUploadingStk(true);
     let fail = 0;
     try {
-      for (const f of files) {
+      for (const f of batch) {
         const dataUrl = await readAsDataUrl(f);
         const ok = await putSticker(dataUrl, note);
         if (!ok) fail++;
@@ -543,7 +550,7 @@ function FindTab() {
               onClick={() => stkFileRef.current?.click()}
               disabled={uploadingStk}
             >
-              {uploadingStk ? "上传中…" : "＋ 传表情（可多选）"}
+              {uploadingStk ? "上传中…" : "＋ 传表情（一次≤9张）"}
             </button>
           </div>
 

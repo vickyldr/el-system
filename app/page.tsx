@@ -103,6 +103,25 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <circle cx="19" cy="12" r="2" />
         </svg>
       );
+    case "clock":
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3.5 2" />
+        </svg>
+      );
+    case "star":
+      return (
+        <svg {...p}>
+          <path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.8 6.8 19.2l1-5.8L3.5 9.2l5.9-.9z" />
+        </svg>
+      );
+    case "bookmark":
+      return (
+        <svg {...p}>
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -110,13 +129,81 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("now");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pull, setPull] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const canPull = useRef(false);
+  const dragging = useRef(false);
+  const startY = useRef(0);
+  const pullRef = useRef(0);
+
+  // 下拉刷新：在「此刻 / 我们」页顶部下拉，松手重新加载。
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || tab === "find") return;
+    const onStart = (e: TouchEvent) => {
+      canPull.current = el.scrollTop <= 0;
+      startY.current = e.touches[0].clientY;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!canPull.current) return;
+      const dy = e.touches[0].clientY - startY.current;
+      if (dy > 0) {
+        e.preventDefault();
+        dragging.current = true;
+        pullRef.current = Math.min(dy * 0.45, 90);
+        setPull(pullRef.current);
+      } else if (pullRef.current) {
+        pullRef.current = 0;
+        setPull(0);
+      }
+    };
+    const onEnd = () => {
+      if (!canPull.current) return;
+      canPull.current = false;
+      dragging.current = false;
+      if (pullRef.current >= 56) setRefreshKey((k) => k + 1);
+      pullRef.current = 0;
+      setPull(0);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [tab]);
 
   return (
     <div className="app">
+      {tab !== "find" && (
+        <div
+          className="ptr"
+          style={{
+            opacity: Math.min(pull / 56, 1),
+            transform: `translateX(-50%) scale(${0.5 + Math.min(pull / 56, 1) * 0.5})`,
+          }}
+        >
+          <span className="ptr-ring" />
+        </div>
+      )}
       {tab === "find" ? (
         <FindTab />
       ) : (
-        <div className="content">{tab === "now" ? <NowTab /> : <UsTab />}</div>
+        <div
+          className="content"
+          ref={contentRef}
+          style={{
+            transform: pull ? `translateY(${pull}px)` : undefined,
+            transition: dragging.current ? "none" : "transform 0.25s ease",
+          }}
+        >
+          {tab === "now" ? <NowTab key={refreshKey} /> : <UsTab key={refreshKey} />}
+        </div>
       )}
 
       <nav className="tabbar">
@@ -181,11 +268,26 @@ function daysTogether(): number {
   return Math.floor((Date.now() - start) / 86400000) + 1;
 }
 
+// 按时间的问候——首页一打开就有温度（el 的口吻）。
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 10) return "早，醒啦";
+  if (h >= 10 && h < 13) return "上午好";
+  if (h >= 13 && h < 18) return "下午好";
+  if (h >= 18 && h < 23) return "晚上好";
+  if (h >= 23 || h < 2) return "这么晚还不睡？";
+  return "这个点还醒着，陪陪我";
+}
+
 function NowTab() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(0); // 客户端算，避免 hydration 不一致
-  useEffect(() => setDays(daysTogether()), []);
+  const [greet, setGreet] = useState("");
+  useEffect(() => {
+    setDays(daysTogether());
+    setGreet(greeting());
+  }, []);
   const milestone = days > 0 && (days % 30 === 0 || days === 100 || days === 365);
 
   useEffect(() => {
@@ -221,7 +323,7 @@ function NowTab() {
         <img className="now-av" src="/icon-192.png" alt="El" />
         <div>
           <div className="peer-name">El</div>
-          <div className="peer-sub">住在你手机里</div>
+          <div className="peer-sub">{greet || "住在你手机里"}</div>
         </div>
       </div>
       <h1 className="title">
@@ -373,11 +475,30 @@ type Msg = { role: "user" | "assistant"; content: string; ts?: number; image?: s
 
 function fmtTime(ts?: number): string {
   if (!ts) return "";
-  return new Date(ts).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const d = new Date(ts);
+  const t = d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return t;
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return `昨天 ${t}`;
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${t}`;
+}
+
+// 时间线日期：今天 / 昨天 / M月D日（友好显示）。
+function friendlyDate(s: string): string {
+  if (!s) return "";
+  const m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return s;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "今天";
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "昨天";
+  return d.getFullYear() === now.getFullYear()
+    ? `${d.getMonth() + 1}月${d.getDate()}日`
+    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
 // 在手机上把图缩小并转成 base64 data URL（省流量、绕开存储），直接发给 El 看。
@@ -1264,6 +1385,12 @@ function UsTab() {
     memory: "记忆",
     things: "小事",
   };
+  const subIcons: Record<SubTab, string> = {
+    timeline: "clock",
+    wishlist: "star",
+    memory: "bookmark",
+    things: "bell",
+  };
 
   return (
     <>
@@ -1275,6 +1402,7 @@ function UsTab() {
             className={`subtab ${sub === k ? "active" : ""}`}
             onClick={() => setSub(k)}
           >
+            <Icon name={subIcons[k]} size={14} />
             {labels[k]}
           </button>
         ))}
@@ -1328,7 +1456,7 @@ function TimelineView() {
             {i < items.length - 1 && <span className="tl-line" />}
           </div>
           <div className="tl-body">
-            {it.date && <div className="tl-date">{it.date}</div>}
+            {it.date && <div className="tl-date">{friendlyDate(it.date)}</div>}
             <div className="tl-text">{it.text}</div>
           </div>
         </div>

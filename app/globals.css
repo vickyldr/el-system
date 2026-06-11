@@ -75,7 +75,33 @@ body::before {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: calc(28px + env(safe-area-inset-top)) 20px 16px;
+}
+
+/* 下拉刷新的转圈指示 */
+.ptr {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: 50%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ptr-ring {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--hair);
+  border-top-color: var(--accent-2);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .title {
@@ -867,11 +893,14 @@ body::before {
   border: 1px solid var(--line);
   background: none;
   color: var(--ink-soft);
-  padding: 6px 14px;
+  padding: 6px 13px;
   border-radius: 16px;
   font-size: 14px;
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .subtab.active {

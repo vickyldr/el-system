@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const which = provider();
   if (!which) return NextResponse.json({ error: "语音还没配置" }, { status: 503 });
 
-  let body: { text?: string };
+  let body: { text?: string; fast?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -35,14 +35,15 @@ export async function POST(req: Request) {
   }
   const text = (body.text ?? "").trim().slice(0, 600); // 限长省额度
   if (!text) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
+  const fast = body.fast === true; // 打电话用 turbo，更快
 
   // 缓存键 = 家 + 音色 + 模型 + 调性参数 + 文本。命中就直接放，不再生成、不扣额度。
-  const sig = [which, voiceOf(which), modelOf(which), paramsOf(which), text].join("|");
+  const sig = [which, voiceOf(which), modelOf(which, fast), paramsOf(which), text].join("|");
   const cacheKey = "el:tts:" + createHash("sha256").update(sig).digest("hex");
   const cached = await getCache(cacheKey).catch(() => null);
   if (cached) return mp3(Buffer.from(cached, "base64"));
 
-  const out = which === "minimax" ? await synthMiniMax(text) : await synthElevenLabs(text);
+  const out = which === "minimax" ? await synthMiniMax(text, fast) : await synthElevenLabs(text);
   if ("error" in out) return NextResponse.json({ error: out.error }, { status: out.status });
 
   // 存 30 天，重复听不再花钱。
@@ -63,10 +64,12 @@ function voiceOf(which: string): string {
     ? process.env.MINIMAX_VOICE_ID || ""
     : process.env.ELEVENLABS_VOICE_ID || "";
 }
-function modelOf(which: string): string {
-  return which === "minimax"
-    ? process.env.MINIMAX_MODEL || "speech-2.6-hd"
-    : process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
+function modelOf(which: string, fast = false): string {
+  if (which === "minimax") {
+    if (fast) return process.env.MINIMAX_FAST_MODEL || "speech-2.6-turbo";
+    return process.env.MINIMAX_MODEL || "speech-2.6-hd";
+  }
+  return process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
 }
 
 // 海螺的"调性"：语速/音高/情绪。默认中性（pitch 0 / speed 1）——硬压音调会变"熊大"，
@@ -87,11 +90,11 @@ function paramsOf(which: string): string {
 }
 
 // ── 海螺 MiniMax T2A v2 ──（返回 hex 编码音频，要解码成字节）
-async function synthMiniMax(text: string): Promise<Synth> {
+async function synthMiniMax(text: string, fast = false): Promise<Synth> {
   const key = process.env.MINIMAX_API_KEY!;
   const group = process.env.MINIMAX_GROUP_ID!;
   const voiceId = process.env.MINIMAX_VOICE_ID!;
-  const model = modelOf("minimax");
+  const model = modelOf("minimax", fast);
   const host = process.env.MINIMAX_API_HOST || "https://api.minimaxi.com";
   const tuning = minimaxTuning();
   try {

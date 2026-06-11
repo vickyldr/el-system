@@ -28,9 +28,16 @@ export async function POST(req: Request) {
 
   const form = new FormData();
   form.append("file", file, file.name || "audio.m4a");
-  form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
+  // 默认用更准的 large-v3（Groq 上依然很快），可用 GROQ_STT_MODEL 覆盖。
+  form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3");
   form.append("language", "zh");
   form.append("response_format", "json");
+  form.append("temperature", "0");
+  // 给点上下文提示，帮它认准我们常用的词/名字。
+  form.append(
+    "prompt",
+    "这是恋人之间的中文日常对话。可能出现：宝宝、el、elvis、daddy、fifi、杭州。",
+  );
 
   try {
     const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {

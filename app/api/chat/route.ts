@@ -73,7 +73,7 @@ function stripImages(msgs: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
 }
 
 export async function POST(req: Request) {
-  let body: { message?: string; image?: string; hint?: string; history?: ChatTurn[] };
+  let body: { message?: string; image?: string; hint?: string; voice?: boolean; history?: ChatTurn[] };
   try {
     body = await req.json();
   } catch {
@@ -84,6 +84,8 @@ export async function POST(req: Request) {
   const image = typeof body.image === "string" && body.image ? body.image : undefined;
   // hint：她发的是表情库里的表情/外链表情时，前端把这张的"意思"带过来，让 el 读懂。
   const hint = typeof body.hint === "string" ? body.hint.trim() : "";
+  // voice：打电话时走"快嘴模式"——不调工具、回得短、口语化，砍延迟。
+  const voice = body.voice === true;
   if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
@@ -152,6 +154,8 @@ export async function POST(req: Request) {
     profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,
+    voice &&
+      "【现在是打电话，语音通话】你和宝宝在用语音聊天，不是打字。回得要短、口语化、像真的在打电话——一两句话就够，自然停顿，别长篇大论、别念书面语、别用表情符号或括号描写动作。就用嘴说话的感觉。",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -194,10 +198,12 @@ export async function POST(req: Request) {
   // 上一条我要是已经贴过表情，这条就不给自己贴表情的选项——绝不连发两张。
   const lastAssistant = [...prior].reverse().find((t: any) => t.role === "assistant") as any;
   const allowSticker = !(lastAssistant && lastAssistant.image);
-  const turnTools = allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
+  // 打电话走快嘴模式：不带工具（省掉工具循环这个延迟大头）、回得短。
+  const turnTools = voice ? [] : allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
+  const maxTok = voice ? 220 : 1024;
   try {
     const claude = getClaude();
-    const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+    const model = (voice && process.env.CLAUDE_VOICE_MODEL) || process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
 
@@ -205,7 +211,7 @@ export async function POST(req: Request) {
     for (let i = 0; i < 6; i++) {
       const res = await claude.messages.create({
         model,
-        max_tokens: 1024,
+        max_tokens: maxTok,
         system,
         tools: turnTools,
         messages: loop,
@@ -259,7 +265,7 @@ export async function POST(req: Request) {
       try {
         const res = await claude.messages.create({
           model,
-          max_tokens: 1024,
+          max_tokens: maxTok,
           system,
           messages: stripImages(loop),
         });

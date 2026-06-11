@@ -482,8 +482,8 @@ function FindTab() {
     rafRef.current = requestAnimationFrame(vadLoop);
     if (!callActive.current || speakingFlag.current) return;
     if (recRef.current?.state !== "recording") return;
-    const THRESH = 0.025;
-    const SILENCE_MS = 1100;
+    const THRESH = 0.02;
+    const SILENCE_MS = 1400;
     const MAX_MS = 15000;
     const now = Date.now();
     if (micLevel() > THRESH) {
@@ -517,7 +517,7 @@ function FindTab() {
       const cr = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: said }),
+        body: JSON.stringify({ message: said, voice: true }),
       });
       const cd = await cr.json();
       const reply = cd.reply || cd.error || "……";
@@ -525,7 +525,7 @@ function FindTab() {
       const tr = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: reply }),
+        body: JSON.stringify({ text: reply, fast: true }),
       });
       const a = callAudioRef.current;
       if (tr.ok && a) {

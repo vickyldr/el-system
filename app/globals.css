@@ -594,8 +594,12 @@ body::before {
 .eat-btn {
   appearance: none;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
+  text-decoration: none;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;

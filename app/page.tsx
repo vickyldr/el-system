@@ -185,15 +185,6 @@ function EatDecider() {
     }
   }
 
-  // 打开美团搜这道菜：先试美团外卖 App，没装就退回主美团 App。
-  function openMeituan(kw: string) {
-    const q = encodeURIComponent(kw);
-    window.location.href = `meituanwaimai://waimai.meituan.com/search?keyword=${q}`;
-    setTimeout(() => {
-      window.location.href = `imeituan://www.meituan.com/search?q=${q}`;
-    }, 700);
-  }
-
   return (
     <div className="card eat">
       <div className="card-label">🍱 纠结吃啥？我替你定</div>
@@ -203,9 +194,13 @@ function EatDecider() {
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
         {keyword && (
-          <button className="eat-btn eat-go" onClick={() => openMeituan(keyword)}>
+          // 用链接而不是 window.location：iOS 会去开美团，小家这页留着不被跳走。
+          <a
+            className="eat-btn eat-go"
+            href={`meituanwaimai://waimai.meituan.com/search?keyword=${encodeURIComponent(keyword)}`}
+          >
             📲 去美团搜「{keyword}」
-          </button>
+          </a>
         )}
       </div>
     </div>

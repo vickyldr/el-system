@@ -185,6 +185,16 @@ function EatDecider() {
     }
   }
 
+  // 唤起美团搜这道菜：用隐藏 iframe 触发协议，绝不动主页面（用链接/window.location 会把 PWA 这页跳白）。
+  function openMeituan(kw: string) {
+    const url = `imeituan://www.meituan.com/search?q=${encodeURIComponent(kw)}`;
+    const ifr = document.createElement("iframe");
+    ifr.style.display = "none";
+    document.body.appendChild(ifr);
+    ifr.src = url;
+    setTimeout(() => ifr.remove(), 1500);
+  }
+
   return (
     <div className="card eat">
       <div className="card-label">🍱 纠结吃啥？我替你定</div>
@@ -194,13 +204,9 @@ function EatDecider() {
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
         {keyword && (
-          // 主美团 App 的协议 imeituan://（不是独立的"美团外卖"App）。用链接不用 window.location，小家这页不被跳走。
-          <a
-            className="eat-btn eat-go"
-            href={`imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`}
-          >
+          <button className="eat-btn eat-go" onClick={() => openMeituan(keyword)}>
             📲 去美团搜「{keyword}」
-          </a>
+          </button>
         )}
       </div>
     </div>

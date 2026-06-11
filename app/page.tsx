@@ -1168,7 +1168,7 @@ function FindTab() {
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? "…" : <Icon name="plus" size={22} />}
+          {uploading ? "…" : <Icon name="plus" size={21} />}
         </button>
         <button
           type="button"
@@ -1181,7 +1181,7 @@ function FindTab() {
             });
           }}
         >
-          <Icon name="smile" size={22} />
+          <Icon name="smile" size={21} />
         </button>
         <textarea
           ref={taRef}

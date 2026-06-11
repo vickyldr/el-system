@@ -209,6 +209,47 @@ body::before {
   line-height: 1.9;
 }
 
+/* 骨架屏：等待时给个有"进度感"的微光占位，而不是空白/转圈 */
+.skel {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.04)
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 220% 0;
+  }
+  to {
+    background-position: -220% 0;
+  }
+}
+
+.skel-line {
+  height: 12px;
+  margin-bottom: 10px;
+}
+.skel-line.sm {
+  width: 32%;
+  height: 10px;
+  opacity: 0.7;
+}
+.skel-line.md {
+  width: 70%;
+}
+.skel-line.lg {
+  width: 90%;
+}
+.skel-line:last-child {
+  margin-bottom: 0;
+}
+
 /* ── 底部 tab 栏：磨砂玻璃，文档流里的最后一个孩子，永远贴底、不会飘 ── */
 .tabbar {
   flex-shrink: 0;
@@ -672,6 +713,39 @@ body::before {
   background: var(--el-bubble);
   border: 1px solid var(--hair);
   border-bottom-left-radius: 6px;
+}
+
+/* 打字中的三个跳动小点 */
+.typing {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 13px 14px;
+}
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  animation: typingDot 1.2s infinite ease-in-out;
+}
+.typing span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes typingDot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 .msg.user .bubble {

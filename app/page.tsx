@@ -137,6 +137,27 @@ export default function Home() {
   );
 }
 
+// 骨架屏：卡片占位（带微光），等待时比"读取中…"更有进度感。
+function SkelCard({ lines = 2 }: { lines?: number }) {
+  return (
+    <div className="card">
+      <div className="skel skel-line sm" />
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className={`skel skel-line ${i === lines - 1 ? "md" : "lg"}`} />
+      ))}
+    </div>
+  );
+}
+function SkelList({ count = 3, lines = 2 }: { count?: number; lines?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkelCard key={i} lines={lines} />
+      ))}
+    </>
+  );
+}
+
 /* ───────────── 此刻 ───────────── */
 
 type Weather = { temp: number; desc: string; city: string; note?: string; icon?: string } | null;
@@ -198,7 +219,7 @@ function NowTab() {
         此刻<span className="dot">·</span>
       </h1>
 
-      {loading && <div className="empty">读取中…</div>}
+      {loading && <SkelList count={3} lines={2} />}
 
       {!loading && !hasAny && (
         <div className="empty">
@@ -1031,7 +1052,11 @@ function FindTab() {
         ))}
         {sending && (
           <div className="msg el">
-            <div className="bubble muted">…</div>
+            <div className="bubble typing">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         )}
         <div ref={endRef} />
@@ -1275,7 +1300,7 @@ function TimelineView() {
   const { data, loading, err } = useJson<{ items: { date: string; text: string }[] }>(
     "/api/notion/timeline",
   );
-  if (loading) return <div className="empty">读取中…</div>;
+  if (loading) return <SkelList count={4} lines={2} />;
   if (err) return <div className="empty">{err}</div>;
   const items = (data?.items ?? []).slice().reverse(); // 最新在上
   if (!items.length) return <div className="empty">还没有记录</div>;
@@ -1301,7 +1326,7 @@ function WishlistView() {
   const { data, loading, err } = useJson<{
     groups: { title: string; items: { text: string; done: boolean }[] }[];
   }>("/api/notion/wishlist");
-  if (loading) return <div className="empty">读取中…</div>;
+  if (loading) return <SkelList count={3} lines={2} />;
   if (err) return <div className="empty">{err}</div>;
   const groups = data?.groups ?? [];
   if (!groups.length) return <div className="empty">还没有愿望</div>;
@@ -1325,7 +1350,7 @@ function MemoryView() {
   const { data, loading, err } = useJson<{ sections: { title: string; lines: string[] }[] }>(
     "/api/notion/memory",
   );
-  if (loading) return <div className="empty">读取中…</div>;
+  if (loading) return <SkelList count={3} lines={3} />;
   if (err) return <div className="empty">{err}</div>;
   const sections = data?.sections ?? [];
   if (!sections.length) return <div className="empty">还没有记忆</div>;

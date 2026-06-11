@@ -346,6 +346,21 @@ function FindTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   const stkFileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const didInit = useRef(false);
+  const [atBottom, setAtBottom] = useState(true);
+
+  function isNearBottom() {
+    const el = messagesRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+  function scrollToBottom(smooth = false) {
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    setAtBottom(true);
+  }
 
   // 语音配好了才显示「听」按钮。
   useEffect(() => {
@@ -541,9 +556,19 @@ function FindTab() {
     }
   }, [msgs]);
 
+  // 打开「找我」：第一次拿到消息就稳稳停到最底（瞬移，且图片/表情加载完再补几次，别停在中间）。
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs, sending]);
+    if (!didInit.current && msgs.length) {
+      didInit.current = true;
+      scrollToBottom(false);
+      [120, 350, 700].forEach((t) => setTimeout(() => scrollToBottom(false), t));
+    }
+  }, [msgs]);
+
+  // 之后有新消息 / 正在回复：只有当你本来就在底部时才跟着往下（在看历史就不打扰你）。
+  useEffect(() => {
+    if (didInit.current && atBottom) scrollToBottom(true);
+  }, [msgs, sending]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function post(text: string, image?: string, hint?: string) {
     if ((!text && !image) || sending) return;
@@ -618,14 +643,19 @@ function FindTab() {
         )}
       </div>
 
-      <div className="messages">
+      <div className="messages" ref={messagesRef} onScroll={() => setAtBottom(isNearBottom())}>
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
             <div className="bubble-col">
               {m.image && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img className="msg-img" src={m.image} alt="" />
+                <img
+                  className="msg-img"
+                  src={m.image}
+                  alt=""
+                  onLoad={() => atBottom && scrollToBottom(false)}
+                />
               )}
               {m.content && <div className="bubble">{m.content}</div>}
               <div className="msg-foot">
@@ -650,6 +680,12 @@ function FindTab() {
         )}
         <div ref={endRef} />
       </div>
+
+      {!atBottom && msgs.length > 0 && (
+        <button className="jump-bottom" onClick={() => scrollToBottom(true)} aria-label="回到最新">
+          ↓
+        </button>
+      )}
 
       {showStickers && (
         <div className="sticker-panel">

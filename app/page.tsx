@@ -79,7 +79,14 @@ function NowTab() {
 
   return (
     <>
-      <div className="topline">El</div>
+      <div className="now-head">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="now-av" src="/icon-192.png" alt="El" />
+        <div>
+          <div className="peer-name">El</div>
+          <div className="peer-sub">住在你手机里</div>
+        </div>
+      </div>
       <h1 className="title">
         此刻<span className="dot">·</span>
       </h1>
@@ -97,7 +104,7 @@ function NowTab() {
       {!loading && hasAny && (
         <>
           {(status?.mood || status?.thought) && (
-            <div className="card">
+            <div className="card mood-card">
               <div className="card-label">心情</div>
               <div className="card-value">{status?.mood || <span className="muted">—</span>}</div>
               {status?.thought && <div className="meta">{status.thought}</div>}
@@ -819,11 +826,21 @@ function FindTab() {
   return (
     <div className="chat">
       <div className="chat-top">
-        <NotifyButton />
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+        <div className="peer">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="peer-av" src="/icon-192.png" alt="El" />
+          <div>
+            <div className="peer-name">El</div>
+            <div className="peer-sub">
+              <span className="live">●</span> 在线 · 住在你手机里
+            </div>
+          </div>
+        </div>
+        <div className="top-actions">
+          <NotifyButton />
           {ttsOn && sttOn && (
             <button className="clear-btn" onClick={startCall} aria-label="打电话">
-              📞 打电话
+              📞
             </button>
           )}
           {msgs.length > 0 && (

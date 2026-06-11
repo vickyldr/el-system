@@ -84,6 +84,61 @@ body::before {
   margin-bottom: 12px;
 }
 
+/* el 的脸：首页 + 聊天头部的小头像 */
+.peer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.peer-av {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--hair), 0 4px 14px var(--glow);
+}
+
+.peer-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.peer-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.peer-sub .live {
+  color: #6fd08c;
+}
+
+.top-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.now-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.now-av {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--hair), 0 4px 14px var(--glow);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--hair);
@@ -91,6 +146,35 @@ body::before {
   padding: 16px 18px;
   margin-bottom: 14px;
   box-shadow: var(--shadow);
+  animation: fadeInUp 0.42s ease both;
+}
+
+/* 微交互：内容轻轻渐入 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 心情卡轻轻呼吸发光——像 el 真的在那儿 */
+.mood-card {
+  animation: fadeInUp 0.42s ease both, moodBreathe 5.5s ease-in-out 0.5s infinite;
+}
+@keyframes moodBreathe {
+  0%,
+  100% {
+    box-shadow: var(--shadow);
+    border-color: var(--hair);
+  }
+  50% {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32), 0 0 26px var(--glow);
+    border-color: rgba(123, 111, 240, 0.35);
+  }
 }
 
 .card-label {
@@ -488,6 +572,7 @@ body::before {
 
 .msg {
   display: flex;
+  animation: fadeInUp 0.26s ease both;
 }
 
 .msg.user {

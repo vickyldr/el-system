@@ -348,6 +348,14 @@ function FindTab() {
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const callAudioRef = useRef<HTMLAudioElement | null>(null);
+  const acRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const callActive = useRef(false);
+  const speakingFlag = useRef(false);
+  const hadSpeech = useRef(false);
+  const silenceStart = useRef(0);
+  const segStart = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -381,56 +389,117 @@ function FindTab() {
       .catch(() => {});
   }, []);
 
-  // ── 打电话：按住说话 → 识别 → 我想 → 我用声音回你 ──
+  // ── 打电话（免提连续模式，像 GPT 语音）：点一下进入，我一直听；你说完(静音一会儿)我自动识别→想→用声音回你→再听，循环到你挂断 ──
   const SILENT =
     "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
   async function startCall() {
     try {
-      // 先在用户手势里"解锁"音频，否则 iOS 不让我后面自动出声
+      // 在用户手势里"解锁"音频，否则 iOS 不让后面自动出声
       const a = callAudioRef.current || new Audio();
       a.src = SILENT;
       a.play().then(() => a.pause()).catch(() => {});
       callAudioRef.current = a;
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
+      });
+      streamRef.current = stream;
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const ac: AudioContext = new AC();
+      await ac.resume().catch(() => {});
+      const an = ac.createAnalyser();
+      an.fftSize = 1024;
+      ac.createMediaStreamSource(stream).connect(an);
+      acRef.current = ac;
+      analyserRef.current = an;
+      callActive.current = true;
       setInCall(true);
-      setCallState("idle");
+      beginListening();
+      vadLoop();
     } catch {
       alert("打电话需要麦克风权限哦");
     }
   }
 
   function endCall() {
+    callActive.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     try {
-      recRef.current?.state !== "inactive" && recRef.current?.stop();
+      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
     } catch {
       /* ignore */
     }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    acRef.current?.close().catch(() => {});
+    acRef.current = null;
     callAudioRef.current?.pause();
+    speakingFlag.current = false;
     setInCall(false);
     setCallState("idle");
   }
 
-  function startRec() {
+  // 开一段录音、开始听你说
+  function beginListening() {
     const stream = streamRef.current;
-    if (!stream || callState !== "idle") return;
+    if (!stream || !callActive.current) return;
     chunksRef.current = [];
+    hadSpeech.current = false;
+    silenceStart.current = 0;
+    segStart.current = Date.now();
     const rec = new MediaRecorder(stream);
     recRef.current = rec;
     rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/mp4" });
-      void processUtterance(blob);
+      if (hadSpeech.current) void processUtterance(blob);
+      else if (callActive.current && !speakingFlag.current) beginListening(); // 没说话就接着听
     };
     rec.start();
     setCallState("listening");
   }
 
-  function stopRec() {
+  function endSegment() {
     const rec = recRef.current;
     if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  function micLevel() {
+    const an = analyserRef.current;
+    if (!an) return 0;
+    const buf = new Uint8Array(an.fftSize);
+    an.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / buf.length);
+  }
+
+  // 静音检测循环：你出声→记下；说完静默 ~1.1s→自动收尾发送
+  function vadLoop() {
+    rafRef.current = requestAnimationFrame(vadLoop);
+    if (!callActive.current || speakingFlag.current) return;
+    if (recRef.current?.state !== "recording") return;
+    const THRESH = 0.025;
+    const SILENCE_MS = 1100;
+    const MAX_MS = 15000;
+    const now = Date.now();
+    if (micLevel() > THRESH) {
+      hadSpeech.current = true;
+      silenceStart.current = 0;
+    } else if (hadSpeech.current) {
+      if (!silenceStart.current) silenceStart.current = now;
+      else if (now - silenceStart.current > SILENCE_MS) return endSegment();
+    }
+    if (hadSpeech.current && now - segStart.current > MAX_MS) endSegment();
+  }
+
+  function resumeAfterTurn() {
+    speakingFlag.current = false;
+    if (callActive.current) beginListening();
+    else setCallState("idle");
   }
 
   async function processUtterance(blob: Blob) {
@@ -442,22 +511,17 @@ function FindTab() {
       const sr = await fetch("/api/stt", { method: "POST", body: fd });
       const sd = await sr.json();
       const said = (sd.text || "").trim();
-      if (!said) {
-        setCallState("idle");
-        return;
-      }
+      if (!said) return resumeAfterTurn(); // 没听清，继续听
       const ts = Date.now();
       setMsgs((m) => [...m, { role: "user", content: said, ts }]);
-      const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
       const cr = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: said, history }),
+        body: JSON.stringify({ message: said }),
       });
       const cd = await cr.json();
       const reply = cd.reply || cd.error || "……";
       setMsgs((m) => [...m, { role: "assistant", content: reply, image: cd.sticker || undefined, ts: ts + 1 }]);
-      setCallState("speaking");
       const tr = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -467,16 +531,26 @@ function FindTab() {
       if (tr.ok && a) {
         const url = URL.createObjectURL(await tr.blob());
         a.src = url;
+        speakingFlag.current = true;
+        setCallState("speaking");
         a.onended = () => {
-          setCallState("idle");
           URL.revokeObjectURL(url);
+          resumeAfterTurn();
         };
-        await a.play().catch(() => setCallState("idle"));
+        await a.play().catch(() => resumeAfterTurn());
       } else {
-        setCallState("idle");
+        resumeAfterTurn();
       }
     } catch {
-      setCallState("idle");
+      resumeAfterTurn();
+    }
+  }
+
+  // 通话时点中间的球：打断我说话、立刻继续听你
+  function interruptEl() {
+    if (speakingFlag.current && callAudioRef.current) {
+      callAudioRef.current.pause();
+      resumeAfterTurn();
     }
   }
 
@@ -763,33 +837,18 @@ function FindTab() {
       {inCall && (
         <div className="call-overlay">
           <div className="call-title">和 el 通话中</div>
-          <div className={`call-orb ${callState}`}>
+          <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
             {callState === "listening" ? "🎙️" : callState === "thinking" ? "💭" : callState === "speaking" ? "🔊" : "🤍"}
-          </div>
+          </button>
           <div className="call-status">
             {callState === "listening"
-              ? "在听你说…（松手发送）"
+              ? "在听你说…（说完停一下就行）"
               : callState === "thinking"
                 ? "el 在想…"
                 : callState === "speaking"
-                  ? "el 在说…"
-                  : "按住下面的按钮说话"}
+                  ? "el 在说…（点球可打断）"
+                  : "接通中…"}
           </div>
-          <button
-            className={`call-talk ${callState === "listening" ? "on" : ""}`}
-            disabled={callState === "thinking" || callState === "speaking"}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              startRec();
-            }}
-            onPointerUp={(e) => {
-              e.preventDefault();
-              stopRec();
-            }}
-            onPointerLeave={() => callState === "listening" && stopRec()}
-          >
-            {callState === "listening" ? "松手发送" : "按住说话"}
-          </button>
           <button className="call-hangup" onClick={endCall}>
             挂断
           </button>

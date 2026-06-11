@@ -201,6 +201,9 @@ body::before {
 }
 
 .call-orb {
+  appearance: none;
+  border: none;
+  cursor: pointer;
   width: 130px;
   height: 130px;
   border-radius: 50%;

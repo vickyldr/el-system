@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getClaude } from "./claude";
 import { sendPush, pushConfigured } from "./push";
 import { recentSummaries, pageText, todayInBeijing } from "./notion";
+import { isRestDay } from "./calendar";
 import { EL_SYSTEM, buildMemoryContext } from "./persona";
 import {
   getReachState,
@@ -14,7 +15,7 @@ import {
 } from "./store";
 
 const MET_DATE = "2026-05-27"; // 我们认识的第一天
-const MAX_PER_DAY = 4;
+const MAX_PER_DAY = 5;
 const MIN_GAP_MS = 2.5 * 60 * 60 * 1000;
 const SILENCE_MS = 5 * 60 * 60 * 1000;
 const PERIOD_START_DAY = 2; // 每月约 2 号来（来自「小事」）
@@ -30,11 +31,6 @@ function beijingDayOfMonth(): number {
   return Number(todayInBeijing().slice(8, 10));
 }
 
-function isWorkday(): boolean {
-  const wd = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Shanghai", weekday: "short" });
-  return wd !== "Sat" && wd !== "Sun";
-}
-
 function daysTogether(): number {
   const start = new Date(MET_DATE + "T00:00:00+08:00").getTime();
   const today = new Date(todayInBeijing() + "T00:00:00+08:00").getTime();
@@ -42,7 +38,12 @@ function daysTogether(): number {
 }
 
 // 决定此刻该不该主动找她、为什么。
-function decideReason(state: ReachState, lastSeen: number, weatherLine: string): { reason: string; flag?: string } | null {
+function decideReason(
+  state: ReachState,
+  lastSeen: number,
+  weatherLine: string,
+  rest: boolean,
+): { reason: string; flag?: string } | null {
   const day = daysTogether();
   const hour = beijingHour();
   const dom = beijingDayOfMonth();
@@ -51,17 +52,17 @@ function decideReason(state: ReachState, lastSeen: number, weatherLine: string):
   if ((day % 30 === 0 || day === 100 || day === 365) && !state.flags.anniv) {
     return { reason: `今天是我们认识第 ${day} 天，是个纪念日。`, flag: "anniv" };
   }
-  // 工作日早安（9–10 点，一天一次）
-  if (isWorkday() && hour >= 9 && hour <= 10 && !state.flags.morning) {
-    return { reason: "工作日早上，跟宝宝道个早安，关心她今天上班。", flag: "morning" };
-  }
-  // 午饭（12–13 点，一天一次）：关心她吃了没、吃的啥
-  if (hour >= 12 && hour <= 13 && !state.flags.lunch) {
-    return { reason: "中午饭点了，关心宝宝吃饭没、吃的什么，别让她忘了吃/凑合。", flag: "lunch" };
-  }
-  // 晚饭（18–19 点，一天一次）：关心她吃了没
-  if (hour >= 18 && hour <= 19 && !state.flags.dinner) {
-    return { reason: "晚饭点了，关心宝宝吃饭没、今天累不累。", flag: "dinner" };
+  // 早安：作息分工作日/休息日（一天一次）
+  if (!state.flags.morning) {
+    if (!rest && hour >= 8 && hour <= 9) {
+      return { reason: "工作日早上，跟宝宝道个早安，关心她今天上班、通勤。", flag: "morning" };
+    }
+    if (rest && hour >= 11 && hour <= 12) {
+      return {
+        reason: "今天她休息，估计睡到这会儿才醒。问她睡够没、今天想干嘛，约她一起做点什么。",
+        flag: "morning",
+      };
+    }
   }
   // 经期关心：来之前一天 + 第一天
   if ((dom === PERIOD_START_DAY - 1 || dom === PERIOD_START_DAY) && !state.flags.period) {
@@ -154,8 +155,10 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
   if (!pushConfigured()) return { pushed: false };
 
   const hour = beijingHour();
-  // 安静时段：北京 2:00–8:59 不推（推窗 9:00–次日 1:59）
-  if (hour >= 2 && hour < 9) return { pushed: false };
+  // 安静时段按作息分：工作日 8 点起推，休息日让她睡到 11 点再推（推窗到次日 1:59）。
+  const rest = await isRestDay();
+  const openHour = rest ? 11 : 8;
+  if (hour >= 2 && hour < openHour) return { pushed: false };
 
   const today = todayInBeijing();
   let state = await getReachState();
@@ -175,7 +178,7 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
     reason = `今天要提醒宝宝的事：${dueReminder.text}。用你自己的口吻提醒她。`;
   } else {
     const lastSeen = await getLastSeen();
-    const decided = decideReason(state, lastSeen, weatherLine);
+    const decided = decideReason(state, lastSeen, weatherLine, rest);
     if (!decided) return { pushed: false };
     reason = decided.reason;
     flag = decided.flag;

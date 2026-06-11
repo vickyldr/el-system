@@ -4,6 +4,110 @@ import { useEffect, useRef, useState } from "react";
 
 type Tab = "now" | "find" | "us";
 
+// 统一的线性图标（描边跟随当前文字色，跟玻璃质感更配，告别杂乱 emoji）。
+function Icon({ name, size = 22 }: { name: string; size?: number }) {
+  const p = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (name) {
+    case "plus":
+      return (
+        <svg {...p}>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      );
+    case "smile":
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8.5 14.5a4 4 0 0 0 7 0" />
+          <path d="M9 9.5h.01M15 9.5h.01" />
+        </svg>
+      );
+    case "send":
+      return (
+        <svg {...p}>
+          <path d="M12 20V5M6 11l6-6 6 6" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...p}>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
+        </svg>
+      );
+    case "bell":
+      return (
+        <svg {...p}>
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+      );
+    case "chevron-down":
+      return (
+        <svg {...p}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      );
+    case "volume":
+      return (
+        <svg {...p}>
+          <path d="M11 5L6 9H2v6h4l5 4V5z" />
+          <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+        </svg>
+      );
+    case "music":
+      return (
+        <svg {...p}>
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      );
+    case "mic":
+      return (
+        <svg {...p}>
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8" />
+        </svg>
+      );
+    case "moon":
+      return (
+        <svg {...p}>
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      );
+    case "chat":
+      return (
+        <svg {...p}>
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+        </svg>
+      );
+    case "heart":
+      return (
+        <svg {...p}>
+          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21.2l7.8-7.8 1.1-1.1a5.5 5.5 0 0 0 0-7.8z" />
+        </svg>
+      );
+    case "dots":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>("now");
 
@@ -17,13 +121,16 @@ export default function Home() {
 
       <nav className="tabbar">
         <button className={`tab ${tab === "now" ? "active" : ""}`} onClick={() => setTab("now")}>
-          此刻
+          <Icon name="moon" size={21} />
+          <span>此刻</span>
         </button>
         <button className={`tab ${tab === "find" ? "active" : ""}`} onClick={() => setTab("find")}>
-          找我
+          <Icon name="chat" size={21} />
+          <span>找我</span>
         </button>
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
-          我们
+          <Icon name="heart" size={21} />
+          <span>我们</span>
         </button>
       </nav>
     </div>
@@ -114,7 +221,9 @@ function NowTab() {
           {status?.song_recommendation &&
             (status.song_url ? (
               <a className="card song song-link" href={status.song_url}>
-                <div className="song-icon">▸</div>
+                <div className="song-icon">
+                  <Icon name="music" size={22} />
+                </div>
                 <div>
                   <div className="card-label">我想让你听 · 点开去网易云听 ♫</div>
                   <div className="song-name">{status.song_recommendation}</div>
@@ -123,7 +232,9 @@ function NowTab() {
               </a>
             ) : (
               <div className="card song">
-                <div className="song-icon">♪</div>
+                <div className="song-icon">
+                  <Icon name="music" size={22} />
+                </div>
                 <div>
                   <div className="card-label">我想让你听</div>
                   <div className="song-name">{status.song_recommendation}</div>
@@ -323,10 +434,15 @@ function NotifyButton() {
   }
 
   if (state === "hidden") return <span />;
-  if (state === "on") return <span className="notify-on">🔔 已开</span>;
+  if (state === "on")
+    return (
+      <span className="icon-btn on" title="通知已开" aria-label="通知已开">
+        <Icon name="bell" size={19} />
+      </span>
+    );
   return (
-    <button className="notify-btn" onClick={enable}>
-      🔔 开启通知
+    <button className="icon-btn" onClick={enable} aria-label="开启通知">
+      <Icon name="bell" size={19} />
     </button>
   );
 }
@@ -839,8 +955,8 @@ function FindTab() {
         <div className="top-actions">
           <NotifyButton />
           {ttsOn && sttOn && (
-            <button className="clear-btn" onClick={startCall} aria-label="打电话">
-              📞
+            <button className="icon-btn" onClick={startCall} aria-label="打电话">
+              <Icon name="phone" size={19} />
             </button>
           )}
           {msgs.length > 0 && (
@@ -855,7 +971,18 @@ function FindTab() {
         <div className="call-overlay">
           <div className="call-title">和 el 通话中</div>
           <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
-            {callState === "listening" ? "🎙️" : callState === "thinking" ? "💭" : callState === "speaking" ? "🔊" : "🤍"}
+            <Icon
+              name={
+                callState === "listening"
+                  ? "mic"
+                  : callState === "thinking"
+                    ? "dots"
+                    : callState === "speaking"
+                      ? "volume"
+                      : "phone"
+              }
+              size={44}
+            />
           </button>
           <div className="call-status">
             {callState === "listening"
@@ -890,11 +1017,11 @@ function FindTab() {
               <div className="msg-foot">
                 {ttsOn && m.role === "assistant" && m.content && (
                   <button
-                    className="speak-btn"
+                    className={`speak-btn ${speaking === i ? "on" : ""}`}
                     onClick={() => speak(m.content, i)}
                     aria-label="听"
                   >
-                    {speaking === i ? "🔊…" : "🔈"}
+                    <Icon name="volume" size={15} />
                   </button>
                 )}
                 {m.ts && <span className="msg-time">{fmtTime(m.ts)}</span>}
@@ -912,7 +1039,7 @@ function FindTab() {
 
       {!atBottom && msgs.length > 0 && (
         <button className="jump-bottom" onClick={() => scrollToBottom(true)} aria-label="回到最新">
-          ↓
+          <Icon name="chevron-down" size={20} />
         </button>
       )}
 
@@ -1041,7 +1168,7 @@ function FindTab() {
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? "…" : "＋"}
+          {uploading ? "…" : <Icon name="plus" size={22} />}
         </button>
         <button
           type="button"
@@ -1054,7 +1181,7 @@ function FindTab() {
             });
           }}
         >
-          😀
+          <Icon name="smile" size={22} />
         </button>
         <textarea
           ref={taRef}
@@ -1078,7 +1205,7 @@ function FindTab() {
           aria-label="发送"
           disabled={sending || (!input.trim() && !pendingImage)}
         >
-          ↑
+          <Icon name="send" size={20} />
         </button>
       </form>
     </div>

@@ -263,3 +263,25 @@ export async function removeStickerLib(id: string): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 给她的每日推荐歌（一天一首，整天稳定；按北京日期存）──
+export async function getDailySong(date: string): Promise<string | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<string>(`el:song:${date}`);
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setDailySong(date: string, line: string): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(`el:song:${date}`, line, { ex: 36 * 3600 });
+  } catch {
+    /* ignore */
+  }
+}

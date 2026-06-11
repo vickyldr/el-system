@@ -114,14 +114,14 @@ body::before {
 
 /* 认识第 N 天的小计数 chip */
 .day-chip {
-  display: inline-block;
+  flex-shrink: 0;
   font-size: var(--text-xs);
   color: var(--ink-soft);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--hair);
-  padding: 4px 11px;
+  padding: 5px 12px;
   border-radius: 20px;
-  margin-bottom: var(--sp-4);
+  white-space: nowrap;
 }
 
 .day-chip.milestone {
@@ -194,16 +194,26 @@ body::before {
 .now-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: var(--sp-5);
+}
+
+.now-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.now-head .peer-name {
+  font-size: var(--text-lg);
 }
 
 .now-av {
-  width: 34px;
-  height: 34px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   object-fit: cover;
-  box-shadow: 0 0 0 1px var(--hair), 0 4px 14px var(--glow);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--hair), 0 4px 16px var(--glow);
 }
 
 .card {

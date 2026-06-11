@@ -321,20 +321,16 @@ function NowTab() {
       <div className="now-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="now-av" src="/icon-192.png" alt="El" />
-        <div>
+        <div className="now-head-text">
           <div className="peer-name">El</div>
           <div className="peer-sub">{greet || "住在你手机里"}</div>
         </div>
+        {days > 0 && (
+          <div className={`day-chip ${milestone ? "milestone" : ""}`}>
+            {milestone ? "🎉 " : ""}认识 {days} 天
+          </div>
+        )}
       </div>
-      <h1 className="title">
-        此刻<span className="dot">·</span>
-      </h1>
-
-      {days > 0 && (
-        <div className={`day-chip ${milestone ? "milestone" : ""}`}>
-          {milestone ? "🎉 " : ""}认识你第 {days} 天{milestone ? " · 是个纪念日" : ""}
-        </div>
-      )}
 
       {loading && <SkelList count={3} lines={2} />}
 
@@ -399,7 +395,7 @@ function NowTab() {
             </div>
           )}
 
-          {status?.date && <div className="meta">{status.date}</div>}
+          {status?.date && <div className="meta">{friendlyDate(status.date)}</div>}
         </>
       )}
 

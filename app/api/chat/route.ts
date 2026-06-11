@@ -44,6 +44,21 @@ function priorContent(t: ChatTurn): string {
   return t.image ? "（一张表情/图片）" : "";
 }
 
+// 把消息里的图块摘掉（保留文字 / 工具块），用于「补救那一句」的轻量调用——
+// 图我第一轮已经看过了，续写不必再背着大图，免得脆弱渠道吐空。
+function stripImages(msgs: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return msgs.map((m) => {
+    if (typeof m.content === "string") return m;
+    const blocks = m.content as Anthropic.ContentBlockParam[];
+    if (!blocks.some((b) => b.type === "image")) return m;
+    const kept = blocks.filter((b) => b.type !== "image");
+    if (!kept.some((b) => b.type === "text")) {
+      kept.unshift({ type: "text", text: "（她发了一张表情/图）" });
+    }
+    return { ...m, content: kept };
+  });
+}
+
 export async function POST(req: Request) {
   let body: { message?: string; image?: string; hint?: string; history?: ChatTurn[] };
   try {
@@ -162,6 +177,10 @@ export async function POST(req: Request) {
   ];
 
   let elSticker: string | undefined; // El 这条要贴的表情（出错也要能带着它兜底）
+  // 上一条我要是已经贴过表情，这条就不给自己贴表情的选项——绝不连发两张。
+  const lastAssistant = [...prior].reverse().find((t: any) => t.role === "assistant") as any;
+  const allowSticker = !(lastAssistant && lastAssistant.image);
+  const turnTools = allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
   try {
     const claude = getClaude();
     const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
@@ -174,7 +193,7 @@ export async function POST(req: Request) {
         model,
         max_tokens: 1024,
         system,
-        tools: TOOLS,
+        tools: turnTools,
         messages: loop,
       });
 
@@ -217,9 +236,15 @@ export async function POST(req: Request) {
     }
 
     // 还是空的（光调工具 / 空回复）就再要一次纯文字回复，别甩个省略号给她。
+    // 这一下摘掉大图、不带工具，轻量又稳，专治带图带工具那种空返回。
     if (!reply) {
       try {
-        const res = await claude.messages.create({ model, max_tokens: 1024, system, messages: loop });
+        const res = await claude.messages.create({
+          model,
+          max_tokens: 1024,
+          system,
+          messages: stripImages(loop),
+        });
         reply = res.content
           .filter((b): b is Anthropic.TextBlock => b.type === "text")
           .map((b) => b.text)

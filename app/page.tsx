@@ -278,33 +278,52 @@ function FindTab() {
     }
   }
 
-  // 上传一张表情进共享库：保留 GIF 动图（readAsDataURL，不缩放）。
-  // 我上传时自己看图写标签；你想补一句就补，不补也行。
-  async function uploadSticker(file: File) {
-    const note = window.prompt(
-      "传这张表情～（直接确定就行，我会自己看图认）\n想补一句它的意思也可以：比如 这个我俩专属 / 生气专用",
-    );
-    if (note === null) return;
-    setUploadingStk(true);
+  function readAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  async function putSticker(dataUrl: string, note: string): Promise<boolean> {
     try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(String(fr.result));
-        fr.onerror = reject;
-        fr.readAsDataURL(file);
-      });
       const r = await fetch("/api/stickers/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl, tags: note.trim() }),
+        body: JSON.stringify({ dataUrl, tags: note }),
       });
       const d = await r.json();
-      if (d.ok) {
-        await loadLib();
-        setStickerTab("lib");
-      } else {
-        alert(d.error || "上传失败");
+      return !!d.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  // 上传表情进共享库：保留 GIF 动图（readAsDataURL，不缩放）。我自己看图写标签。
+  // 选一张：可以顺手补一句备注；选多张：不一张张问了，我逐张自己认。
+  async function uploadStickers(files: File[]) {
+    if (!files.length) return;
+    let note = "";
+    if (files.length === 1) {
+      const n = window.prompt(
+        "传这张表情～（直接确定就行，我会自己看图认）\n想补一句它的意思也可以：比如 这个我俩专属 / 生气专用",
+      );
+      if (n === null) return; // 取消
+      note = n.trim();
+    }
+    setUploadingStk(true);
+    let fail = 0;
+    try {
+      for (const f of files) {
+        const dataUrl = await readAsDataUrl(f);
+        const ok = await putSticker(dataUrl, note);
+        if (!ok) fail++;
       }
+      await loadLib();
+      setStickerTab("lib");
+      if (fail) alert(`有 ${fail} 张没传上`);
     } catch {
       alert("上传失败");
     } finally {
@@ -510,10 +529,11 @@ function FindTab() {
               ref={stkFileRef}
               type="file"
               accept="image/*"
+              multiple
               hidden
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadSticker(f);
+                const fs = Array.from(e.target.files ?? []);
+                if (fs.length) uploadStickers(fs);
                 e.target.value = "";
               }}
             />
@@ -523,7 +543,7 @@ function FindTab() {
               onClick={() => stkFileRef.current?.click()}
               disabled={uploadingStk}
             >
-              {uploadingStk ? "上传中…" : "＋ 传表情"}
+              {uploadingStk ? "上传中…" : "＋ 传表情（可多选）"}
             </button>
           </div>
 

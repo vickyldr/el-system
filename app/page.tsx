@@ -255,6 +255,8 @@ function FindTab() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  // 表情/外链图配的"意思"（库表情靠它让 el 读懂）；纯图片时为空
+  const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
@@ -366,6 +368,7 @@ function FindTab() {
     setUploading(true);
     try {
       setPendingImage(await downscale(file, 1280, 0.82));
+      setPendingHint(undefined);
     } catch {
       alert("图片处理失败");
     } finally {
@@ -458,18 +461,23 @@ function FindTab() {
     e.preventDefault();
     const text = input.trim();
     const image = pendingImage;
+    const hint = pendingHint;
     if (!text && !image) return;
     setInput("");
     setPendingImage(null);
+    setPendingHint(undefined);
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
-    void post(text, image || undefined);
+    void post(text, image || undefined, hint);
   }
 
+  // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。
   function sendSticker(url: string, hint?: string) {
+    setPendingImage(url);
+    setPendingHint(hint);
     setShowStickers(false);
-    void post("", url, hint);
+    requestAnimationFrame(() => taRef.current?.focus());
   }
 
   async function deleteSticker(id: string) {
@@ -609,7 +617,13 @@ function FindTab() {
         <div className="img-preview">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={pendingImage} alt="" />
-          <button onClick={() => setPendingImage(null)} aria-label="移除">
+          <button
+            onClick={() => {
+              setPendingImage(null);
+              setPendingHint(undefined);
+            }}
+            aria-label="移除"
+          >
             ✕
           </button>
         </div>

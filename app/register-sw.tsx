@@ -4,14 +4,19 @@ import { useEffect } from "react";
 
 export default function RegisterSW() {
   useEffect(() => {
-    // 异步加载 MiSans 中文字体——绝不阻塞渲染（外链 CSS 会阻塞，CDN 被墙就白屏）。
-    // 加载不到就用系统 PingFang，页面照常。
-    ["MiSans-Regular", "MiSans-Semibold"].forEach((name) => {
-      if (document.querySelector(`link[data-font="${name}"]`)) return;
+    // 异步加载中文字体——绝不阻塞渲染（外链 CSS 会阻塞，CDN 被墙就白屏）。
+    // 加载不到就用系统 PingFang，页面照常。霞鹜文楷走国内 BootCDN（稳）。
+    const fonts: [string, string][] = [
+      ["misans-r", "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Regular.min.css"],
+      ["misans-sb", "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Semibold.min.css"],
+      ["lxgw", "https://cdn.bootcdn.net/ajax/libs/lxgw-wenkai-screen-webfont/1.7.0/style.min.css"],
+    ];
+    fonts.forEach(([key, href]) => {
+      if (document.querySelector(`link[data-font="${key}"]`)) return;
       const l = document.createElement("link");
       l.rel = "stylesheet";
-      l.href = `https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/${name}.min.css`;
-      l.setAttribute("data-font", name);
+      l.href = href;
+      l.setAttribute("data-font", key);
       l.media = "print";
       l.onload = () => (l.media = "all"); // 加载好了再应用，全程不挡渲染
       document.head.appendChild(l);

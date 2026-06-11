@@ -30,6 +30,9 @@
   /* 中文加重：标题/重点内容用 MiSans Semibold，更清爽利落 */
   --font-strong: "MiSans Semibold", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", system-ui, sans-serif;
+  /* el 的话：霞鹜文楷——温润手写感，像他亲手写给她的 */
+  --font-hand: "LXGW WenKai Screen", "MiSans Regular", -apple-system, "PingFang SC",
+    "Microsoft YaHei", system-ui, serif;
 }
 
 * {
@@ -250,6 +253,20 @@ body::before {
 /* 心情卡轻轻呼吸发光——像 el 真的在那儿 */
 .mood-card {
   animation: fadeInUp 0.42s ease both, moodBreathe 5.5s ease-in-out 0.5s infinite;
+}
+
+/* el 的话穿上霞鹜文楷：心情/在想、他说的、推歌的理由、时间线、记忆 */
+.mood-card .card-value,
+.mood-card .meta,
+.song-reason,
+.el-note,
+.tl-text,
+.mem-line {
+  font-family: var(--font-hand);
+}
+
+.mood-card .card-value {
+  line-height: 1.55;
 }
 @keyframes moodBreathe {
   0%,
@@ -800,6 +817,9 @@ body::before {
   background: var(--el-bubble);
   border: 1px solid var(--hair);
   border-bottom-left-radius: 6px;
+  font-family: var(--font-hand);
+  font-size: 15.5px;
+  line-height: 1.62;
 }
 
 /* 打字中的三个跳动小点 */

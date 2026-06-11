@@ -391,7 +391,7 @@ function NowTab() {
           {status?.el_note && (
             <div className="card">
               <div className="card-label">El 说</div>
-              <div className="card-value">{status.el_note}</div>
+              <div className="card-value el-note">{status.el_note}</div>
             </div>
           )}
 

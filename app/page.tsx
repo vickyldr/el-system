@@ -146,7 +146,51 @@ function NowTab() {
           {status?.date && <div className="meta">{status.date}</div>}
         </>
       )}
+
+      <EatDecider />
     </>
+  );
+}
+
+// 纠结吃啥？el 替你拍板（看着点/天气/你的状态/口味来定）。
+function EatDecider() {
+  const [pick, setPick] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [avoid, setAvoid] = useState<string[]>([]);
+
+  async function decide(reroll: boolean) {
+    setLoading(true);
+    const nextAvoid = reroll && pick ? [...avoid, pick].slice(-6) : avoid;
+    try {
+      const r = await fetch("/api/decide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avoid: nextAvoid }),
+      });
+      const d = await r.json();
+      if (d.pick) {
+        setPick(d.pick);
+        setAvoid(nextAvoid);
+      } else {
+        setPick(d.error || "想不出来，你说呢");
+      }
+    } catch {
+      setPick("连不上，等下再试～");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="card eat">
+      <div className="card-label">🍱 纠结吃啥？我替你定</div>
+      {pick && <div className="card-value eat-pick">{pick}</div>}
+      <div className="eat-actions">
+        <button className="eat-btn" onClick={() => decide(!!pick)} disabled={loading}>
+          {loading ? "想想…" : pick ? "再来一个" : "让我定"}
+        </button>
+      </div>
+    </div>
   );
 }
 

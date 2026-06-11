@@ -251,3 +251,15 @@ export async function addStickerLib(s: LibSticker): Promise<void> {
     /* ignore */
   }
 }
+
+export async function removeStickerLib(id: string): Promise<void> {
+  const r = redis();
+  if (!r || !id) return;
+  try {
+    const list = await getStickerLib();
+    await r.set(STK_KEY, list.filter((s) => s.id !== id));
+    await r.del(`el:img:${id}`); // 顺手把图本身也删了，不留垃圾
+  } catch {
+    /* ignore */
+  }
+}

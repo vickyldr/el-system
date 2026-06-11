@@ -446,6 +446,16 @@ function FindTab() {
     void post("", url, hint);
   }
 
+  async function deleteSticker(id: string) {
+    if (!window.confirm("删掉这张表情？")) return;
+    setLib((l) => l.filter((s) => s.id !== id)); // 先本地移掉，手感快
+    try {
+      await fetch(`/api/stickers/lib?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch {
+      void loadLib(); // 失败了就拉回真实状态
+    }
+  }
+
   return (
     <div className="chat">
       <div className="chat-top">
@@ -525,8 +535,18 @@ function FindTab() {
                 </div>
               )}
               {lib.map((s) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={s.id} src={s.img} alt={s.tags} title={s.tags} onClick={() => sendSticker(s.img, s.tags)} />
+                <div className="stk-cell" key={s.id}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.img} alt={s.tags} title={s.tags} onClick={() => sendSticker(s.img, s.tags)} />
+                  <button
+                    type="button"
+                    className="stk-del"
+                    aria-label="删除"
+                    onClick={() => deleteSticker(s.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           ) : (

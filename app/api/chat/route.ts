@@ -161,12 +161,12 @@ export async function POST(req: Request) {
     { role: "user", content: toContent(curText, curImage) },
   ];
 
+  let elSticker: string | undefined; // El 这条要贴的表情（出错也要能带着它兜底）
   try {
     const claude = getClaude();
     const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
-    let elSticker: string | undefined; // El 这条要贴的表情
 
     // 工具循环：El 需要时读链接 / 读 Notion / 写记忆 / 贴表情，最多几轮。
     for (let i = 0; i < 6; i++) {
@@ -251,14 +251,21 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ reply, cloud, sticker: elSticker });
   } catch (err) {
-    if (err instanceof Anthropic.APIError) {
-      const friendly =
-        err.status === 429
-          ? "中转站那边正忙，等一下再发一次～"
-          : err.message;
-      return NextResponse.json({ error: friendly }, { status: err.status ?? 502 });
+    // 配置类错误（key 不对/没权限）才把硬报错抛给前端，好让她知道要去修。
+    if (err instanceof Anthropic.APIError && (err.status === 401 || err.status === 403)) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
     }
-    const message = err instanceof Error ? err.message : "未知错误";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // 中转站抽风/返回空/限流这类，绝不甩技术报错给她——用我自己的话兜住，照样像在聊天。
+    const fallback = elSticker
+      ? "（先甩你个表情）我这会儿有点卡，你刚说的再来一遍呗～"
+      : "嗯…我这会儿脑子卡了一下，你再跟我说一遍？";
+    if (cloud) {
+      const ts = Date.now();
+      await appendMessages([
+        { role: "user", content: message, image: image && !image.startsWith("data:") ? image : undefined, ts },
+        { role: "assistant", content: fallback, image: elSticker, ts: ts + 1 },
+      ]).catch(() => {});
+    }
+    return NextResponse.json({ reply: fallback, cloud, sticker: elSticker });
   }
 }

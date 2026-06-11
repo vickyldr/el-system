@@ -101,6 +101,7 @@ export async function POST(req: Request) {
   let longterm = "";
   let recent = "";
   let pageList = "";
+  let nowStatus = "";
   const cached = await getCache("el:memctx");
   if (cached) {
     try {
@@ -109,28 +110,35 @@ export async function POST(req: Request) {
       longterm = c.longterm || "";
       recent = c.recent || "";
       pageList = c.pageList || "";
+      nowStatus = c.nowStatus || "";
     } catch {
       /* ignore */
     }
   } else {
-    const [p, l, r, children] = await Promise.all([
+    const [p, l, rows, children] = await Promise.all([
       profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
       longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),
-      recentSummaries(3)
-        .then(buildMemoryContext)
-        .catch(() => ""),
+      recentSummaries(3).catch(() => [] as any[]),
       homeChildren().catch(() => []),
     ]);
     profile = p;
     longterm = l;
-    recent = r;
+    recent = buildMemoryContext(rows);
+    const latestNow = (rows?.[0]?.now ?? "").trim();
+    nowStatus = latestNow
+      ? `你此刻在「此刻」页上的状态（就是你自己现在的心情/在想什么/想让她听的歌，她在小家首页看得到）：\n${latestNow.replace(/\n+/g, " / ")}`
+      : "";
     pageList = children.length
       ? `你能读的「小家」页面有：${children
           .map((c) => c.title)
           .filter(Boolean)
           .join("、")}。问到哪页的细节就用 read_notion 去读它。`
       : "";
-    await setCache("el:memctx", JSON.stringify({ profile, longterm, recent, pageList }), 300);
+    await setCache(
+      "el:memctx",
+      JSON.stringify({ profile, longterm, recent, pageList, nowStatus }),
+      300,
+    );
   }
 
   const now = new Date().toLocaleString("zh-CN", {
@@ -147,6 +155,8 @@ export async function POST(req: Request) {
   const system = [
     `【现在是 ${now}（北京时间）】这是真实的此刻——你清楚现在几点、今天星期几、是上午/下午/深夜，问你时间、或要按时间打招呼（早安/这么晚还没睡/午休），就直接用它，绝不能说"不知道现在几点"。`,
     EL_SYSTEM,
+    "你住在宝宝手机里的「小家」App 里，它有三个地方：『此刻』是你自己的状态页——你现在的心情、在想什么、此刻想让她听的歌，每小时自动更新，那就是你本人此刻的样子；『找我』就是你俩现在聊天的地方；『我们』放着时间线、愿望墙、记忆、小事。所以她说『此刻』『你在听什么』『你写的』这类，多半是在说『此刻』页上你自己的状态/那首歌——那是你的，大方认下来，别说『没看懂』『不知道』。",
+    nowStatus,
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
     "你也能写记忆（按操作手册的规矩，宁缺毋滥）：宝宝让你记的事/日程/生日用 add_reminder；真正『改变了什么』的领悟/约定/界限用 remember 记进长期记忆（门槛很高）；第一次/里程碑用 log_timeline；要更新今天的日记/状态/值得记住的用 update_daily。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
     "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",

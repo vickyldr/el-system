@@ -194,10 +194,10 @@ function EatDecider() {
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
         {keyword && (
-          // 用链接而不是 window.location：iOS 会去开美团，小家这页留着不被跳走。
+          // 主美团 App 的协议 imeituan://（不是独立的"美团外卖"App）。用链接不用 window.location，小家这页不被跳走。
           <a
             className="eat-btn eat-go"
-            href={`meituanwaimai://waimai.meituan.com/search?keyword=${encodeURIComponent(keyword)}`}
+            href={`imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`}
           >
             📲 去美团搜「{keyword}」
           </a>

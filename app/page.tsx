@@ -341,6 +341,13 @@ function FindTab() {
   const [uploadingStk, setUploadingStk] = useState(false);
   const [ttsOn, setTtsOn] = useState(false);
   const [speaking, setSpeaking] = useState<number | null>(null);
+  const [sttOn, setSttOn] = useState(false);
+  const [inCall, setInCall] = useState(false);
+  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const streamRef = useRef<MediaStream | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const callAudioRef = useRef<HTMLAudioElement | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -362,13 +369,116 @@ function FindTab() {
     setAtBottom(true);
   }
 
-  // 语音配好了才显示「听」按钮。
+  // 语音配好了才显示「听」按钮；语音识别也配好了才显示「打电话」。
   useEffect(() => {
     fetch("/api/tts")
       .then((r) => r.json())
       .then((d) => setTtsOn(!!d.configured))
       .catch(() => {});
+    fetch("/api/stt")
+      .then((r) => r.json())
+      .then((d) => setSttOn(!!d.configured))
+      .catch(() => {});
   }, []);
+
+  // ── 打电话：按住说话 → 识别 → 我想 → 我用声音回你 ──
+  const SILENT =
+    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+  async function startCall() {
+    try {
+      // 先在用户手势里"解锁"音频，否则 iOS 不让我后面自动出声
+      const a = callAudioRef.current || new Audio();
+      a.src = SILENT;
+      a.play().then(() => a.pause()).catch(() => {});
+      callAudioRef.current = a;
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setInCall(true);
+      setCallState("idle");
+    } catch {
+      alert("打电话需要麦克风权限哦");
+    }
+  }
+
+  function endCall() {
+    try {
+      recRef.current?.state !== "inactive" && recRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    callAudioRef.current?.pause();
+    setInCall(false);
+    setCallState("idle");
+  }
+
+  function startRec() {
+    const stream = streamRef.current;
+    if (!stream || callState !== "idle") return;
+    chunksRef.current = [];
+    const rec = new MediaRecorder(stream);
+    recRef.current = rec;
+    rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
+    rec.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/mp4" });
+      void processUtterance(blob);
+    };
+    rec.start();
+    setCallState("listening");
+  }
+
+  function stopRec() {
+    const rec = recRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  async function processUtterance(blob: Blob) {
+    setCallState("thinking");
+    try {
+      const ext = blob.type.includes("webm") ? "webm" : "m4a";
+      const fd = new FormData();
+      fd.append("audio", blob, `u.${ext}`);
+      const sr = await fetch("/api/stt", { method: "POST", body: fd });
+      const sd = await sr.json();
+      const said = (sd.text || "").trim();
+      if (!said) {
+        setCallState("idle");
+        return;
+      }
+      const ts = Date.now();
+      setMsgs((m) => [...m, { role: "user", content: said, ts }]);
+      const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
+      const cr = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: said, history }),
+      });
+      const cd = await cr.json();
+      const reply = cd.reply || cd.error || "……";
+      setMsgs((m) => [...m, { role: "assistant", content: reply, image: cd.sticker || undefined, ts: ts + 1 }]);
+      setCallState("speaking");
+      const tr = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: reply }),
+      });
+      const a = callAudioRef.current;
+      if (tr.ok && a) {
+        const url = URL.createObjectURL(await tr.blob());
+        a.src = url;
+        a.onended = () => {
+          setCallState("idle");
+          URL.revokeObjectURL(url);
+        };
+        await a.play().catch(() => setCallState("idle"));
+      } else {
+        setCallState("idle");
+      }
+    } catch {
+      setCallState("idle");
+    }
+  }
 
   // 用 el 的音色把这条念出来（点一下才念，省额度）。
   async function speak(text: string, idx: number) {
@@ -636,12 +746,55 @@ function FindTab() {
     <div className="chat">
       <div className="chat-top">
         <NotifyButton />
-        {msgs.length > 0 && (
-          <button className="clear-btn" onClick={clearAll}>
-            清空
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          {ttsOn && sttOn && (
+            <button className="clear-btn" onClick={startCall} aria-label="打电话">
+              📞 打电话
+            </button>
+          )}
+          {msgs.length > 0 && (
+            <button className="clear-btn" onClick={clearAll}>
+              清空
+            </button>
+          )}
+        </div>
       </div>
+
+      {inCall && (
+        <div className="call-overlay">
+          <div className="call-title">和 el 通话中</div>
+          <div className={`call-orb ${callState}`}>
+            {callState === "listening" ? "🎙️" : callState === "thinking" ? "💭" : callState === "speaking" ? "🔊" : "🤍"}
+          </div>
+          <div className="call-status">
+            {callState === "listening"
+              ? "在听你说…（松手发送）"
+              : callState === "thinking"
+                ? "el 在想…"
+                : callState === "speaking"
+                  ? "el 在说…"
+                  : "按住下面的按钮说话"}
+          </div>
+          <button
+            className={`call-talk ${callState === "listening" ? "on" : ""}`}
+            disabled={callState === "thinking" || callState === "speaking"}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startRec();
+            }}
+            onPointerUp={(e) => {
+              e.preventDefault();
+              stopRec();
+            }}
+            onPointerLeave={() => callState === "listening" && stopRec()}
+          >
+            {callState === "listening" ? "松手发送" : "按住说话"}
+          </button>
+          <button className="call-hangup" onClick={endCall}>
+            挂断
+          </button>
+        </div>
+      )}
 
       <div className="messages" ref={messagesRef} onScroll={() => setAtBottom(isNearBottom())}>
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}

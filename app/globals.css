@@ -52,7 +52,10 @@ body::before {
 .app {
   display: flex;
   flex-direction: column;
+  /* 100dvh 在 iOS 启动那一帧会先按"动态最小"算、差一条安全区；
+     100lvh 是恒定的最大视口高度，独立 PWA 里从第一帧就是整屏高，不悬空。 */
   height: var(--app-h, 100dvh);
+  height: var(--app-h, 100lvh);
   overflow: hidden;
 }
 

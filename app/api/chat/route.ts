@@ -13,6 +13,7 @@ import {
   setCache,
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
+import { searchStickers } from "@/lib/stickers";
 
 export const runtime = "nodejs";
 
@@ -132,8 +133,9 @@ export async function POST(req: Request) {
     const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
+    let elSticker: string | undefined; // El 这条要贴的表情
 
-    // 工具循环：El 需要时读链接 / 读 Notion / 写记忆，最多几轮。
+    // 工具循环：El 需要时读链接 / 读 Notion / 写记忆 / 贴表情，最多几轮。
     for (let i = 0; i < 6; i++) {
       const res = await claude.messages.create({
         model,
@@ -148,8 +150,18 @@ export async function POST(req: Request) {
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const b of res.content) {
           if (b.type === "tool_use") {
-            const out = await runTool(b.name, b.input);
-            results.push({ type: "tool_result", tool_use_id: b.id, content: out });
+            if (b.name === "sticker") {
+              const found = await searchStickers(String((b.input as any)?.query || ""), 1);
+              if (found[0]) elSticker = found[0].url;
+              results.push({
+                type: "tool_result",
+                tool_use_id: b.id,
+                content: elSticker ? "表情贴上了" : "没搜到合适的表情",
+              });
+            } else {
+              const out = await runTool(b.name, b.input);
+              results.push({ type: "tool_result", tool_use_id: b.id, content: out });
+            }
           }
         }
         loop.push({ role: "user", content: results });
@@ -179,21 +191,25 @@ export async function POST(req: Request) {
     }
     if (!reply) reply = "在呢，刚卡了一下，你再说一遍？";
 
-    // 云端存档：图片单独存、历史里放引用 URL，这样刷新/换设备也能看到。
+    // 云端存档：base64 照片单独存、表情/外链 URL 直接存。
     if (cloud) {
       let storedImage: string | undefined;
       if (image) {
-        const id = await putImage(image);
-        if (id) storedImage = `/api/img/${id}`;
+        if (image.startsWith("data:")) {
+          const id = await putImage(image);
+          if (id) storedImage = `/api/img/${id}`;
+        } else {
+          storedImage = image;
+        }
       }
       const ts = Date.now();
       await appendMessages([
         { role: "user", content: message, image: storedImage, ts },
-        { role: "assistant", content: reply, ts: ts + 1 },
+        { role: "assistant", content: reply, image: elSticker, ts: ts + 1 },
       ]);
     }
 
-    return NextResponse.json({ reply, cloud });
+    return NextResponse.json({ reply, cloud, sticker: elSticker });
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
       const friendly =

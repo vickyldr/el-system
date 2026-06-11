@@ -98,6 +98,18 @@ export const TOOLS = [
       required: ["page", "text"],
     },
   },
+  {
+    name: "sticker",
+    description:
+      "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "表情关键词，如 想你 / 抱抱 / 无语 / 得意" },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 export async function runTool(

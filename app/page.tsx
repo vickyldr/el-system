@@ -256,9 +256,30 @@ function FindTab() {
   const [sending, setSending] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
+  const [stickerQ, setStickerQ] = useState("");
+  const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
+  const [searching, setSearching] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function searchSticker(q: string) {
+    if (!q.trim()) {
+      setStickers([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const r = await fetch(`/api/stickers?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
+      setStickers(Array.isArray(d.stickers) ? d.stickers : []);
+    } catch {
+      setStickers([]);
+    } finally {
+      setSearching(false);
+    }
+  }
 
   function grow() {
     const ta = taRef.current;
@@ -330,25 +351,12 @@ function FindTab() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, sending]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    const image = pendingImage;
+  async function post(text: string, image?: string) {
     if ((!text && !image) || sending) return;
-
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
-    setMsgs((m) => [
-      ...m,
-      { role: "user", content: text, image: image || undefined, ts: Date.now() },
-    ]);
-    setInput("");
-    setPendingImage(null);
-    requestAnimationFrame(() => {
-      if (taRef.current) taRef.current.style.height = "auto";
-    });
+    setMsgs((m) => [...m, { role: "user", content: text, image: image || undefined, ts: Date.now() }]);
     setSending(true);
-
     try {
       const r = await fetch("/api/chat", {
         method: "POST",
@@ -358,13 +366,36 @@ function FindTab() {
       const d = await r.json();
       setMsgs((m) => [
         ...m,
-        { role: "assistant", content: d.reply || d.error || "……", ts: Date.now() },
+        {
+          role: "assistant",
+          content: d.reply || d.error || "……",
+          image: d.sticker || undefined,
+          ts: Date.now(),
+        },
       ]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: "连不上，等下再说。", ts: Date.now() }]);
     } finally {
       setSending(false);
     }
+  }
+
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    const image = pendingImage;
+    if (!text && !image) return;
+    setInput("");
+    setPendingImage(null);
+    requestAnimationFrame(() => {
+      if (taRef.current) taRef.current.style.height = "auto";
+    });
+    void post(text, image || undefined);
+  }
+
+  function sendSticker(url: string) {
+    setShowStickers(false);
+    void post("", url);
   }
 
   return (
@@ -400,6 +431,33 @@ function FindTab() {
         <div ref={endRef} />
       </div>
 
+      {showStickers && (
+        <div className="sticker-panel">
+          <input
+            className="sticker-search"
+            value={stickerQ}
+            onChange={(e) => setStickerQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                searchSticker(stickerQ);
+              }
+            }}
+            placeholder="搜表情包…（回车）"
+          />
+          <div className="sticker-grid">
+            {searching && <div className="meta">搜索中…</div>}
+            {!searching && stickers.length === 0 && (
+              <div className="meta">搜个词试试，比如 想你 / 无语 / 抱抱</div>
+            )}
+            {stickers.map((s, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={s.preview} alt="" onClick={() => sendSticker(s.url)} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {pendingImage && (
         <div className="img-preview">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -430,6 +488,14 @@ function FindTab() {
           disabled={uploading}
         >
           {uploading ? "…" : "＋"}
+        </button>
+        <button
+          type="button"
+          className="attach-btn"
+          aria-label="表情包"
+          onClick={() => setShowStickers((v) => !v)}
+        >
+          😀
         </button>
         <textarea
           ref={taRef}

@@ -25,8 +25,9 @@ export async function pickLibSticker(q: string): Promise<LibSticker | null> {
       best = s;
     }
   }
-  // 至少要有点重叠才算数
-  return bestScore >= 1 ? best : null;
+  // 至少要够准才算数——门槛低了会硬塞不搭的表情，宁可不贴。
+  // 整词命中(+5)能过；只靠零星 1-2 个字重合的弱匹配不算。
+  return bestScore >= 3 ? best : null;
 }
 
 export async function searchStickers(q: string, limit = 24): Promise<Sticker[]> {

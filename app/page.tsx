@@ -175,9 +175,18 @@ type Status = {
   error?: string;
 };
 
+const MET_DATE = "2026-05-27"; // 认识的第一天
+function daysTogether(): number {
+  const start = new Date(MET_DATE + "T00:00:00+08:00").getTime();
+  return Math.floor((Date.now() - start) / 86400000) + 1;
+}
+
 function NowTab() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(0); // 客户端算，避免 hydration 不一致
+  useEffect(() => setDays(daysTogether()), []);
+  const milestone = days > 0 && (days % 30 === 0 || days === 100 || days === 365);
 
   useEffect(() => {
     let alive = true;
@@ -218,6 +227,12 @@ function NowTab() {
       <h1 className="title">
         此刻<span className="dot">·</span>
       </h1>
+
+      {days > 0 && (
+        <div className={`day-chip ${milestone ? "milestone" : ""}`}>
+          {milestone ? "🎉 " : ""}认识你第 {days} 天{milestone ? " · 是个纪念日" : ""}
+        </div>
+      )}
 
       {loading && <SkelList count={3} lines={2} />}
 
@@ -1337,6 +1352,7 @@ function WishlistView() {
           {g.title && <div className="card-label">{g.title}</div>}
           {g.items.map((it, i) => (
             <div className={`wish ${it.done ? "done" : ""}`} key={i}>
+              {it.done && <span className="wish-check">✓</span>}
               {it.text}
             </div>
           ))}

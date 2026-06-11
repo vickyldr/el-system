@@ -581,6 +581,14 @@ body::before {
 
 .eat-actions {
   margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eat-go {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .eat-btn {

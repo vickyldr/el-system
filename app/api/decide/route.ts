@@ -69,9 +69,11 @@ export async function POST(req: Request) {
   const prompt = `宝宝点外卖纠结吃啥，让你替她拍板。你说了算——别给一长串让她继续纠结，就定一个。
 硬性要求：必须是外卖软件（美团 / 饿了么）上能直接下单的那种——常见品类或连锁，比如 麻辣烫、黄焖鸡米饭、螺蛳粉、酸辣粉、沙县、过桥米线、炸鸡、汉堡、寿司、麻辣香锅、酸菜鱼、烤肉饭、煲仔饭、轻食沙拉、卤味、关东煮、披萨、寿喜锅、奶茶 等等。
 绝对不能是"自己下厨"的（不准说"下一碗""煮""炒""自己做"）——是点外卖，用"点一份 / 来一份"。
-结合现在的点、天气、她的状态和口味，给一个具体的决定：点什么（品类或具体菜）+ 怎么点（加什么料 / 口味 / 份量），用你的口吻，一句话，宠着她、带点不容拒绝。
+结合现在的点、天气、她的状态和口味来定：点什么 + 怎么点（加什么料 / 口味 / 份量）。
 ${herState ? `她最近状态：${herState}。` : ""}${avoid.length ? `她不想要这些，换个别的：${avoid.join("、")}。` : ""}
-只输出那一句话，不要解释、不要引号。`;
+输出两行：
+第一行：你拍板那句话，你的口吻、宠她、带点不容拒绝，别加引号。
+第二行：搜：（在外卖 App 里搜它用的 2-8 字关键词，比如 麻辣烫 / 黄焖鸡米饭 / 螺蛳粉）`;
 
   try {
     const claude = getClaude();
@@ -81,14 +83,21 @@ ${herState ? `她最近状态：${herState}。` : ""}${avoid.length ? `她不想
       system,
       messages: [{ role: "user", content: prompt }],
     });
-    const pick = res.content
+    const raw = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
-      .trim()
-      .replace(/^["「“]+|["」”]+$/g, "");
+      .trim();
+    const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+    let keyword = "";
+    let pickLine = "";
+    for (const l of lines) {
+      if (/^搜[：:]/.test(l)) keyword = l.replace(/^搜[：:]/, "").trim();
+      else if (!pickLine) pickLine = l;
+    }
+    const pick = (pickLine || raw).replace(/^["「“]+|["」”]+$/g, "");
     if (!pick) return NextResponse.json({ error: "想不出来，你说呢" }, { status: 502 });
-    return NextResponse.json({ pick });
+    return NextResponse.json({ pick, keyword });
   } catch (err) {
     const m =
       err instanceof Anthropic.APIError && err.status === 429

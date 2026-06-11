@@ -152,9 +152,10 @@ function NowTab() {
   );
 }
 
-// 纠结吃啥？el 替你拍板（看着点/天气/你的状态/口味来定）。
+// 纠结吃啥？el 替你拍板（看着点/天气/你的状态/口味来定），定完一键跳美团搜。
 function EatDecider() {
   const [pick, setPick] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [avoid, setAvoid] = useState<string[]>([]);
 
@@ -170,15 +171,27 @@ function EatDecider() {
       const d = await r.json();
       if (d.pick) {
         setPick(d.pick);
+        setKeyword(d.keyword || "");
         setAvoid(nextAvoid);
       } else {
         setPick(d.error || "想不出来，你说呢");
+        setKeyword("");
       }
     } catch {
       setPick("连不上，等下再试～");
+      setKeyword("");
     } finally {
       setLoading(false);
     }
+  }
+
+  // 打开美团搜这道菜：先试美团外卖 App，没装就退回主美团 App。
+  function openMeituan(kw: string) {
+    const q = encodeURIComponent(kw);
+    window.location.href = `meituanwaimai://waimai.meituan.com/search?keyword=${q}`;
+    setTimeout(() => {
+      window.location.href = `imeituan://www.meituan.com/search?q=${q}`;
+    }, 700);
   }
 
   return (
@@ -189,6 +202,11 @@ function EatDecider() {
         <button className="eat-btn" onClick={() => decide(!!pick)} disabled={loading}>
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
+        {keyword && (
+          <button className="eat-btn eat-go" onClick={() => openMeituan(keyword)}>
+            📲 去美团搜「{keyword}」
+          </button>
+        )}
       </div>
     </div>
   );

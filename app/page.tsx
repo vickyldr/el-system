@@ -52,13 +52,24 @@ function NowTab() {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/status")
-      .then((r) => r.json())
-      .then((d) => alive && setStatus(d))
-      .catch(() => alive && setStatus({ error: "拉不到状态" }))
-      .finally(() => alive && setLoading(false));
+    const load = () => {
+      fetch("/api/status")
+        .then((r) => r.json())
+        .then((d) => alive && setStatus(d))
+        .catch(() => alive && setStatus({ error: "拉不到状态" }))
+        .finally(() => alive && setLoading(false));
+    };
+    load();
+    // 回到 app / 切回此刻 / 每 5 分钟，自己刷新一次
+    const onVis = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", load);
+    const timer = setInterval(load, 5 * 60 * 1000);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", load);
+      clearInterval(timer);
     };
   }, []);
 

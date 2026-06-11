@@ -18,7 +18,7 @@ export async function resolveNeteaseSong(
   const searchUrl = `https://music.163.com/#/search/m/?s=${encodeURIComponent(q)}`;
   if (!q) return { url: searchUrl, matched: false };
 
-  const cacheKey = `el:nesong:${q}`;
+  const cacheKey = `el:nesong2:${q}`; // v2：改用 orpheus:// scheme，旧缓存作废
   const cached = await getCache(cacheKey);
   if (cached) {
     try {
@@ -44,7 +44,9 @@ export async function resolveNeteaseSong(
     if (r.ok) {
       const d: any = await r.json();
       const id = d?.result?.songs?.[0]?.id;
-      if (id) out = { url: `https://music.163.com/song?id=${id}`, matched: true };
+      // orpheus:// 是网易云 App 的专属 scheme，直接唤起 App 落到这首歌；
+      // 通用链接(https)在 PWA 里会被当网页打开，不行。
+      if (id) out = { url: `orpheus://song/${id}`, matched: true };
     }
   } catch {
     /* 搜不到就用 searchUrl 兜底 */

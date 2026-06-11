@@ -106,7 +106,7 @@ function NowTab() {
 
           {status?.song_recommendation &&
             (status.song_url ? (
-              <a className="card song song-link" href={status.song_url} target="_blank" rel="noreferrer">
+              <a className="card song song-link" href={status.song_url}>
                 <div className="song-icon">▸</div>
                 <div>
                   <div className="card-label">我想让你听 · 点开去网易云听 ♫</div>

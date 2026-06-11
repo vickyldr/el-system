@@ -278,14 +278,13 @@ function FindTab() {
     }
   }
 
-  // 上传一张表情进共享库：保留 GIF 动图（readAsDataURL，不缩放），写个"意思"当标签。
+  // 上传一张表情进共享库：保留 GIF 动图（readAsDataURL，不缩放）。
+  // 我上传时自己看图写标签；你想补一句就补，不补也行。
   async function uploadSticker(file: File) {
-    const tags = window.prompt("给这张表情写个意思（el 靠它读懂、也靠它搜出来发）：\n比如 想你 / 无语 / 大哭 / 得意");
-    if (tags === null) return;
-    if (!tags.trim()) {
-      alert("写个意思吧，不然 el 不知道这是啥");
-      return;
-    }
+    const note = window.prompt(
+      "传这张表情～（直接确定就行，我会自己看图认）\n想补一句它的意思也可以：比如 这个我俩专属 / 生气专用",
+    );
+    if (note === null) return;
     setUploadingStk(true);
     try {
       const dataUrl: string = await new Promise((resolve, reject) => {
@@ -297,7 +296,7 @@ function FindTab() {
       const r = await fetch("/api/stickers/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl, tags: tags.trim() }),
+        body: JSON.stringify({ dataUrl, tags: note.trim() }),
       });
       const d = await r.json();
       if (d.ok) {

@@ -23,29 +23,23 @@ export default function RegisterSW() {
         .catch(() => {});
     }
 
-    // iOS standalone 下 100dvh 有时算不准；用真实可视高度撑满屏幕。
-    // 平时用 window.innerHeight（独立 PWA 里就是整屏高，稳，刚加载也准）；
-    // 只有键盘真的弹起来（可视高度明显变矮）才切到 visualViewport，让输入框不被挡。
+    // 高度：平时完全交给 CSS 的 100dvh（独立 PWA 里就是整屏高，启动即正确，不会悬空）。
+    // JS 只在键盘弹起时临时顶一下，让输入框露出来；键盘一收就还给 CSS。
     const setH = () => {
       const full = window.innerHeight;
       const vv = window.visualViewport?.height ?? full;
-      const h = full - vv > 120 ? vv : full;
-      document.documentElement.style.setProperty("--app-h", `${Math.round(h)}px`);
+      if (full - vv > 120) {
+        document.documentElement.style.setProperty("--app-h", `${Math.round(vv)}px`);
+      } else {
+        document.documentElement.style.removeProperty("--app-h");
+      }
     };
     setH();
-    // 刚进 app iOS 会先量小一拍，加载后多测几次抢救回来。
-    requestAnimationFrame(setH);
-    const timers = [setTimeout(setH, 200), setTimeout(setH, 500)];
-    window.addEventListener("load", setH);
-    window.addEventListener("pageshow", setH);
     window.addEventListener("resize", setH);
     window.addEventListener("orientationchange", setH);
     window.visualViewport?.addEventListener("resize", setH);
     window.visualViewport?.addEventListener("scroll", setH);
     return () => {
-      timers.forEach(clearTimeout);
-      window.removeEventListener("load", setH);
-      window.removeEventListener("pageshow", setH);
       window.removeEventListener("resize", setH);
       window.removeEventListener("orientationchange", setH);
       window.visualViewport?.removeEventListener("resize", setH);

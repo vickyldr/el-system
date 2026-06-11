@@ -4,6 +4,19 @@ import { useEffect } from "react";
 
 export default function RegisterSW() {
   useEffect(() => {
+    // 异步加载 MiSans 中文字体——绝不阻塞渲染（外链 CSS 会阻塞，CDN 被墙就白屏）。
+    // 加载不到就用系统 PingFang，页面照常。
+    ["MiSans-Regular", "MiSans-Semibold"].forEach((name) => {
+      if (document.querySelector(`link[data-font="${name}"]`)) return;
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = `https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/${name}.min.css`;
+      l.setAttribute("data-font", name);
+      l.media = "print";
+      l.onload = () => (l.media = "all"); // 加载好了再应用，全程不挡渲染
+      document.head.appendChild(l);
+    });
+
     if ("serviceWorker" in navigator) {
       // updateViaCache:"none" —— 每次都重新拉 sw.js，别用浏览器缓存的旧 SW
       navigator.serviceWorker

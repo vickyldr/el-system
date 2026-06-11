@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { recentSummaries } from "@/lib/notion";
+import { resolveNeteaseSong } from "@/lib/netease";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
@@ -131,13 +132,19 @@ export async function GET() {
     ({ song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? ""));
   }
 
-  const weather = await getWeather();
+  const [weather, song] = await Promise.all([
+    getWeather(),
+    song_recommendation
+      ? resolveNeteaseSong(song_recommendation).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   return NextResponse.json({
     mood,
     thought,
     song_recommendation,
     song_reason,
+    song_url: song?.url ?? null, // 点一下直达网易云
     el_note: latest?.elNote ?? "", // 「El说」那一句
     her_state: latest?.herState ?? "", // 你的状态：好/一般/累了/难过
     weather,

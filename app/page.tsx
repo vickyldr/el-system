@@ -39,6 +39,7 @@ type Status = {
   thought?: string;
   song_recommendation?: string;
   song_reason?: string;
+  song_url?: string | null;
   el_note?: string;
   her_state?: string;
   weather?: Weather;
@@ -103,16 +104,26 @@ function NowTab() {
             </div>
           )}
 
-          {status?.song_recommendation && (
-            <div className="card song">
-              <div className="song-icon">♪</div>
-              <div>
-                <div className="card-label">我想让你听</div>
-                <div className="song-name">{status.song_recommendation}</div>
-                {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
+          {status?.song_recommendation &&
+            (status.song_url ? (
+              <a className="card song song-link" href={status.song_url} target="_blank" rel="noreferrer">
+                <div className="song-icon">▸</div>
+                <div>
+                  <div className="card-label">我想让你听 · 点开去网易云听 ♫</div>
+                  <div className="song-name">{status.song_recommendation}</div>
+                  {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
+                </div>
+              </a>
+            ) : (
+              <div className="card song">
+                <div className="song-icon">♪</div>
+                <div>
+                  <div className="card-label">我想让你听</div>
+                  <div className="song-name">{status.song_recommendation}</div>
+                  {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
 
           {status?.weather && (
             <div className="card">

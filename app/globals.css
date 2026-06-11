@@ -590,6 +590,19 @@ body::before {
   align-items: center;
 }
 
+/* 可点的歌曲卡：去掉链接默认样式，加一点按压反馈 */
+.song-link {
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.song-link:active {
+  transform: scale(0.985);
+  box-shadow: 0 6px 18px var(--glow);
+}
+
 .song-icon {
   flex-shrink: 0;
   width: 48px;

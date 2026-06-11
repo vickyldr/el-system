@@ -18,7 +18,7 @@ export async function resolveNeteaseSong(
   const searchUrl = `https://music.163.com/#/search/m/?s=${encodeURIComponent(q)}`;
   if (!q) return { url: searchUrl, matched: false };
 
-  const cacheKey = `el:nesong2:${q}`; // v2：改用 orpheus:// scheme，旧缓存作废
+  const cacheKey = `el:nesong3:${q}`; // v3：老搜索接口被加密了，改用 suggest/web 明文接口
   const cached = await getCache(cacheKey);
   if (cached) {
     try {
@@ -30,14 +30,14 @@ export async function resolveNeteaseSong(
 
   let out = { url: searchUrl, matched: false };
   try {
+    // /api/search/get/web 已被网易云加密（返回密文）；suggest/web 仍是明文，能拿到 id。
     const r = await fetch(
-      `https://music.163.com/api/search/get/web?type=1&limit=1&s=${encodeURIComponent(q)}`,
+      `https://music.163.com/api/search/suggest/web?s=${encodeURIComponent(q)}`,
       {
         cache: "no-store",
         headers: {
           Referer: "https://music.163.com/",
           "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
-          Cookie: "appver=8.0.0",
         },
       },
     );

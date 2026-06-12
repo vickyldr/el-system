@@ -344,11 +344,12 @@ function NowTab() {
 
       {!loading && hasAny && (
         <>
-          {(status?.mood || status?.thought) && (
+          {(status?.mood || status?.thought || status?.el_note) && (
             <div className="card mood-card">
               <div className="card-label">心情</div>
               <div className="card-value">{status?.mood || <span className="muted">—</span>}</div>
               {status?.thought && <div className="meta">{status.thought}</div>}
+              {status?.el_note && <div className="meta" style={{marginTop: 8, color: "var(--ink)"}}>{status.el_note}</div>}
             </div>
           )}
 
@@ -388,20 +389,69 @@ function NowTab() {
             </div>
           )}
 
-          {status?.el_note && (
-            <div className="card">
-              <div className="card-label">El 说</div>
-              <div className="card-value el-note">{status.el_note}</div>
-            </div>
-          )}
-
           {status?.date && <div className="meta">{friendlyDate(status.date)}</div>}
         </>
       )}
 
       <FortuneCard />
+      <ComingUp />
       <EatDecider />
     </>
+  );
+}
+
+/* ───────────── 接下来 ───────────── */
+function ComingUp() {
+  const PERIOD_START_DAY = 2;
+  const PERIOD_LENGTH = 7;
+  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>("/api/reminders");
+  const reminders = data?.reminders ?? [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayMs = 86400000;
+
+  // 计算经期倒数
+  const y = today.getFullYear(), m = today.getMonth();
+  const thisStart = new Date(y, m, PERIOD_START_DAY);
+  const nextStart = +today >= +thisStart
+    ? new Date(y, m + 1, PERIOD_START_DAY)
+    : thisStart;
+  const periodDays = Math.ceil((+nextStart - +today) / dayMs);
+  const inPeriod = +today >= +thisStart && +today < new Date(y, m, PERIOD_START_DAY + PERIOD_LENGTH).getTime();
+
+  // 提醒倒数（去重：只保留每个text最早一条）
+  const seen = new Set<string>();
+  const items: { days: number; text: string }[] = [];
+
+  if (inPeriod) {
+    const day = Math.floor((+today - +thisStart) / dayMs) + 1;
+    items.push({ days: 0, text: `经期第 ${day} 天` });
+  } else if (periodDays <= 14) {
+    items.push({ days: periodDays, text: "经期" });
+  }
+
+  for (const r of reminders) {
+    if (seen.has(r.text)) continue;
+    seen.add(r.text);
+    const d = new Date(r.date + "T00:00:00+08:00");
+    d.setHours(0, 0, 0, 0);
+    const days = Math.ceil((+d - +today) / dayMs);
+    if (days >= 0 && days <= 30) items.push({ days, text: r.text });
+  }
+
+  items.sort((a, b) => a.days - b.days);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card-label">接下来</div>
+      {items.map((item, i) => (
+        <div key={i} className="meta" style={{ marginTop: i === 0 ? 0 : 6, color: "var(--ink)" }}>
+          {item.days === 0 ? item.text : `还有 ${item.days} 天 · ${item.text}`}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1640,7 +1690,7 @@ function FindTab() {
 
 /* ───────────── 我们 ───────────── */
 
-type SubTab = "timeline" | "wishlist" | "memory" | "things";
+type SubTab = "timeline" | "wishlist" | "memory";
 
 function UsTab() {
   const [sub, setSub] = useState<SubTab>("timeline");
@@ -1648,13 +1698,11 @@ function UsTab() {
     timeline: "时间轴",
     wishlist: "愿望墙",
     memory: "记忆",
-    things: "小事",
   };
   const subIcons: Record<SubTab, string> = {
     timeline: "clock",
     wishlist: "star",
     memory: "bookmark",
-    things: "bell",
   };
 
   return (
@@ -1675,7 +1723,6 @@ function UsTab() {
       {sub === "timeline" && <TimelineView />}
       {sub === "wishlist" && <WishlistView />}
       {sub === "memory" && <MemoryView />}
-      {sub === "things" && <ThingsView />}
     </>
   );
 }

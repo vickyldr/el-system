@@ -438,14 +438,8 @@ function EatDecider() {
     }
   }
 
-  // 唤起美团搜这道菜：用隐藏 iframe 触发协议，绝不动主页面（用链接/window.location 会把 PWA 这页跳白）。
   function openMeituan(kw: string) {
-    const url = `imeituan://www.meituan.com/search?q=${encodeURIComponent(kw)}`;
-    const ifr = document.createElement("iframe");
-    ifr.style.display = "none";
-    document.body.appendChild(ifr);
-    ifr.src = url;
-    setTimeout(() => ifr.remove(), 1500);
+    window.open(`https://i.meituan.com/search?q=${encodeURIComponent(kw)}`, "_blank");
   }
 
   return (

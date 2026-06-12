@@ -393,8 +393,8 @@ function NowTab() {
         </>
       )}
 
-      <ComingUp />
       <FortuneCard />
+      <ComingUp />
       <EatDecider />
     </>
   );
@@ -427,7 +427,7 @@ function ComingUp() {
   if (inPeriod) {
     const day = Math.floor((+today - +thisStart) / dayMs) + 1;
     items.push({ days: 0, text: `经期第 ${day} 天` });
-  } else if (periodDays <= 14) {
+  } else {
     items.push({ days: periodDays, text: "经期" });
   }
 
@@ -446,11 +446,19 @@ function ComingUp() {
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="card-label">接下来</div>
-      {items.map((item, i) => (
-        <div key={i} className="meta" style={{ marginTop: i === 0 ? 0 : 6, color: "var(--ink)" }}>
-          {item.days === 0 ? item.text : `还有 ${item.days} 天 · ${item.text}`}
-        </div>
-      ))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+            <div style={{ fontSize: 15 }}>
+              {item.days === 0
+                ? item.text
+                : <><span style={{ color: "var(--ink-soft)", fontSize: 13 }}>还有 {item.days} 天</span>{"  "}{item.text}</>
+              }
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

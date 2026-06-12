@@ -131,18 +131,18 @@ function NowTab() {
 
 /* ───────────── 今日签 ───────────── */
 
-const VIBES = [
+type VibeId = "浪" | "静" | "燥" | "散" | "沉" | "轻";
+type FortunePhase = "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
+type TaskType = "confirm" | "photo";
+
+const VIBES: { id: VibeId; icon: string; line: string }[] = [
   { id: "浪", icon: "🌊", line: "今天适合冲，别想太多" },
   { id: "静", icon: "🪨", line: "今天适合不动，观察就好" },
   { id: "燥", icon: "🔥", line: "有什么压着，今天会往外跑" },
   { id: "散", icon: "🌫️", line: "今天抓不住，别强求" },
   { id: "沉", icon: "🌙", line: "往里走的一天，适合一个人待" },
   { id: "轻", icon: "✨", line: "意外之喜的感觉" },
-] as const;
-
-type VibeId = (typeof VIBES)[number]["id"];
-type FortunePhase = "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
-type TaskType = "confirm" | "photo";
+];
 
 interface FortuneState {
   date: string;

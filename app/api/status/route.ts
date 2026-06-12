@@ -49,6 +49,7 @@ function weatherNote(temp: number, desc: string): string {
 function parseNow(text: string): {
   mood: string;
   thought: string;
+  outfit: string;
   song_recommendation: string;
   song_reason: string;
 } {
@@ -59,6 +60,7 @@ function parseNow(text: string): {
   };
   const mood = pick("心情") || lines[0] || "";
   const thought = pick("在想") || pick("在想什么");
+  const outfit = pick("穿搭") || pick("穿衣");
   const songLine = pick("歌") || pick("想让你听");
   let song_recommendation = "";
   let song_reason = "";
@@ -74,7 +76,7 @@ function parseNow(text: string): {
       song_recommendation = songLine;
     }
   }
-  return { mood, thought, song_recommendation, song_reason };
+  return { mood, thought, outfit, song_recommendation, song_reason };
 }
 
 // 根据天气描述给个符号。
@@ -124,12 +126,14 @@ export async function GET() {
   const nowText = (latest?.now ?? "").trim();
   let mood: string;
   let thought: string;
+  let outfit: string;
   let song_recommendation: string;
   let song_reason: string;
   if (nowText) {
-    ({ mood, thought, song_recommendation, song_reason } = parseNow(nowText));
+    ({ mood, thought, outfit, song_recommendation, song_reason } = parseNow(nowText));
   } else {
     ({ mood, thought } = splitDiary(latest?.elDiary ?? ""));
+    outfit = "";
     ({ song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? ""));
   }
 
@@ -163,11 +167,12 @@ export async function GET() {
   return NextResponse.json({
     mood,
     thought,
+    outfit: outfit || null,
     song_recommendation,
     song_reason,
-    song_url: song?.url ?? null, // 点一下直达网易云
-    el_note: latest?.elNote ?? "", // 「El说」那一句
-    her_state: latest?.herState ?? "", // 你的状态：好/一般/累了/难过
+    song_url: song?.url ?? null,
+    el_note: latest?.elNote ?? "",
+    her_state: latest?.herState ?? "",
     weather,
     date: latest?.date ?? null,
   });

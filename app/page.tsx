@@ -252,6 +252,7 @@ type Weather = { temp: number; desc: string; city: string; note?: string; icon?:
 type Status = {
   mood?: string;
   thought?: string;
+  outfit?: string | null;
   song_recommendation?: string;
   song_reason?: string;
   song_url?: string | null;
@@ -377,42 +378,39 @@ function ElStatusCard({ status }: { status: Status }) {
 
       {active === "mood" && hasMood && (
         <div className="status-pane">
-          <div className="card-value">{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta" style={{ marginTop: 6 }}>{status.thought}</div>}
+          <div className="card-label">心情</div>
+          <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
+          {status.thought && <div className="meta" style={{ marginTop: 8 }}>{status.thought}</div>}
           {status.el_note && <div className="meta" style={{ marginTop: 8, color: "var(--ink)" }}>{status.el_note}</div>}
         </div>
       )}
 
       {active === "weather" && hasWeather && (
         <div className="status-pane">
-          <div className="card-label" style={{ marginBottom: 6 }}>天气 · {status.weather!.city}</div>
-          <div className="card-value">
+          <div className="card-label">天气 · {status.weather!.city}</div>
+          <div className="card-value" style={{ marginTop: 4 }}>
             {status.weather!.icon ? `${status.weather!.icon} ` : ""}
             {status.weather!.temp}° {status.weather!.desc}
           </div>
-          {status.weather!.note && <div className="meta" style={{ marginTop: 6 }}>{status.weather!.note}</div>}
+          {status.weather!.note && <div className="meta" style={{ marginTop: 8 }}>{status.weather!.note}</div>}
+          {status.outfit && <div className="meta" style={{ marginTop: 6, color: "var(--ink)" }}>{status.outfit}</div>}
         </div>
       )}
 
       {active === "song" && hasSong && (
         <div className="status-pane">
+          <div className="card-label">今天想让你听</div>
           {status.song_url ? (
-            <a className="song" href={status.song_url} style={{ display: "flex", gap: 14, alignItems: "center", textDecoration: "none", color: "inherit" }}>
-              <div className="song-icon"><Icon name="music" size={22} /></div>
-              <div>
-                <div className="card-label">点开去网易云听 ♫</div>
-                <div className="song-name">{status.song_recommendation}</div>
-                {status.song_reason && <div className="song-reason">{status.song_reason}</div>}
-              </div>
+            <a href={status.song_url} style={{ textDecoration: "none", color: "inherit" }}>
+              <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation} ♫</div>
+              {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
+              <div className="meta" style={{ marginTop: 6 }}>点开去网易云听</div>
             </a>
           ) : (
-            <div className="song" style={{ display: "flex", gap: 14, alignItems: "center" }}>
-              <div className="song-icon"><Icon name="music" size={22} /></div>
-              <div>
-                <div className="song-name">{status.song_recommendation}</div>
-                {status.song_reason && <div className="song-reason">{status.song_reason}</div>}
-              </div>
-            </div>
+            <>
+              <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation}</div>
+              {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
+            </>
           )}
         </div>
       )}
@@ -775,9 +773,10 @@ function FortuneCard() {
       <div className="fortune-label">今日签</div>
 
       {/* 主签体 */}
-      <div className={`fortune-vibe ${isBound ? "bound" : ""}`}>
+      <div className="fortune-vibe">
         <span className="fortune-icon">{currentVibe?.icon}</span>
         <span className="fortune-name">{currentVibe?.id}</span>
+        {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)", marginLeft: 4 }}>已绑</span>}
         {isInit
           ? <span className="fortune-line muted">正在抽…</span>
           : currentTagline

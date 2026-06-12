@@ -131,7 +131,7 @@ function NowTab() {
 
 /* ───────────── 今日签 ───────────── */
 
-type VibeId = "浪" | "静" | "燥" | "散" | "沉" | "锐" | "软" | "野" | "钝" | "甜";
+type VibeId = "浪" | "静" | "燥" | "散" | "沉" | "轻" | "锐" | "软" | "野" | "钝";
 type FortunePhase = "init" | "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
 type TaskType = "confirm" | "photo";
 
@@ -284,7 +284,7 @@ function FortuneCard() {
         if (!prev) return prev;
         const taglines = [...prev.taglines];
         taglines[2] = tagline;
-        const next = { ...prev, taglines, phase: "t_show" as FortunePhase, task: t, taskType: isPhoto ? "photo" : "confirm" };
+        const next = { ...prev, taglines, phase: "t_show" as FortunePhase, task: t, taskType: (isPhoto ? "photo" : "confirm") as TaskType };
         saveFortuneState(next);
         return next;
       });

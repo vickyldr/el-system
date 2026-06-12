@@ -323,7 +323,7 @@ body::before {
 /* ── 今日签 ── */
 .fortune-card {
   position: relative;
-  background: var(--glass);
+  background: var(--bg-deep, rgba(20, 23, 34, 0.82));
   animation: fadeInUp 0.42s ease both;
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -332,16 +332,16 @@ body::before {
   margin-bottom: 14px;
   border: 1px solid transparent;
   background-clip: padding-box;
-  box-shadow: var(--shadow), 0 0 28px rgba(123, 111, 240, 0.18);
+  box-shadow: var(--shadow), 0 0 14px rgba(123, 111, 240, 0.12);
 }
 
-/* 渐变描边：用伪元素做彩虹边框 */
+/* 渐变描边：细细一圈，低调的紫色边 */
 .fortune-card::before {
   content: "";
   position: absolute;
   inset: -1px;
   border-radius: 17px;
-  background: linear-gradient(135deg, rgba(123,111,240,0.55), rgba(214,132,173,0.4), rgba(83,74,183,0.45));
+  background: linear-gradient(135deg, rgba(123,111,240,0.35), rgba(214,132,173,0.22), rgba(83,74,183,0.3));
   z-index: -1;
 }
 

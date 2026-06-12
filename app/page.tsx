@@ -123,7 +123,228 @@ function NowTab() {
           {status?.date && <div className="meta">{status.date}</div>}
         </>
       )}
+
+      <FortuneCard />
     </>
+  );
+}
+
+/* ───────────── 今日签 ───────────── */
+
+const VIBES = [
+  { id: "浪", icon: "🌊", line: "今天适合冲，别想太多" },
+  { id: "静", icon: "🪨", line: "今天适合不动，观察就好" },
+  { id: "燥", icon: "🔥", line: "有什么压着，今天会往外跑" },
+  { id: "散", icon: "🌫️", line: "今天抓不住，别强求" },
+  { id: "沉", icon: "🌙", line: "往里走的一天，适合一个人待" },
+  { id: "轻", icon: "✨", line: "意外之喜的感觉" },
+] as const;
+
+type VibeId = (typeof VIBES)[number]["id"];
+type FortunePhase = "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
+type TaskType = "confirm" | "photo";
+
+interface FortuneState {
+  date: string;
+  vibes: [VibeId, VibeId, VibeId]; // draw[0]=free, draw[1]=after-q, draw[2]=after-task
+  drawIndex: number; // 0=first, 1=second, 2=third
+  phase: FortunePhase;
+  question?: string;
+  task?: string;
+  taskType?: TaskType;
+  bindPhrase?: string;
+  answer?: string;
+}
+
+function todayKey() {
+  return new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" });
+}
+
+function seededVibe(seed: string, salt: number): VibeId {
+  let h = salt * 2654435761;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 2246822519);
+  return VIBES[Math.abs(h) % VIBES.length].id;
+}
+
+function initState(date: string): FortuneState {
+  const v0 = seededVibe(date, 0);
+  let v1 = seededVibe(date, 1);
+  if (v1 === v0) v1 = VIBES[(VIBES.findIndex((v) => v.id === v0) + 1) % VIBES.length].id;
+  let v2 = seededVibe(date, 2);
+  if (v2 === v1 || v2 === v0) v2 = VIBES[(VIBES.findIndex((v) => v.id === v1) + 2) % VIBES.length].id;
+  return { date, vibes: [v0, v1, v2], drawIndex: 0, phase: "idle" };
+}
+
+const FORTUNE_KEY = "el_fortune";
+
+function loadFortuneState(): FortuneState {
+  const today = todayKey();
+  try {
+    const raw = localStorage.getItem(FORTUNE_KEY);
+    if (raw) {
+      const s: FortuneState = JSON.parse(raw);
+      if (s.date === today) return s;
+    }
+  } catch {}
+  return initState(today);
+}
+
+function saveFortuneState(s: FortuneState) {
+  try { localStorage.setItem(FORTUNE_KEY, JSON.stringify(s)); } catch {}
+}
+
+function FortuneCard() {
+  const [s, setS] = useState<FortuneState | null>(null);
+  const [answerInput, setAnswerInput] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setS(loadFortuneState()); }, []);
+
+  function update(patch: Partial<FortuneState>) {
+    setS((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      saveFortuneState(next);
+      return next;
+    });
+  }
+
+  async function callFortune(action: string, vibe: string) {
+    const res = await fetch("/api/fortune", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, vibe }),
+    });
+    const data = await res.json();
+    return data.text as string;
+  }
+
+  // 第一次：免费直接换签
+  function doFreeReroll() {
+    update({ drawIndex: 1, phase: "q_loading" });
+    const vibe = s!.vibes[0];
+    callFortune("question", vibe).then((q) => {
+      update({ phase: "q_show", question: q });
+    }).catch(() => update({ phase: "q_show", question: "今天有没有认真喝水" }));
+  }
+
+  // 提交回答，换第二签
+  function submitAnswer() {
+    if (!answerInput.trim()) return;
+    update({ answer: answerInput, phase: "t_loading" });
+    const vibe = s!.vibes[1];
+    callFortune("task", vibe).then((t) => {
+      const isPhoto = t.includes("发我") || t.includes("拍");
+      update({ phase: "t_show", task: t, taskType: isPhoto ? "photo" : "confirm" });
+    }).catch(() => update({ phase: "t_show", task: "去喝一杯水", taskType: "confirm" }));
+  }
+
+  // 完成任务，换第三签
+  function completeTask() {
+    update({ drawIndex: 2, phase: "done" });
+  }
+
+  async function uploadPhoto(file: File) {
+    setPhotoUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await fetch("/api/upload", { method: "POST", body: form });
+      completeTask();
+    } catch {
+      alert("上传失败，再试一次");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  // 绑签
+  async function bindSign() {
+    if (!s) return;
+    update({ phase: "binding" });
+    const vibe = s.vibes[s.drawIndex];
+    const phrase = await callFortune("bind", vibe).catch(() => "留在这里了，你走。");
+    update({ phase: "bound", bindPhrase: phrase });
+  }
+
+  if (!s) return null;
+
+  const currentVibe = VIBES.find((v) => v.id === s.vibes[s.drawIndex])!;
+  const isBound = s.phase === "bound" || s.phase === "binding";
+
+  return (
+    <div className="fortune-card">
+      <div className="fortune-label">今日签</div>
+
+      {/* 主签体 */}
+      <div className={`fortune-vibe ${isBound ? "bound" : ""}`}>
+        <span className="fortune-icon">{currentVibe.icon}</span>
+        <span className="fortune-name">{currentVibe.id}</span>
+        <span className="fortune-line">{currentVibe.line}</span>
+      </div>
+
+      {/* 绑签后的压签话 */}
+      {s.phase === "binding" && <div className="fortune-bind-phrase muted">压住中…</div>}
+      {s.phase === "bound" && s.bindPhrase && (
+        <div className="fortune-bind-phrase">「{s.bindPhrase}」</div>
+      )}
+
+      {/* 问题区 */}
+      {s.phase === "q_loading" && <div className="fortune-prompt muted">想一个问题…</div>}
+      {s.phase === "q_show" && (
+        <div className="fortune-toll">
+          <div className="fortune-toll-label">回答我才能再抽</div>
+          <div className="fortune-question">{s.question}</div>
+          <input
+            className="fortune-input"
+            placeholder="说"
+            value={answerInput}
+            onChange={(e) => setAnswerInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
+          />
+          <button className="fortune-btn" onClick={submitAnswer} disabled={!answerInput.trim()}>
+            回答，抽
+          </button>
+        </div>
+      )}
+
+      {/* 任务区 */}
+      {s.phase === "t_loading" && <div className="fortune-prompt muted">出个任务…</div>}
+      {s.phase === "t_show" && (
+        <div className="fortune-toll">
+          <div className="fortune-toll-label">做了才能最后一抽</div>
+          <div className="fortune-question">{s.task}</div>
+          {s.taskType === "confirm" ? (
+            <button className="fortune-btn" onClick={completeTask}>做了</button>
+          ) : (
+            <>
+              <input ref={fileRef} type="file" accept="image/*" capture="user" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
+              <button className="fortune-btn" onClick={() => fileRef.current?.click()} disabled={photoUploading}>
+                {photoUploading ? "上传中…" : "📷 发给我"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 底部操作 */}
+      <div className="fortune-actions">
+        {/* 重抽按钮 */}
+        {s.phase === "idle" && !isBound && (
+          <button className="fortune-reroll" onClick={doFreeReroll}>重抽</button>
+        )}
+        {(s.phase === "done") && !isBound && (
+          <span className="fortune-done-hint muted">今天就这张了</span>
+        )}
+
+        {/* 绑签按钮：任何状态（除了已绑/绑中）都可以绑 */}
+        {!isBound && s.phase !== "q_loading" && s.phase !== "t_loading" && (
+          <button className="fortune-bind" onClick={bindSign}>🎋 绑签</button>
+        )}
+      </div>
+    </div>
   );
 }
 

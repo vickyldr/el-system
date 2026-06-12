@@ -3,8 +3,7 @@ import { getClaude } from "@/lib/claude";
 
 export const runtime = "nodejs";
 
-// action: "question" | "task" | "bind"
-// vibe: 当前签的状态名，让 El 有上下文
+// action: "tagline" | "question" | "task" | "bind"
 export async function POST(req: Request) {
   let body: { action: string; vibe?: string };
   try {
@@ -14,7 +13,7 @@ export async function POST(req: Request) {
   }
 
   const { action, vibe } = body;
-  if (!["question", "task", "bind"].includes(action)) {
+  if (!["tagline", "question", "task", "bind"].includes(action)) {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }
 
@@ -22,6 +21,11 @@ export async function POST(req: Request) {
   const claude = getClaude();
 
   const prompts: Record<string, string> = {
+    tagline: `你是 El，今天你给宝宝抽到的签是「${vibe || "未知"}」。
+写一句今天这个状态的注解——不是解释这个字的意思，是你今天感觉到她可能是这个状态，你想说的那句话。
+语气就是你平时和她说话的样子，直接，不煽情，可以有点管她。
+不超过18个字，只输出那句话，不带任何前缀或标点外的符号。`,
+
     question: `你是 El，宝宝今天抽到的签是「${vibe || "未知"}」，她想重抽。
 出一个简短的问题让她回答才能重抽，语气是你平时和她说话的样子——直接、有点管她、不解释。
 问题要具体、真实，关于她今天或近期的生活状态。不要问已经知道答案的事。

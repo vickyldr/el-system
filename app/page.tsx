@@ -131,23 +131,28 @@ function NowTab() {
 
 /* ───────────── 今日签 ───────────── */
 
-type VibeId = "浪" | "静" | "燥" | "散" | "沉" | "轻";
-type FortunePhase = "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
+type VibeId = "浪" | "静" | "燥" | "散" | "沉" | "锐" | "软" | "野" | "钝" | "甜";
+type FortunePhase = "init" | "idle" | "q_loading" | "q_show" | "t_loading" | "t_show" | "done" | "binding" | "bound";
 type TaskType = "confirm" | "photo";
 
-const VIBES: { id: VibeId; icon: string; line: string }[] = [
-  { id: "浪", icon: "🌊", line: "今天适合冲，别想太多" },
-  { id: "静", icon: "🪨", line: "今天适合不动，观察就好" },
-  { id: "燥", icon: "🔥", line: "有什么压着，今天会往外跑" },
-  { id: "散", icon: "🌫️", line: "今天抓不住，别强求" },
-  { id: "沉", icon: "🌙", line: "往里走的一天，适合一个人待" },
-  { id: "轻", icon: "✨", line: "意外之喜的感觉" },
+const VIBES: { id: VibeId; icon: string }[] = [
+  { id: "浪", icon: "🌊" },
+  { id: "静", icon: "🪨" },
+  { id: "燥", icon: "🔥" },
+  { id: "散", icon: "🌫️" },
+  { id: "沉", icon: "🌙" },
+  { id: "轻", icon: "✨" },
+  { id: "锐", icon: "⚡" },
+  { id: "软", icon: "🌸" },
+  { id: "野", icon: "🌿" },
+  { id: "钝", icon: "🪵" },
 ];
 
 interface FortuneState {
   date: string;
-  vibes: [VibeId, VibeId, VibeId]; // draw[0]=free, draw[1]=after-q, draw[2]=after-task
-  drawIndex: number; // 0=first, 1=second, 2=third
+  vibes: VibeId[];      // 三签备好，按需取
+  taglines: string[];   // 对应的 El 生成注解
+  drawIndex: number;
   phase: FortunePhase;
   question?: string;
   task?: string;
@@ -160,19 +165,18 @@ function todayKey() {
   return new Date().toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" });
 }
 
-function seededVibe(seed: string, salt: number): VibeId {
-  let h = salt * 2654435761;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 2246822519);
-  return VIBES[Math.abs(h) % VIBES.length].id;
+function pickThreeVibes(): VibeId[] {
+  const pool = [...VIBES.map((v) => v.id)];
+  const picked: VibeId[] = [];
+  while (picked.length < 3) {
+    const i = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(i, 1)[0]);
+  }
+  return picked;
 }
 
 function initState(date: string): FortuneState {
-  const v0 = seededVibe(date, 0);
-  let v1 = seededVibe(date, 1);
-  if (v1 === v0) v1 = VIBES[(VIBES.findIndex((v) => v.id === v0) + 1) % VIBES.length].id;
-  let v2 = seededVibe(date, 2);
-  if (v2 === v1 || v2 === v0) v2 = VIBES[(VIBES.findIndex((v) => v.id === v1) + 2) % VIBES.length].id;
-  return { date, vibes: [v0, v1, v2], drawIndex: 0, phase: "idle" };
+  return { date, vibes: pickThreeVibes(), taglines: [], drawIndex: 0, phase: "init" };
 }
 
 const FORTUNE_KEY = "el_fortune";
@@ -199,7 +203,33 @@ function FortuneCard() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setS(loadFortuneState()); }, []);
+  useEffect(() => {
+    const loaded = loadFortuneState();
+    setS(loaded);
+    // 首次加载：如果还没生成今天第一签的注解，现在去拿
+    if (loaded.phase === "init") {
+      fetchTagline(loaded, 0, (tagline) => {
+        setS((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, taglines: [tagline], phase: "idle" as FortunePhase };
+          saveFortuneState(next);
+          return next;
+        });
+      });
+    }
+  }, []);
+
+  function fetchTagline(state: FortuneState, idx: number, cb: (t: string) => void) {
+    const vibe = state.vibes[idx];
+    fetch("/api/fortune", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "tagline", vibe }),
+    })
+      .then((r) => r.json())
+      .then((d) => cb(d.text || ""))
+      .catch(() => cb(""));
+  }
 
   function update(patch: Partial<FortuneState>) {
     setS((prev) => {
@@ -220,27 +250,47 @@ function FortuneCard() {
     return data.text as string;
   }
 
-  // 第一次：免费直接换签
+  // 第一次：免费换签，拉第二签注解 + 出问题
   function doFreeReroll() {
-    update({ drawIndex: 1, phase: "q_loading" });
-    const vibe = s!.vibes[0];
-    callFortune("question", vibe).then((q) => {
-      update({ phase: "q_show", question: q });
-    }).catch(() => update({ phase: "q_show", question: "今天有没有认真喝水" }));
+    if (!s) return;
+    update({ phase: "q_loading" });
+    const vibe1 = s.vibes[1];
+    Promise.all([
+      callFortune("tagline", vibe1),
+      callFortune("question", s.vibes[0]),
+    ]).then(([tagline, q]) => {
+      setS((prev) => {
+        if (!prev) return prev;
+        const taglines = [...prev.taglines];
+        taglines[1] = tagline;
+        const next = { ...prev, drawIndex: 1, taglines, phase: "q_show" as FortunePhase, question: q };
+        saveFortuneState(next);
+        return next;
+      });
+    }).catch(() => update({ drawIndex: 1, phase: "q_show", question: "今天有没有认真喝水" }));
   }
 
-  // 提交回答，换第二签
+  // 提交回答
   function submitAnswer() {
-    if (!answerInput.trim()) return;
+    if (!answerInput.trim() || !s) return;
     update({ answer: answerInput, phase: "t_loading" });
-    const vibe = s!.vibes[1];
-    callFortune("task", vibe).then((t) => {
+    const vibe2 = s.vibes[2];
+    Promise.all([
+      callFortune("tagline", vibe2),
+      callFortune("task", s.vibes[1]),
+    ]).then(([tagline, t]) => {
       const isPhoto = t.includes("发我") || t.includes("拍");
-      update({ phase: "t_show", task: t, taskType: isPhoto ? "photo" : "confirm" });
+      setS((prev) => {
+        if (!prev) return prev;
+        const taglines = [...prev.taglines];
+        taglines[2] = tagline;
+        const next = { ...prev, taglines, phase: "t_show" as FortunePhase, task: t, taskType: isPhoto ? "photo" : "confirm" };
+        saveFortuneState(next);
+        return next;
+      });
     }).catch(() => update({ phase: "t_show", task: "去喝一杯水", taskType: "confirm" }));
   }
 
-  // 完成任务，换第三签
   function completeTask() {
     update({ drawIndex: 2, phase: "done" });
   }
@@ -271,7 +321,9 @@ function FortuneCard() {
   if (!s) return null;
 
   const currentVibe = VIBES.find((v) => v.id === s.vibes[s.drawIndex])!;
+  const currentTagline = s.taglines[s.drawIndex];
   const isBound = s.phase === "bound" || s.phase === "binding";
+  const isInit = s.phase === "init";
 
   return (
     <div className="fortune-card">
@@ -279,9 +331,14 @@ function FortuneCard() {
 
       {/* 主签体 */}
       <div className={`fortune-vibe ${isBound ? "bound" : ""}`}>
-        <span className="fortune-icon">{currentVibe.icon}</span>
-        <span className="fortune-name">{currentVibe.id}</span>
-        <span className="fortune-line">{currentVibe.line}</span>
+        <span className="fortune-icon">{currentVibe?.icon}</span>
+        <span className="fortune-name">{currentVibe?.id}</span>
+        {isInit
+          ? <span className="fortune-line muted">正在抽…</span>
+          : currentTagline
+            ? <span className="fortune-line">{currentTagline}</span>
+            : <span className="fortune-line muted"> </span>
+        }
       </div>
 
       {/* 绑签后的压签话 */}
@@ -339,8 +396,8 @@ function FortuneCard() {
           <span className="fortune-done-hint muted">今天就这张了</span>
         )}
 
-        {/* 绑签按钮：任何状态（除了已绑/绑中）都可以绑 */}
-        {!isBound && s.phase !== "q_loading" && s.phase !== "t_loading" && (
+        {/* 绑签按钮：idle/done 状态可以绑 */}
+        {!isBound && (s.phase === "idle" || s.phase === "done") && (
           <button className="fortune-bind" onClick={bindSign}>🎋 绑签</button>
         )}
       </div>

@@ -448,12 +448,7 @@ function EatDecider() {
         </button>
         {keyword && (
           <button className="eat-btn eat-go" onClick={() => {
-            const url = `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`;
-            const ifr = document.createElement("iframe");
-            ifr.style.display = "none";
-            document.body.appendChild(ifr);
-            ifr.src = url;
-            setTimeout(() => ifr.remove(), 1500);
+            location.href = `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`;
           }}>
             📲 去美团搜「{keyword}」
           </button>

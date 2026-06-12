@@ -19,6 +19,43 @@ import { searchStickers, pickLibSticker } from "@/lib/stickers";
 export const runtime = "nodejs";
 export const maxDuration = 60; // 带图带工具的轮次慢，放宽时限，别让请求半路超时断了
 
+// 走 CC bridge（语音模式专用）：把消息发给 Railway 上跑的 el-bridge，拿回文字。
+async function callBridge(
+  bridgeUrl: string,
+  system: Anthropic.MessageParam["content"] | string,
+  messages: Anthropic.MessageParam[],
+  max_tokens: number,
+): Promise<string> {
+  const secret = process.env.BRIDGE_SECRET || "";
+  const systemText = Array.isArray(system)
+    ? (system as any[]).filter((b) => b.type === "text").map((b: any) => b.text).join("")
+    : String(system || "");
+  try {
+    const r = await fetch(`${bridgeUrl.replace(/\/$/, "")}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(secret ? { "x-bridge-secret": secret } : {}),
+      },
+      body: JSON.stringify({ system: systemText, messages, max_tokens }),
+    });
+    if (!r.ok) return "";
+    // bridge 返回 SSE，读完拿最后一条 done
+    const text = await r.text();
+    for (const line of text.split("\n").reverse()) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if (d.type === "done" && d.text) return d.text;
+        if (d.type === "text" && d.text) return d.text;
+      } catch { /* ignore */ }
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 type ChatTurn = {
   role: "user" | "assistant";
   content: string;
@@ -212,10 +249,19 @@ export async function POST(req: Request) {
   const turnTools = voice ? [] : allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
   const maxTok = voice ? 220 : 1024;
   try {
-    const claude = getClaude();
-    const model = (voice && process.env.CLAUDE_VOICE_MODEL) || process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
+
+    // 语音模式 + 配了 BRIDGE_URL 就走 CC bridge，不走 Anthropic SDK
+    if (voice && process.env.BRIDGE_URL) {
+      reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok);
+    }
+
+    if (reply) {
+      // bridge 已经给了回复，跳过下面的 SDK 调用
+    } else {
+    const claude = getClaude();
+    const model = (voice && process.env.CLAUDE_VOICE_MODEL) || process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
     // 工具循环：El 需要时读链接 / 读 Notion / 写记忆 / 贴表情，最多几轮。
     for (let i = 0; i < 6; i++) {
@@ -288,6 +334,7 @@ export async function POST(req: Request) {
         /* ignore */
       }
     }
+    } // end SDK block
     if (!reply) reply = "在呢，刚卡了一下，你再说一遍？";
 
     // 云端存档：base64 照片单独存、表情/外链 URL 直接存。

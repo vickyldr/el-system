@@ -1,0 +1,16 @@
+{
+  "name": "el-bridge",
+  "version": "1.0.0",
+  "description": "Claude Code bridge for el-system",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "latest",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

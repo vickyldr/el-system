@@ -447,9 +447,16 @@ function EatDecider() {
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
         {keyword && (
-          <a className="eat-btn eat-go" href={`imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`}>
+          <button className="eat-btn eat-go" onClick={() => {
+            const url = `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`;
+            const ifr = document.createElement("iframe");
+            ifr.style.display = "none";
+            document.body.appendChild(ifr);
+            ifr.src = url;
+            setTimeout(() => ifr.remove(), 1500);
+          }}>
             📲 去美团搜「{keyword}」
-          </a>
+          </button>
         )}
       </div>
     </div>

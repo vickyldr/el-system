@@ -104,13 +104,23 @@ app.post("/chat", async (req, res) => {
 
     proc.stdout.on("data", (chunk) => {
       output += chunk.toString();
-      // 流式把增量发出去
-      res.write(`data: ${JSON.stringify({ type: "text", text: chunk.toString() })}\n\n`);
     });
 
     proc.stderr.on("data", (d) => console.error("[claude stderr]", d.toString()));
 
-    proc.on("close", done);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        // 进程异常退出，发 error 让客户端 fallback 到 relay
+        console.error(`claude exited ${code}, output: ${output.slice(0, 200)}`);
+        if (!settled) {
+          settled = true;
+          res.write(`data: ${JSON.stringify({ type: "error", error: `claude exited ${code}` })}\n\n`);
+          res.end();
+        }
+        return;
+      }
+      done();
+    });
     proc.on("error", (err) => {
       console.error("spawn error:", err);
       if (!settled) {

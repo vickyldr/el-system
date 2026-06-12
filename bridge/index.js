@@ -89,10 +89,10 @@ app.post("/chat", async (req, res) => {
 
     const chosenModel = process.env.BRIDGE_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
     env.ANTHROPIC_MODEL = chosenModel;
-    const args = [
-      "--print", "--no-stream",
-      "--settings", JSON.stringify({ model: chosenModel }),
-    ];
+    // --settings 需要文件路径，不是内联 JSON
+    const settingsPath = "/tmp/claude-bridge-settings.json";
+    writeFileSync(settingsPath, JSON.stringify({ model: chosenModel }));
+    const args = ["--print", "--no-stream", "--settings", settingsPath];
     console.log(`bridge: spawning claude with model=${chosenModel}`);
     const proc = spawn(CLAUDE_BIN, args, {
       env,

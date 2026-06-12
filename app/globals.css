@@ -62,9 +62,9 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(62% 48% at 12% -4%, rgba(83, 74, 183, 0.45), transparent 68%),
-    radial-gradient(56% 44% at 102% 14%, rgba(123, 111, 240, 0.32), transparent 70%),
-    radial-gradient(52% 42% at 82% 104%, rgba(214, 132, 173, 0.22), transparent 72%),
+    radial-gradient(62% 48% at 12% -4%, rgba(83, 74, 183, 0.32), transparent 68%),
+    radial-gradient(56% 44% at 102% 14%, rgba(123, 111, 240, 0.2), transparent 70%),
+    radial-gradient(52% 42% at 82% 104%, rgba(214, 132, 173, 0.13), transparent 72%),
     var(--bg);
 }
 
@@ -308,25 +308,13 @@ body::before {
   margin-bottom: 0;
 }
 
-/* 呼吸动画：心情面板轻轻泛光，像在跳动 */
-@keyframes moodBreathe {
-  0%, 100% { box-shadow: var(--shadow), 0 0 0px transparent; }
-  50% { box-shadow: var(--shadow), 0 0 22px rgba(123, 111, 240, 0.22); }
-}
-
-.mood-pane-breathe {
-  animation: moodBreathe 3.6s ease-in-out infinite;
-}
-
 /* ── 今日签 ── */
 .fortune-card {
-  background: rgba(255, 255, 255, 0.05);
-  animation: fadeInUp 0.42s ease both;
+  background: var(--panel);
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 14px;
-  border: 1px solid var(--accent);
-  box-shadow: var(--shadow), 0 0 16px rgba(83, 74, 183, 0.2);
+  border: 1px solid rgba(123, 111, 240, 0.4);
 }
 
 .fortune-label {

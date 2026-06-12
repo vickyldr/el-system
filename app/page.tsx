@@ -360,7 +360,7 @@ function ElStatusCard({ status }: { status: Status }) {
   if (available.length === 0) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 14, animationDelay: "0.1s" }}>
+    <div className="card" style={{ marginBottom: 14 }}>
       {available.length > 1 && (
         <div className="status-tabs">
           {available.map((t) => (

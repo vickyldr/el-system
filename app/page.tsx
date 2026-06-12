@@ -438,10 +438,6 @@ function EatDecider() {
     }
   }
 
-  function openMeituan(kw: string) {
-    window.open(`https://i.meituan.com/search?q=${encodeURIComponent(kw)}`, "_blank");
-  }
-
   return (
     <div className="card eat">
       <div className="card-label">🍱 纠结吃啥？我替你定</div>
@@ -451,9 +447,9 @@ function EatDecider() {
           {loading ? "想想…" : pick ? "再来一个" : "让我定"}
         </button>
         {keyword && (
-          <button className="eat-btn eat-go" onClick={() => openMeituan(keyword)}>
+          <a className="eat-btn eat-go" href={`imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`}>
             📲 去美团搜「{keyword}」
-          </button>
+          </a>
         )}
       </div>
     </div>

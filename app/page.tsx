@@ -1580,6 +1580,23 @@ function FindTab() {
                   >
                     ✕
                   </button>
+                  <button
+                    type="button"
+                    className="stk-edit"
+                    aria-label="改标签"
+                    onClick={async () => {
+                      const t = window.prompt("改这张表情的意思：", s.tags);
+                      if (t === null) return;
+                      await fetch("/api/stickers/lib", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: s.id, tags: t.trim() }),
+                      });
+                      await loadLib();
+                    }}
+                  >
+                    ✎
+                  </button>
                 </div>
               ))}
             </div>

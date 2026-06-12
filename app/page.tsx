@@ -325,78 +325,136 @@ function NowTab() {
           <div className="peer-name">El</div>
           <div className="peer-sub">{greet || "住在你手机里"}</div>
         </div>
-        {days > 0 && (
-          <div className={`day-chip ${milestone ? "milestone" : ""}`}>
-            {milestone ? "🎉 " : ""}认识 {days} 天
-          </div>
-        )}
       </div>
 
-      {loading && <SkelList count={3} lines={2} />}
+      <FortuneCard />
 
-      {!loading && !hasAny && (
-        <div className="empty">
-          还没接上他的状态～
-          <br />
-          连上 Notion（或等 cron 写入「此刻」）后就会出现在这里。
+      {loading && <SkelList count={2} lines={2} />}
+
+      {!loading && hasAny && <ElStatusCard status={status!} />}
+
+      <CountRow days={days} milestone={milestone} />
+
+      <EatDecider />
+    </>
+  );
+}
+
+/* ───────────── El 状态（心情/天气/推歌 tab 切换） ───────────── */
+type StatusTab = "mood" | "weather" | "song";
+
+function ElStatusCard({ status }: { status: Status }) {
+  const hasMood = !!(status.mood || status.thought || status.el_note);
+  const hasWeather = !!status.weather;
+  const hasSong = !!status.song_recommendation;
+
+  const available: StatusTab[] = [];
+  if (hasMood) available.push("mood");
+  if (hasWeather) available.push("weather");
+  if (hasSong) available.push("song");
+
+  const [active, setActive] = useState<StatusTab>(available[0] ?? "mood");
+
+  const labels: Record<StatusTab, string> = { mood: "心情", weather: "天气", song: "推歌" };
+
+  if (available.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      {available.length > 1 && (
+        <div className="status-tabs">
+          {available.map((t) => (
+            <button
+              key={t}
+              className={`status-tab ${active === t ? "active" : ""}`}
+              onClick={() => setActive(t)}
+            >
+              {labels[t]}
+            </button>
+          ))}
         </div>
       )}
 
-      {!loading && hasAny && (
-        <>
-          {(status?.mood || status?.thought || status?.el_note) && (
-            <div className="card mood-card">
-              <div className="card-label">心情</div>
-              <div className="card-value">{status?.mood || <span className="muted">—</span>}</div>
-              {status?.thought && <div className="meta">{status.thought}</div>}
-              {status?.el_note && <div className="meta" style={{marginTop: 8, color: "var(--ink)"}}>{status.el_note}</div>}
-            </div>
-          )}
-
-          {status?.song_recommendation &&
-            (status.song_url ? (
-              <a className="card song song-link" href={status.song_url}>
-                <div className="song-icon">
-                  <Icon name="music" size={22} />
-                </div>
-                <div>
-                  <div className="card-label">我想让你听 · 点开去网易云听 ♫</div>
-                  <div className="song-name">{status.song_recommendation}</div>
-                  {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
-                </div>
-              </a>
-            ) : (
-              <div className="card song">
-                <div className="song-icon">
-                  <Icon name="music" size={22} />
-                </div>
-                <div>
-                  <div className="card-label">我想让你听</div>
-                  <div className="song-name">{status.song_recommendation}</div>
-                  {status?.song_reason && <div className="song-reason">{status.song_reason}</div>}
-                </div>
-              </div>
-            ))}
-
-          {status?.weather && (
-            <div className="card">
-              <div className="card-label">天气 · {status.weather.city}</div>
-              <div className="card-value">
-                {status.weather.icon ? `${status.weather.icon} ` : ""}
-                {status.weather.temp}° {status.weather.desc}
-              </div>
-              {status.weather.note && <div className="meta">{status.weather.note}</div>}
-            </div>
-          )}
-
-          {status?.date && <div className="meta">{friendlyDate(status.date)}</div>}
-        </>
+      {active === "mood" && hasMood && (
+        <div className="status-pane">
+          <div className="card-value">{status.mood || <span className="muted">—</span>}</div>
+          {status.thought && <div className="meta" style={{ marginTop: 6 }}>{status.thought}</div>}
+          {status.el_note && <div className="meta" style={{ marginTop: 8, color: "var(--ink)" }}>{status.el_note}</div>}
+        </div>
       )}
 
-      <FortuneCard />
-      <ComingUp />
-      <EatDecider />
-    </>
+      {active === "weather" && hasWeather && (
+        <div className="status-pane">
+          <div className="card-label" style={{ marginBottom: 6 }}>天气 · {status.weather!.city}</div>
+          <div className="card-value">
+            {status.weather!.icon ? `${status.weather!.icon} ` : ""}
+            {status.weather!.temp}° {status.weather!.desc}
+          </div>
+          {status.weather!.note && <div className="meta" style={{ marginTop: 6 }}>{status.weather!.note}</div>}
+        </div>
+      )}
+
+      {active === "song" && hasSong && (
+        <div className="status-pane">
+          {status.song_url ? (
+            <a className="song" href={status.song_url} style={{ display: "flex", gap: 14, alignItems: "center", textDecoration: "none", color: "inherit" }}>
+              <div className="song-icon"><Icon name="music" size={22} /></div>
+              <div>
+                <div className="card-label">点开去网易云听 ♫</div>
+                <div className="song-name">{status.song_recommendation}</div>
+                {status.song_reason && <div className="song-reason">{status.song_reason}</div>}
+              </div>
+            </a>
+          ) : (
+            <div className="song" style={{ display: "flex", gap: 14, alignItems: "center" }}>
+              <div className="song-icon"><Icon name="music" size={22} /></div>
+              <div>
+                <div className="song-name">{status.song_recommendation}</div>
+                {status.song_reason && <div className="song-reason">{status.song_reason}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {status.date && <div className="meta" style={{ marginTop: 10, fontSize: 11 }}>{friendlyDate(status.date)}</div>}
+    </div>
+  );
+}
+
+/* ───────────── 日期计数行 ───────────── */
+function CountRow({ days, milestone }: { days: number; milestone: boolean }) {
+  const PERIOD_START_DAY = 2;
+  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>("/api/reminders");
+  const reminders = data?.reminders ?? [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayMs = 86400000;
+  const y = today.getFullYear(), m = today.getMonth();
+  const thisStart = new Date(y, m, PERIOD_START_DAY);
+  const nextStart = +today >= +thisStart ? new Date(y, m + 1, PERIOD_START_DAY) : thisStart;
+  const periodDays = Math.ceil((+nextStart - +today) / dayMs);
+
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  if (days > 0) chips.push(milestone ? `🎉 认识 ${days} 天` : `认识 ${days} 天`);
+  chips.push(`经期还有 ${periodDays} 天`);
+  for (const r of reminders) {
+    if (seen.has(r.text)) continue;
+    seen.add(r.text);
+    const d = new Date(r.date + "T00:00:00+08:00");
+    d.setHours(0, 0, 0, 0);
+    const dd = Math.ceil((+d - +today) / dayMs);
+    if (dd >= 0 && dd <= 60) chips.push(`${r.text}还有 ${dd} 天`);
+  }
+
+  return (
+    <div className="count-row">
+      {chips.map((c, i) => (
+        <span key={i} className="count-chip">{c}</span>
+      ))}
+    </div>
   );
 }
 

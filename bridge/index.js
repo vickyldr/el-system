@@ -88,7 +88,8 @@ app.post("/chat", async (req, res) => {
     const env = { ...process.env };
 
     const args = ["--print", "--no-stream"];
-    if (process.env.BRIDGE_MODEL) args.push("--model", process.env.BRIDGE_MODEL);
+    // 通过环境变量指定模型（--model flag 在 --print 模式下有 bug）
+    env.ANTHROPIC_MODEL = process.env.BRIDGE_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
     const proc = spawn(CLAUDE_BIN, args, {
       env,
       stdio: ["pipe", "pipe", "pipe"],

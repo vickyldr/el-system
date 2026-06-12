@@ -86,6 +86,23 @@ export const TOOLS = [
     },
   },
   {
+    name: "delete_reminder",
+    description:
+      "删除提醒。用 id 删单条（先用 list_reminders 拿 id），或 all:true 清空全部。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "提醒的 id，单条删除时填" },
+        all: { type: "boolean", description: "true 则清空全部提醒" },
+      },
+    },
+  },
+  {
+    name: "list_reminders",
+    description: "列出当前所有未来的提醒，含 id，用于确认要删哪条。",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
     name: "note_page",
     description:
       "往「小家」里指定的一页末尾追加一条（只追加、带日期，不删旧的）。用于愿望墙、fifi的档案、我们的身体与偏好、人物档案 这类页面——按操作手册的门槛来，没真东西别写。page 填页面标题。",
@@ -126,6 +143,10 @@ export async function runTool(
       return await updateDaily(String(input?.field || ""), String(input?.text || ""), date);
     if (name === "add_reminder")
       return await addReminderTool(String(input?.date || ""), String(input?.text || ""));
+    if (name === "delete_reminder")
+      return await deleteReminderTool(input?.id ? String(input.id) : undefined, !!input?.all);
+    if (name === "list_reminders")
+      return await listRemindersTool();
     if (name === "note_page")
       return await notePage(String(input?.page || ""), String(input?.text || ""), date);
     return "未知工具。";
@@ -192,6 +213,21 @@ async function updateDaily(field: string, text: string, date: string): Promise<s
   }
   await updateDailyFields({ [f]: text }, date);
   return `「${date}」的「${f}」更新了。`;
+}
+
+async function listRemindersTool(): Promise<string> {
+  const { getReminders } = await import("./store");
+  const list = await getReminders();
+  if (list.length === 0) return "没有提醒。";
+  return list.map((r) => `id:${r.id} | ${r.date} | ${r.text}`).join("\n");
+}
+
+async function deleteReminderTool(id?: string, all?: boolean): Promise<string> {
+  const { getReminders, setReminders } = await import("./store");
+  const list = await getReminders();
+  const next = all ? [] : list.filter((r) => r.id !== id);
+  await setReminders(next);
+  return `删了，剩 ${next.length} 条。`;
 }
 
 async function notePage(pageName: string, text: string, date: string): Promise<string> {

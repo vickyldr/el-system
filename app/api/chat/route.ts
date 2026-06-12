@@ -253,7 +253,7 @@ export async function POST(req: Request) {
     let reply = "";
 
     // 语音模式 + 配了 BRIDGE_URL 就走 CC bridge，不走 Anthropic SDK
-    if (voice && process.env.BRIDGE_URL) {
+    if (process.env.BRIDGE_URL) {
       reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok);
     }
 

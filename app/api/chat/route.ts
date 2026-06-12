@@ -25,11 +25,15 @@ async function callBridge(
   system: Anthropic.MessageParam["content"] | string,
   messages: Anthropic.MessageParam[],
   max_tokens: number,
+  voice = false,
 ): Promise<string> {
   const secret = process.env.BRIDGE_SECRET || "";
-  const systemText = Array.isArray(system)
+  let systemText = Array.isArray(system)
     ? (system as any[]).filter((b) => b.type === "text").map((b: any) => b.text).join("")
     : String(system || "");
+  if (voice) {
+    systemText += "\n\n【现在是语音通话模式。你的回复会被直接读出来，所以：只说一两句话；不用 markdown、符号、表情；用口语、自然说话的方式；不要提到「通话」这个词，就像平时说话一样。】";
+  }
   try {
     const r = await fetch(`${bridgeUrl.replace(/\/$/, "")}/chat`, {
       method: "POST",
@@ -254,7 +258,7 @@ export async function POST(req: Request) {
 
     // 语音模式 + 配了 BRIDGE_URL 就走 CC bridge，不走 Anthropic SDK
     if (process.env.BRIDGE_URL) {
-      reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok);
+      reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok, voice);
     }
 
     if (reply) {

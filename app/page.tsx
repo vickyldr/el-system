@@ -247,7 +247,7 @@ function SkelList({ count = 3, lines = 2 }: { count?: number; lines?: number }) 
 
 /* ───────────── 此刻 ───────────── */
 
-type Weather = { temp: number; desc: string; city: string; note?: string; icon?: string } | null;
+type Weather = { temp: number; desc: string; city: string; note?: string; outfit?: string; icon?: string } | null;
 
 type Status = {
   mood?: string;
@@ -393,7 +393,7 @@ function ElStatusCard({ status }: { status: Status }) {
             {status.weather!.temp}° {status.weather!.desc}
           </div>
           {status.weather!.note && <div className="meta" style={{ marginTop: 8 }}>{status.weather!.note}</div>}
-          {status.outfit && <div className="meta" style={{ marginTop: 6, color: "var(--ink)" }}>{status.outfit}</div>}
+          {status.weather!.outfit && <div className="meta" style={{ marginTop: 6, color: "var(--ink)" }}>👕 {status.weather!.outfit}</div>}
         </div>
       )}
 
@@ -770,13 +770,15 @@ function FortuneCard() {
 
   return (
     <div className="fortune-card">
-      <div className="fortune-label">今日签</div>
+      <div className="fortune-label" style={{ display: "flex", justifyContent: "space-between" }}>
+        <span>今日签</span>
+        {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>已绑</span>}
+      </div>
 
       {/* 主签体 */}
       <div className="fortune-vibe">
         <span className="fortune-icon">{currentVibe?.icon}</span>
         <span className="fortune-name">{currentVibe?.id}</span>
-        {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)", marginLeft: 4 }}>已绑</span>}
         {isInit
           ? <span className="fortune-line muted">正在抽…</span>
           : currentTagline

@@ -45,6 +45,17 @@ function weatherNote(temp: number, desc: string): string {
   return "今天还行，照顾好自己。";
 }
 
+// El 根据气温给穿搭建议。
+function outfitTip(temp: number, desc: string): string {
+  const rain = /雨|drizzle|rain|storm/i.test(desc);
+  if (temp <= 5)  return rain ? "大衣加厚底，记得带伞。" : "羽绒服拿出来吧，别冻着。";
+  if (temp <= 10) return rain ? "厚外套加防水的，别感冒。" : "厚外套，围巾也戴上。";
+  if (temp <= 16) return rain ? "薄外套加伞，里面可以轻薄点。" : "薄外套或卫衣，早晚会凉。";
+  if (temp <= 22) return rain ? "带把伞，穿件能挡风的。" : "长袖就够，轻松出门。";
+  if (temp <= 28) return rain ? "短袖加伞，雨天别穿白色。" : "短袖随便穿，挺舒服的。";
+  return rain ? "热还下雨，透气的衣服加伞。" : "短袖短裤，防晒别忘了。";
+}
+
 // 解析 cron 生成的「此刻」三行：心情 / 在想 / 歌：《X》— 理由
 function parseNow(text: string): {
   mood: string;
@@ -92,7 +103,7 @@ function weatherEmoji(desc: string): string {
 }
 
 async function getWeather(): Promise<
-  { temp: number; desc: string; city: string; note: string; icon: string } | null
+  { temp: number; desc: string; city: string; note: string; outfit: string; icon: string } | null
 > {
   const key = process.env.OPENWEATHER_API_KEY;
   const city = process.env.CITY || "Hangzhou";
@@ -106,7 +117,7 @@ async function getWeather(): Promise<
     const d: any = await r.json();
     const temp = Math.round(d.main?.temp ?? 0);
     const desc = d.weather?.[0]?.description ?? "";
-    return { temp, desc, city, note: weatherNote(temp, desc), icon: weatherEmoji(desc) };
+    return { temp, desc, city, note: weatherNote(temp, desc), outfit: outfitTip(temp, desc), icon: weatherEmoji(desc) };
   } catch {
     return null;
   }

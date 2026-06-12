@@ -1,11 +1,20 @@
 import express from "express";
-import { query } from "@anthropic-ai/claude-code";
-import { createRequire } from "module";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
+import path from "path";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 const SECRET = process.env.BRIDGE_SECRET || "";
+
+// claude CLI 的路径（Railway 上装在 node_modules/.bin/）
+const CLAUDE_BIN = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "node_modules",
+  ".bin",
+  "claude"
+);
 
 app.use((req, res, next) => {
   if (req.path === "/health") return next();
@@ -17,12 +26,14 @@ app.use((req, res, next) => {
 
 app.get("/health", (_, res) => res.json({ ok: true, service: "el-bridge" }));
 
+// POST /chat
 app.post("/chat", async (req, res) => {
   const { system, messages, max_tokens } = req.body || {};
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "messages 不能为空" });
   }
 
+  // 把历史 + 系统提示拼成 claude --print 能理解的 prompt
   const historyText = messages
     .slice(0, -1)
     .map((m) => {
@@ -40,42 +51,54 @@ app.post("/chat", async (req, res) => {
 
   const systemBlock = system ? `<system>\n${system}\n</system>\n\n` : "";
   const historyBlock = historyText ? `${historyText}\n\n` : "";
-  const prompt = `${systemBlock}${historyBlock}Human: ${lastText}`;
+  const prompt = `${systemBlock}${historyBlock}Human: ${lastText}\n\nAssistant:`;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
-  const abort = new AbortController();
-  req.on("close", () => abort.abort());
+  let output = "";
+  let settled = false;
 
-  let lastSent = "";
-  let fullText = "";
+  const done = () => {
+    if (settled) return;
+    settled = true;
+    res.write(`data: ${JSON.stringify({ type: "done", text: output.trim() })}\n\n`);
+    res.end();
+  };
 
   try {
-    for await (const msg of query({
-      prompt,
-      abortController: abort,
-      options: { maxTurns: 1, allowedTools: [] },
-    })) {
-      if (msg.type === "assistant" && msg.message?.content) {
-        for (const block of msg.message.content) {
-          if (block.type === "text") {
-            const delta = block.text.slice(lastSent.length);
-            if (delta) {
-              lastSent = block.text;
-              fullText = block.text;
-              res.write(`data: ${JSON.stringify({ type: "text", text: delta })}\n\n`);
-            }
-          }
-        }
+    const env = { ...process.env };
+
+    const proc = spawn(CLAUDE_BIN, ["--print", "--no-stream"], {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    proc.stdin.write(prompt);
+    proc.stdin.end();
+
+    proc.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+      // 流式把增量发出去
+      res.write(`data: ${JSON.stringify({ type: "text", text: chunk.toString() })}\n\n`);
+    });
+
+    proc.stderr.on("data", (d) => console.error("[claude stderr]", d.toString()));
+
+    proc.on("close", done);
+    proc.on("error", (err) => {
+      console.error("spawn error:", err);
+      if (!settled) {
+        settled = true;
+        res.write(`data: ${JSON.stringify({ type: "error", error: err.message })}\n\n`);
+        res.end();
       }
-    }
-    res.write(`data: ${JSON.stringify({ type: "done", text: fullText })}\n\n`);
-    res.end();
+    });
+
+    req.on("close", () => { if (!settled) proc.kill(); });
   } catch (err) {
-    if (err?.name === "AbortError") return res.end();
     console.error("bridge error:", err);
     res.write(`data: ${JSON.stringify({ type: "error", error: err?.message || "未知错误" })}\n\n`);
     res.end();
@@ -85,7 +108,4 @@ app.post("/chat", async (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`el-bridge running on port ${PORT}`);
-  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
-    console.warn("⚠️  未检测到 CLAUDE_CODE_OAUTH_TOKEN，请设置环境变量");
-  }
 });

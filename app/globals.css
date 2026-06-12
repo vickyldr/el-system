@@ -62,9 +62,9 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(62% 48% at 12% -4%, rgba(83, 74, 183, 0.32), transparent 68%),
-    radial-gradient(56% 44% at 102% 14%, rgba(123, 111, 240, 0.2), transparent 70%),
-    radial-gradient(52% 42% at 82% 104%, rgba(214, 132, 173, 0.13), transparent 72%),
+    radial-gradient(62% 48% at 12% -4%, rgba(83, 74, 183, 0.45), transparent 68%),
+    radial-gradient(56% 44% at 102% 14%, rgba(123, 111, 240, 0.32), transparent 70%),
+    radial-gradient(52% 42% at 82% 104%, rgba(214, 132, 173, 0.22), transparent 72%),
     var(--bg);
 }
 
@@ -206,14 +206,14 @@ body::before {
 }
 
 .card {
-  background: var(--glass);
-  border: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   padding: 16px 18px;
   margin-bottom: 14px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   animation: fadeInUp 0.42s ease both;
 }
 
@@ -323,25 +323,25 @@ body::before {
 /* ── 今日签 ── */
 .fortune-card {
   position: relative;
-  background: var(--bg-deep, rgba(20, 23, 34, 0.82));
+  background: rgba(255, 255, 255, 0.06);
   animation: fadeInUp 0.42s ease both;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 14px;
   border: 1px solid transparent;
   background-clip: padding-box;
-  box-shadow: var(--shadow), 0 0 14px rgba(123, 111, 240, 0.12);
+  box-shadow: var(--shadow), 0 0 20px rgba(123, 111, 240, 0.2);
 }
 
-/* 渐变描边：细细一圈，低调的紫色边 */
+/* 渐变描边：紫→粉，明显一点但不刺眼 */
 .fortune-card::before {
   content: "";
   position: absolute;
   inset: -1px;
   border-radius: 17px;
-  background: linear-gradient(135deg, rgba(123,111,240,0.35), rgba(214,132,173,0.22), rgba(83,74,183,0.3));
+  background: linear-gradient(135deg, rgba(123,111,240,0.7), rgba(214,132,173,0.5), rgba(83,74,183,0.65));
   z-index: -1;
 }
 

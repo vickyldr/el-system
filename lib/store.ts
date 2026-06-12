@@ -279,6 +279,17 @@ export async function addStickerLib(s: LibSticker): Promise<void> {
   }
 }
 
+export async function updateStickerTags(id: string, tags: string): Promise<void> {
+  const r = redis();
+  if (!r || !id) return;
+  try {
+    const list = await getStickerLib();
+    await r.set(STK_KEY, list.map((s) => s.id === id ? { ...s, tags } : s));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function removeStickerLib(id: string): Promise<void> {
   const r = redis();
   if (!r || !id) return;

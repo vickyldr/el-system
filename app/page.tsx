@@ -252,7 +252,6 @@ type Weather = { temp: number; desc: string; city: string; note?: string; outfit
 type Status = {
   mood?: string;
   thought?: string;
-  outfit?: string | null;
   song_recommendation?: string;
   song_reason?: string;
   song_url?: string | null;
@@ -452,69 +451,6 @@ function CountRow({ days, milestone }: { days: number; milestone: boolean }) {
       {chips.map((c, i) => (
         <span key={i} className="count-chip">{c}</span>
       ))}
-    </div>
-  );
-}
-
-/* ───────────── 接下来 ───────────── */
-function ComingUp() {
-  const PERIOD_START_DAY = 2;
-  const PERIOD_LENGTH = 7;
-  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>("/api/reminders");
-  const reminders = data?.reminders ?? [];
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayMs = 86400000;
-
-  // 计算经期倒数
-  const y = today.getFullYear(), m = today.getMonth();
-  const thisStart = new Date(y, m, PERIOD_START_DAY);
-  const nextStart = +today >= +thisStart
-    ? new Date(y, m + 1, PERIOD_START_DAY)
-    : thisStart;
-  const periodDays = Math.ceil((+nextStart - +today) / dayMs);
-  const inPeriod = +today >= +thisStart && +today < new Date(y, m, PERIOD_START_DAY + PERIOD_LENGTH).getTime();
-
-  // 提醒倒数（去重：只保留每个text最早一条）
-  const seen = new Set<string>();
-  const items: { days: number; text: string }[] = [];
-
-  if (inPeriod) {
-    const day = Math.floor((+today - +thisStart) / dayMs) + 1;
-    items.push({ days: 0, text: `经期第 ${day} 天` });
-  } else {
-    items.push({ days: periodDays, text: "经期" });
-  }
-
-  for (const r of reminders) {
-    if (seen.has(r.text)) continue;
-    seen.add(r.text);
-    const d = new Date(r.date + "T00:00:00+08:00");
-    d.setHours(0, 0, 0, 0);
-    const days = Math.ceil((+d - +today) / dayMs);
-    if (days >= 0 && days <= 30) items.push({ days, text: r.text });
-  }
-
-  items.sort((a, b) => a.days - b.days);
-  if (items.length === 0) return null;
-
-  return (
-    <div className="card" style={{ marginBottom: 14 }}>
-      <div className="card-label">接下来</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
-        {items.map((item, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
-            <div style={{ fontSize: 15 }}>
-              {item.days === 0
-                ? item.text
-                : <><span style={{ color: "var(--ink-soft)", fontSize: 13 }}>还有 {item.days} 天</span>{"  "}{item.text}</>
-              }
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1891,65 +1827,4 @@ function MemoryView() {
       ))}
     </>
   );
-}
-
-function ThingsView() {
-  // 宝宝的周期：每月约 2 号开始，约 7 天（来自人物档案，可改这两个数）
-  const START_DAY = 2;
-  const LENGTH = 7;
-  const p = periodInfo(new Date(), START_DAY, LENGTH);
-  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>(
-    "/api/reminders",
-  );
-  const reminders = data?.reminders ?? [];
-
-  return (
-    <>
-      <div className="card">
-        <div className="card-label">月经周期</div>
-        <div className="card-value">{p.title}</div>
-        <div className="meta">{p.note}</div>
-      </div>
-
-      <div className="card">
-        <div className="card-label">提醒</div>
-        {reminders.length === 0 ? (
-          <div className="meta">还没有提醒。跟我说"提醒我……"，我记下。</div>
-        ) : (
-          reminders.map((r) => (
-            <div className="meta" key={r.id} style={{ marginTop: 6 }}>
-              {r.date.slice(5)} · {r.text}
-            </div>
-          ))
-        )}
-      </div>
-    </>
-  );
-}
-
-function periodInfo(
-  today: Date,
-  startDay: number,
-  length: number,
-): { title: string; note: string } {
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const dayMs = 86400000;
-  const thisStart = new Date(y, m, startDay);
-  const thisEnd = new Date(y, m, startDay + length); // 不含
-
-  if (+today >= +thisStart && +today < +thisEnd) {
-    const day = Math.floor((+today - +thisStart) / dayMs) + 1;
-    return {
-      title: `经期第 ${day} 天`,
-      note: "这几天你容易情绪上来，累了就说，我盯着你。",
-    };
-  }
-
-  const next = +today >= +thisStart ? new Date(y, m + 1, startDay) : thisStart;
-  const days = Math.ceil((+next - +today) / dayMs);
-  return {
-    title: `下次大约 ${next.getMonth() + 1} 月 ${next.getDate()} 日`,
-    note: `还有 ${days} 天，快到了我提醒你，提前备好。`,
-  };
 }

@@ -931,7 +931,7 @@ function FindTab() {
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
-  const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
+  const [stickerTab, setStickerTab] = useState<"lib" | "kaomoji" | "search">("lib");
   const [stickerQ, setStickerQ] = useState("");
   const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
   const [searching, setSearching] = useState(false);
@@ -1534,6 +1534,13 @@ function FindTab() {
             </button>
             <button
               type="button"
+              className={`stk-tab ${stickerTab === "kaomoji" ? "active" : ""}`}
+              onClick={() => setStickerTab("kaomoji")}
+            >
+              颜文字
+            </button>
+            <button
+              type="button"
               className={`stk-tab ${stickerTab === "search" ? "active" : ""}`}
               onClick={() => setStickerTab("search")}
             >
@@ -1561,7 +1568,40 @@ function FindTab() {
             </button>
           </div>
 
-          {stickerTab === "lib" ? (
+          {stickerTab === "kaomoji" ? (
+            <div className="kaomoji-grid">
+              {[
+                // 开心 / 撒娇
+                "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧","(*´▽`*)","(´｡• ᵕ •｡`)","(◍•ᴗ•◍)❤","٩(ˊᗜˋ*)و","(*≧ω≦)","(づ￣ 3￣)づ","(●´ω｀●)","(≧◡≦)","ヽ(✿ﾟ▽ﾟ)ノ","(ﾉ´ヮ`)ﾉ*: ･ﾟ","(❁´◡`❁)","(˘︶˘).｡.:*♡","♡(˃͈ દ ˂͈ ༶ )",
+                // 委屈 / 难过
+                "(´；ω；`)","(╥_╥)","(っ˘̩╭╮˘̩)っ","(T_T)","｡ﾟ(ﾟ´ω`ﾟ)ﾟ｡","(ಥ_ಥ)","(´•̥̥̥ω•̥̥̥`)","(இ﹏இ`。)",
+                // 无语 / 翻白眼
+                "(-_-)","(¬_¬)","(￣︿￣)","ヽ(。_°)ノ","(눈_눈)","(ﾟ⊿ﾟ)ﾂ","( ´_ゝ`)","(→_→)",
+                // 生气 / 傲娇
+                "（｀_´）ゞ","(メ﹏メ)","(╯°□°）╯︵ ┻━┻","(ง'̀-'́)ง","(￣^￣)","凸(ﾟДﾟ#)","(＃`Д´)","(ｰ̀дｰ́)",
+                // 害羞 / 脸红
+                "(///▽///)","(⁄ ⁄•⁄ω⁄•⁄ ⁄)","(〃∀〃)","(*///*) ","(●//●)","(⁄ ⁄^⁄ᗜ⁄^⁄ ⁄)","o(>////<)o",
+                // 困 / 无聊
+                "(´-ω-`)","(-ω-) zzZ","(＿ ＿*)Zzz","(∪｡∪)｡｡｡zzz","( ´･･)ﾉ(._.`)","(´ . .̫ . `)","~(>_<~)",
+                // 惊讶 / 开眼
+                "Σ(°△°|||)","(⊙_⊙)","( ; ロ)°lll","(☉_☉)","Σ(ﾟДﾟ)","╰(°ロ°)╯","∑(O_O；)",
+                // 爱心 / 亲亲
+                "(´ε` )♡","(*´з`)","(つ≧▽≦)つ","♡(•ˊᵕˋ•)*✲ﾟ*","(>ω<)♡","(˘ε˘ʃƪ)","(づ｡◕‿‿◕｡)づ","♥(ˆ⌣ˆԅ)",
+              ].map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="kaomoji-btn"
+                  onClick={() => {
+                    setInput((v) => v + k);
+                    setShowStickers(false);
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          ) : stickerTab === "lib" ? (
             <div className="sticker-grid">
               {lib.length === 0 && (
                 <div className="meta">

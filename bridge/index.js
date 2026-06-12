@@ -71,8 +71,9 @@ app.post("/chat", async (req, res) => {
   try {
     const env = { ...process.env };
 
-    const model = process.env.BRIDGE_MODEL || "claude-sonnet-4-5";
-    const proc = spawn(CLAUDE_BIN, ["--print", "--no-stream", "--model", model], {
+    const args = ["--print", "--no-stream"];
+    if (process.env.BRIDGE_MODEL) args.push("--model", process.env.BRIDGE_MODEL);
+    const proc = spawn(CLAUDE_BIN, args, {
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });

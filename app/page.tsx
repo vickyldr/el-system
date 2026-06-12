@@ -393,8 +393,8 @@ function NowTab() {
         </>
       )}
 
-      <FortuneCard />
       <ComingUp />
+      <FortuneCard />
       <EatDecider />
     </>
   );

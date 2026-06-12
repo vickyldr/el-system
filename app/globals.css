@@ -881,12 +881,32 @@ body::before {
   justify-content: center;
 }
 
+.kaomoji-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.kaomoji-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kaomoji-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding-left: 2px;
+}
+
 .kaomoji-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  overflow-y: auto;
-  padding: 4px 0;
 }
 
 .kaomoji-btn {

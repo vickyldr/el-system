@@ -2,6 +2,7 @@
   "name": "el-bridge",
   "version": "1.0.0",
   "description": "Claude Code bridge for el-system",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

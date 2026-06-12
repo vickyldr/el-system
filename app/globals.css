@@ -206,12 +206,14 @@ body::before {
 }
 
 .card {
-  background: var(--panel);
+  background: var(--glass);
   border: 1px solid var(--hair);
   border-radius: 18px;
   padding: 16px 18px;
   margin-bottom: 14px;
   box-shadow: var(--shadow);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   animation: fadeInUp 0.42s ease both;
 }
 
@@ -308,12 +310,39 @@ body::before {
   margin-bottom: 0;
 }
 
+/* 呼吸动画：心情面板轻轻泛光，像在跳动 */
+@keyframes moodBreathe {
+  0%, 100% { box-shadow: var(--shadow), 0 0 0px transparent; }
+  50% { box-shadow: var(--shadow), 0 0 22px rgba(123, 111, 240, 0.22); }
+}
+
+.mood-pane-breathe {
+  animation: moodBreathe 3.6s ease-in-out infinite;
+}
+
 /* ── 今日签 ── */
 .fortune-card {
-  background: var(--panel);
+  position: relative;
+  background: var(--glass);
+  animation: fadeInUp 0.42s ease both;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 14px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  box-shadow: var(--shadow), 0 0 28px rgba(123, 111, 240, 0.18);
+}
+
+/* 渐变描边：用伪元素做彩虹边框 */
+.fortune-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 17px;
+  background: linear-gradient(135deg, rgba(123,111,240,0.55), rgba(214,132,173,0.4), rgba(83,74,183,0.45));
+  z-index: -1;
 }
 
 .fortune-label {

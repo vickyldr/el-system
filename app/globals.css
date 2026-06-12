@@ -354,6 +354,145 @@ body::before {
   margin-bottom: 0;
 }
 
+/* ── 今日签 ── */
+.fortune-card {
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.fortune-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+
+.fortune-vibe {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  transition: opacity 0.3s;
+}
+
+.fortune-vibe.bound {
+  opacity: 0.45;
+}
+
+.fortune-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.fortune-name {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.fortune-line {
+  font-size: 13px;
+  color: var(--ink-soft);
+  flex: 1;
+}
+
+.fortune-bind-phrase {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.fortune-toll {
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fortune-toll-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fortune-question {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.fortune-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-size: 15px;
+  outline: none;
+}
+
+.fortune-input:focus {
+  border-color: var(--accent);
+}
+
+.fortune-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.fortune-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.fortune-prompt {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.fortune-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fortune-reroll {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fortune-bind {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fortune-done-hint {
+  font-size: 12px;
+}
+
 /* ── 底部 tab 栏：磨砂玻璃，文档流里的最后一个孩子，永远贴底、不会飘 ── */
 .tabbar {
   flex-shrink: 0;

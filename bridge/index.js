@@ -1,7 +1,23 @@
 import express from "express";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
+import os from "os";
+
+// 启动时把模型写入 claude 的配置，确保它用我们指定的模型
+const model = process.env.BRIDGE_MODEL || "claude-sonnet-4-6";
+try {
+  const configDir = path.join(os.homedir(), ".claude");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(
+    path.join(configDir, "settings.json"),
+    JSON.stringify({ model }, null, 2)
+  );
+  console.log(`claude config: model=${model}`);
+} catch (e) {
+  console.warn("写 claude settings 失败:", e.message);
+}
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));

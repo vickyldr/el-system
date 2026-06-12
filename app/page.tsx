@@ -376,7 +376,7 @@ function ElStatusCard({ status }: { status: Status }) {
       )}
 
       {active === "mood" && hasMood && (
-        <div className="status-pane mood-pane-breathe">
+        <div className="status-pane">
           <div className="card-label">心情</div>
           <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
           {status.thought && <div className="meta" style={{ marginTop: 8 }}>{status.thought}</div>}
@@ -705,7 +705,7 @@ function FortuneCard() {
   const isInit = s.phase === "init";
 
   return (
-    <div className="fortune-card" style={{ animationDelay: "0.05s", animation: "fadeInUp 0.42s ease both" }}>
+    <div className="fortune-card">
       <div className="fortune-label" style={{ display: "flex", justifyContent: "space-between" }}>
         <span>今日签</span>
         {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>已绑</span>}

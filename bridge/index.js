@@ -185,7 +185,11 @@ if (GEMINI_API_KEY) {
         model: liveModel,
         config: {
           systemInstruction: EL_VOICE_PERSONA,
-          responseModalities: ["TEXT"], // 只要文字——语音交给前端用 MiniMax(她捏的音色)念，又快又是她的声音
+          // 这些实时模型只支持 AUDIO 输出(TEXT 会 1007 直接踢)。
+          // 所以让它出音频(我们丢掉不用)，同时开 outputAudioTranscription 拿到"它说的文字"，
+          // 再把这段文字交给前端用 MiniMax(她捏的音色)念——又快、又是她的声音。
+          responseModalities: ["AUDIO"],
+          outputAudioTranscription: {},
           realtimeInputConfig: {
             automaticActivityDetection: { disabled: false }, // 自动 VAD 判断回合
           },
@@ -196,14 +200,17 @@ if (GEMINI_API_KEY) {
             send({ type: "ready" });
           },
           onmessage: (msg) => {
-            const parts = msg.serverContent?.modelTurn?.parts ?? [];
-            for (const part of parts) {
+            // 用"输出转写"拿它说的文字（音频 inlineData 直接忽略）。
+            const t = msg.serverContent?.outputTranscription?.text;
+            if (t) replyText += t;
+            // 有的版本文字也可能落在 modelTurn.parts[].text 里，兜底也收一下。
+            for (const part of msg.serverContent?.modelTurn?.parts ?? []) {
               if (part.text) replyText += part.text;
             }
             if (msg.serverContent?.turnComplete) {
               const text = replyText.trim();
               replyText = "";
-              console.log("Gemini turn complete, 回复:", text);
+              console.log("Gemini turn complete, 转写:", text);
               if (text) send({ type: "text", text });
             }
           },

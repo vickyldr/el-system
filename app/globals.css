@@ -1355,25 +1355,61 @@ body::before {
 .diary {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .diary-entry {
   background: var(--panel);
   border: 1px solid var(--hair);
   border-radius: 16px;
-  padding: 16px 18px;
+  padding: 14px 16px;
+}
+
+.diary-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
 }
 
 .diary-date {
   font-family: var(--font-display);
   font-size: 13px;
   color: var(--ink-soft);
-  margin-bottom: 8px;
   letter-spacing: 0.3px;
 }
 
+.diary-chevron {
+  font-size: 16px;
+  color: var(--ink-soft);
+  transition: transform 0.2s ease;
+}
+
+.diary-chevron.up {
+  transform: rotate(180deg);
+}
+
+.diary-preview {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .diary-text {
+  margin-top: 10px;
   font-size: 15px;
   line-height: 1.85;
   white-space: pre-wrap;

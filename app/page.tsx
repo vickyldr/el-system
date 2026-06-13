@@ -1974,22 +1974,39 @@ function MemoryView() {
 }
 
 // El 的日记：每天他给你写的那段，只读地翻给你看（他写的时候不知道你能看到）。
+// 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
 function DiaryView() {
   const { data, loading, err } = useJson<{
     entries: { date: string; diary: string; mood: string }[];
   }>("/api/notion/diary");
-  if (loading) return <SkelList count={3} lines={4} />;
+  const [open, setOpen] = useState<number | null>(0); // 默认展开最新一篇
+  if (loading) return <SkelList count={3} lines={2} />;
   if (err) return <div className="empty">{err}</div>;
   const entries = data?.entries ?? [];
   if (!entries.length) return <div className="empty">还没有日记</div>;
   return (
     <div className="diary">
-      {entries.map((e, i) => (
-        <div className="diary-entry" key={i}>
-          <div className="diary-date">{e.date ? friendlyDate(e.date) : ""}</div>
-          <div className="diary-text">{e.diary}</div>
-        </div>
-      ))}
+      {entries.map((e, i) => {
+        const isOpen = open === i;
+        const preview = e.diary.replace(/\s+/g, " ").trim();
+        return (
+          <div className={`diary-entry ${isOpen ? "open" : ""}`} key={i}>
+            <button
+              className="diary-head"
+              onClick={() => setOpen(isOpen ? null : i)}
+              aria-expanded={isOpen}
+            >
+              <span className="diary-date">{e.date ? friendlyDate(e.date) : ""}</span>
+              <span className={`diary-chevron ${isOpen ? "up" : ""}`}>⌄</span>
+            </button>
+            {isOpen ? (
+              <div className="diary-text">{e.diary}</div>
+            ) : (
+              <div className="diary-preview">{preview}</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

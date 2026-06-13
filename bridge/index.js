@@ -174,7 +174,8 @@ if (GEMINI_API_KEY) {
     };
 
     let session = null;
-    let replyText = ""; // 累积本回合 Gemini 的文字回复
+    let replyText = ""; // 累积本回合 el 的回复文字
+    let userText = ""; // 累积本回合"你说的话"的转写
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
@@ -189,6 +190,7 @@ if (GEMINI_API_KEY) {
           // 所以让它出音频(我们丢掉不用)，同时开 outputAudioTranscription 拿到"它说的文字"，
           // 再把这段文字交给前端用 MiniMax(她捏的音色)念——又快、又是她的声音。
           responseModalities: ["AUDIO"],
+          inputAudioTranscription: {}, // 把"你说的话"也转成文字，显示在对话框
           outputAudioTranscription: {},
           realtimeInputConfig: {
             automaticActivityDetection: { disabled: false }, // 自动 VAD 判断回合
@@ -200,18 +202,23 @@ if (GEMINI_API_KEY) {
             send({ type: "ready" });
           },
           onmessage: (msg) => {
-            // 用"输出转写"拿它说的文字（音频 inlineData 直接忽略）。
-            const t = msg.serverContent?.outputTranscription?.text;
-            if (t) replyText += t;
-            // 有的版本文字也可能落在 modelTurn.parts[].text 里，兜底也收一下。
+            // 你说的话（输入转写）
+            const it = msg.serverContent?.inputTranscription?.text;
+            if (it) userText += it;
+            // el 说的话（输出转写）；音频 inlineData 忽略
+            const ot = msg.serverContent?.outputTranscription?.text;
+            if (ot) replyText += ot;
             for (const part of msg.serverContent?.modelTurn?.parts ?? []) {
               if (part.text) replyText += part.text;
             }
             if (msg.serverContent?.turnComplete) {
+              const u = userText.trim();
               const text = replyText.trim();
+              userText = "";
               replyText = "";
+              if (u) send({ type: "user_text", text: u }); // 先显示你的话
               console.log("Gemini turn complete, 转写:", text);
-              if (text) send({ type: "text", text });
+              if (text) send({ type: "text", text }); // 再 el 回复 + 念
             }
           },
           onerror: (err) => {

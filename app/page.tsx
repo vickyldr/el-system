@@ -1110,6 +1110,9 @@ function FindTab() {
           const msg = JSON.parse(event.data);
           if (msg.type === "ready") {
             setCallState("listening");
+          } else if (msg.type === "user_text" && msg.text) {
+            // 你在电话里说的话，也显示在对话框
+            setMsgs((m) => [...m, { role: "user", content: msg.text, ts: Date.now() }]);
           } else if (msg.type === "text" && msg.text) {
             // Gemini 给的文字回复 → 用 MiniMax（她捏的音色）念出来
             setMsgs((m) => [...m, { role: "assistant", content: msg.text, ts: Date.now() }]);

@@ -26,7 +26,7 @@ app.use((req, res, next) => {
       return res.status(204).end();
     }
   }
-  if (req.path === "/health") return next();
+  if (req.path === "/health" || req.path === "/test") return next();
   if (!SECRET || req.headers["x-bridge-secret"] !== SECRET) {
     return res.status(401).json({ error: "unauthorized" });
   }

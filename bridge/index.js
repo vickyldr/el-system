@@ -217,37 +217,9 @@ app.post("/chat", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    const body = {
-      model: MODEL,
-      max_tokens: max_tokens || 1024,
-      messages,
-      ...(system ? { system } : {}),
-    };
-
-    const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "Authorization": `Bearer ${OAUTH_TOKEN}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!apiRes.ok) {
-      const errText = await apiRes.text();
-      console.error(`Anthropic API error ${apiRes.status}: ${errText}`);
-      res.write(`data: ${JSON.stringify({ type: "error", error: `API ${apiRes.status}` })}\n\n`);
-      res.end();
-      return;
-    }
-
-    const data = await apiRes.json();
-    const text = data.content
-      ?.filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("") || "";
-
+    // 走和语音同一条「合规」OAuth 路（callEl 里带了 oauth-beta 头 + CC 身份声明）。
+    // 之前这里自己拼 fetch、漏了那两样，被 Anthropic 当不合规、回 message:"Error" 的假 429。
+    const text = await callEl(messages, system || "");
     res.write(`data: ${JSON.stringify({ type: "done", text })}\n\n`);
     res.end();
   } catch (err) {

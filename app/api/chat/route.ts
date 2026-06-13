@@ -294,10 +294,9 @@ export async function POST(req: Request) {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
 
-    // bridge 优先（Railway 直连 Anthropic，比 relay 快）。
-    // 语音模式也走 bridge——实际通话每轮间隔够长，不会触发 429。
-    // bridge 有 8s 超时 + error 即时 fallback，失败代价很小。
-    if (process.env.BRIDGE_URL) {
+    // 只有语音才走 bridge（短句、实时）。打字聊天直接用 getClaudeFast（Vercel→Max 直连，
+    // 同样快、且带合规头），不再绕 bridge——之前绕 bridge 的 /chat 没带 oauth 头会吃假 429。
+    if (process.env.BRIDGE_URL && voice) {
       reply = await callBridge(process.env.BRIDGE_URL, voiceSystem, loop, maxTok, voice);
     }
 

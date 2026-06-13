@@ -215,10 +215,9 @@ if (GEMINI_API_KEY) {
         } else if (msg.type === "vad_start") {
           console.log("VAD start");
         } else if (msg.type === "vad_end") {
-          console.log("VAD end → audioStreamEnd");
-          try {
-            session.sendRealtimeInput({ audioStreamEnd: true });
-          } catch (e) { console.error("sendRealtimeInput audioStreamEnd error:", e?.message); }
+          // 用 Gemini 的自动 VAD 判断"说完了"——不要再手动发 audioStreamEnd。
+          // 之前手动反复发，会一直打断 Gemini 的回合检测，导致它永远不生成回复。
+          // 音频一直在连续流过去，Gemini 自己会在你停顿时回话。
         }
       } catch {}
     });

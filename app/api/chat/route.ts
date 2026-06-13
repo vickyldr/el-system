@@ -32,9 +32,11 @@ async function callBridge(
     ? (system as any[]).filter((b) => b.type === "text").map((b: any) => b.text).join("")
     : String(system || "");
   if (voice) {
-    systemText += "\n\n【现在是语音通话模式。你的回复会被直接读出来，所以：只说一两句话；不用 markdown、符号、表情；用口语、自然说话的方式；不要提到「通话」这个词，就像平时说话一样。】";
+    systemText += "\n\n【语音通话模式。规则：①只说一句话，最多二十个字；②不用标点、符号、markdown；③口语，自然说话；④不提「通话」。】";
   }
   try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000); // 8s 超时，超时直接 fallback
     const r = await fetch(`${bridgeUrl.replace(/\/$/, "")}/chat`, {
       method: "POST",
       headers: {
@@ -42,7 +44,8 @@ async function callBridge(
         ...(secret ? { "x-bridge-secret": secret } : {}),
       },
       body: JSON.stringify({ system: systemText, messages, max_tokens }),
-    });
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
     if (!r.ok) return "";
     // bridge 返回 SSE，读完拿最后一条 done
     const text = await r.text();
@@ -256,9 +259,9 @@ export async function POST(req: Request) {
   // 上一条我要是已经贴过表情，这条就不给自己贴表情的选项——绝不连发两张。
   const lastAssistant = [...prior].reverse().find((t: any) => t.role === "assistant") as any;
   const allowSticker = !(lastAssistant && lastAssistant.image);
-  // 打电话走快嘴模式：不带工具（省掉工具循环这个延迟大头）、回得短。
   const turnTools = voice ? [] : allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
-  const maxTok = voice ? 220 : 1024;
+  // 语音模式最多 60 token：一两句话够了，越短 Claude 越快回、TTS 越快念
+  const maxTok = voice ? 60 : 1024;
   try {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";

@@ -201,8 +201,10 @@ if (GEMINI_API_KEY) {
             audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
           });
         } else if (msg.type === "vad_start") {
+          console.log("VAD start");
           session.sendRealtimeInput({ activityStart: {} });
         } else if (msg.type === "vad_end") {
+          console.log("VAD end → activityEnd");
           session.sendRealtimeInput({ activityEnd: {} });
         }
       } catch {}

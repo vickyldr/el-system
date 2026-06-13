@@ -149,7 +149,7 @@ if (GEMINI_API_KEY) {
 
     try {
       session = await ai.live.connect({
-        model: process.env.GEMINI_LIVE_MODEL || "gemini-2.0-flash-live-001",
+        model: process.env.GEMINI_LIVE_MODEL || "gemini-2.0-flash-exp",
         config: {
           systemInstruction: EL_VOICE_PERSONA,
           responseModalities: ["AUDIO"],

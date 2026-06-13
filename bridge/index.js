@@ -158,15 +158,17 @@ if (GEMINI_API_KEY) {
             },
           },
           realtimeInputConfig: {
-            automaticActivityDetection: { disabled: true }, // 用前端 VAD 手动控制
+            automaticActivityDetection: { disabled: false }, // 保留自动 VAD
           },
         },
         callbacks: {
           onopen: () => { send({ type: "ready" }); },
           onmessage: (msg) => {
+            console.log("Gemini msg keys:", Object.keys(msg).join(","), "serverContent:", JSON.stringify(msg.serverContent)?.slice(0, 120));
             const parts = msg.serverContent?.modelTurn?.parts ?? [];
             for (const part of parts) {
               if (part.inlineData?.data) {
+                console.log("Gemini audio chunk, mime:", part.inlineData.mimeType, "bytes:", part.inlineData.data.length);
                 send({
                   type: "audio",
                   data: part.inlineData.data,
@@ -175,6 +177,7 @@ if (GEMINI_API_KEY) {
               }
             }
             if (msg.serverContent?.turnComplete) {
+              console.log("Gemini turn complete");
               send({ type: "turn_end" });
             }
           },
@@ -202,10 +205,9 @@ if (GEMINI_API_KEY) {
           });
         } else if (msg.type === "vad_start") {
           console.log("VAD start");
-          session.sendRealtimeInput({ activityStart: {} });
         } else if (msg.type === "vad_end") {
-          console.log("VAD end → activityEnd");
-          session.sendRealtimeInput({ activityEnd: {} });
+          console.log("VAD end → audioStreamEnd");
+          session.sendRealtimeInput({ audioStreamEnd: true });
         }
       } catch {}
     });

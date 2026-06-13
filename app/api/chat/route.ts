@@ -158,7 +158,8 @@ export async function POST(req: Request) {
     } catch {
       /* ignore */
     }
-  } else {
+  } else if (!voice) {
+    // 语音模式没缓存就跳过 Notion，省掉 2-5s 的网络等待，用空白记忆上下文
     const [p, l, rows, children] = await Promise.all([
       profilePage ? pageText(profilePage).catch(() => "") : Promise.resolve(""),
       longtermPage ? pageText(longtermPage).catch(() => "") : Promise.resolve(""),

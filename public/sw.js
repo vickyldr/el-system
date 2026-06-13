@@ -24,6 +24,9 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
+  // data: / blob: 等非 http(s) URL 不处理，直接放行。
+  if (!request.url.startsWith("http")) return;
+
   // 接口请求不走缓存，永远拿最新状态。
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) return;

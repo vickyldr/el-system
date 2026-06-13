@@ -266,8 +266,8 @@ export async function POST(req: Request) {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
 
-    // 语音模式 + 配了 BRIDGE_URL 就走 CC bridge，不走 Anthropic SDK
-    if (process.env.BRIDGE_URL) {
+    // 文字模式才走 bridge（语音模式跳过，避免 bridge 429 fallback 双重等待拖慢通话）
+    if (process.env.BRIDGE_URL && !voice) {
       reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok, voice);
     }
 

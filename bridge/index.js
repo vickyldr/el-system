@@ -174,6 +174,7 @@ if (GEMINI_API_KEY) {
     };
 
     let session = null;
+    let replyText = ""; // 累积本回合 Gemini 的文字回复
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
@@ -184,14 +185,9 @@ if (GEMINI_API_KEY) {
         model: liveModel,
         config: {
           systemInstruction: EL_VOICE_PERSONA,
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: process.env.GEMINI_VOICE || "Charon" },
-            },
-          },
+          responseModalities: ["TEXT"], // 只要文字——语音交给前端用 MiniMax(她捏的音色)念，又快又是她的声音
           realtimeInputConfig: {
-            automaticActivityDetection: { disabled: false }, // 保留自动 VAD
+            automaticActivityDetection: { disabled: false }, // 自动 VAD 判断回合
           },
         },
         callbacks: {
@@ -200,21 +196,15 @@ if (GEMINI_API_KEY) {
             send({ type: "ready" });
           },
           onmessage: (msg) => {
-            console.log("Gemini onmessage raw:", JSON.stringify(msg)?.slice(0, 200));
             const parts = msg.serverContent?.modelTurn?.parts ?? [];
             for (const part of parts) {
-              if (part.inlineData?.data) {
-                console.log("Gemini audio chunk, mime:", part.inlineData.mimeType, "bytes:", part.inlineData.data.length);
-                send({
-                  type: "audio",
-                  data: part.inlineData.data,
-                  mime: part.inlineData.mimeType ?? "audio/pcm;rate=24000",
-                });
-              }
+              if (part.text) replyText += part.text;
             }
             if (msg.serverContent?.turnComplete) {
-              console.log("Gemini turn complete");
-              send({ type: "turn_end" });
+              const text = replyText.trim();
+              replyText = "";
+              console.log("Gemini turn complete, 回复:", text);
+              if (text) send({ type: "text", text });
             }
           },
           onerror: (err) => {

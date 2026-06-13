@@ -988,6 +988,8 @@ function FindTab() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
   const nextPlayTimeRef = useRef(0);
+  const botSpeaking = useRef(false); // el(MiniMax 声音)正在说话——这期间不把麦克风回传给 Gemini，防回授
+  const currentSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const callActive = useRef(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -1044,6 +1046,34 @@ function FindTab() {
     } catch {}
   }
 
+  // Gemini 给文字 → MiniMax（她捏的音色）念出来，走已解锁的 AudioContext 播放。
+  async function speakReply(ac: AudioContext, text: string) {
+    botSpeaking.current = true;
+    setCallState("speaking");
+    try {
+      const r = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, fast: true }),
+      });
+      if (!r.ok) throw new Error("tts");
+      const buf = await ac.decodeAudioData(await r.arrayBuffer());
+      try { currentSrcRef.current?.stop(); } catch {}
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(outputGainRef.current ?? ac.destination);
+      src.onended = () => {
+        botSpeaking.current = false;
+        if (callActive.current) setCallState("listening");
+      };
+      currentSrcRef.current = src;
+      src.start();
+    } catch {
+      botSpeaking.current = false;
+      if (callActive.current) setCallState("listening");
+    }
+  }
+
   async function startCall() {
     if (callActive.current) return; // 防重复点
     callActive.current = true;
@@ -1080,12 +1110,10 @@ function FindTab() {
           const msg = JSON.parse(event.data);
           if (msg.type === "ready") {
             setCallState("listening");
-          } else if (msg.type === "audio" && msg.data) {
-            setCallState("speaking");
-            playPCMChunk(ac, msg.data);
-          } else if (msg.type === "turn_end") {
-            nextPlayTimeRef.current = 0;
-            setCallState("listening");
+          } else if (msg.type === "text" && msg.text) {
+            // Gemini 给的文字回复 → 用 MiniMax（她捏的音色）念出来
+            setMsgs((m) => [...m, { role: "assistant", content: msg.text, ts: Date.now() }]);
+            void speakReply(ac, msg.text);
           }
         } catch {}
       };
@@ -1099,47 +1127,15 @@ function FindTab() {
         const processor = ac.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
 
-        // 前端 VAD：检测到静音 900ms 后发 vad_end，让 Gemini 处理已缓冲的音频
-        const VAD_THRESH = 0.015;
-        const VAD_SILENCE_MS = 900;
-        let hadSpeech = false;
-        let silenceStart = 0;
-        let elSpeaking = false; // Gemini 在说话时不发 vad_end
-
-        ws.addEventListener("message", (ev) => {
-          try {
-            const m = JSON.parse(ev.data);
-            if (m.type === "audio") elSpeaking = true;
-            if (m.type === "turn_end") { elSpeaking = false; hadSpeech = false; silenceStart = 0; }
-          } catch {}
-        });
-
+        // 连续把麦克风音频流给 Gemini（它自己的自动 VAD 判断你说完了没）。
+        // el 用 MiniMax 声音说话时停发，免得把他自己的声音又传回去（防回授）。
         processor.onaudioprocess = (e) => {
           if (!callActive.current || ws.readyState !== WebSocket.OPEN) return;
+          if (botSpeaking.current) return;
           const f32 = e.inputBuffer.getChannelData(0);
           const down = downsampleBuffer(f32, nativeSR, 16000);
           const i16 = float32ToInt16(down);
           ws.send(JSON.stringify({ type: "audio", data: bufToBase64(i16.buffer as ArrayBuffer) }));
-
-          if (elSpeaking) return; // Gemini 说话中不做 VAD
-
-          // 计算音量
-          let sum = 0;
-          for (let i = 0; i < f32.length; i++) sum += f32[i] * f32[i];
-          const rms = Math.sqrt(sum / f32.length);
-
-          if (rms > VAD_THRESH) {
-            if (!hadSpeech) ws.send(JSON.stringify({ type: "vad_start" }));
-            hadSpeech = true;
-            silenceStart = 0;
-          } else if (hadSpeech) {
-            if (!silenceStart) silenceStart = Date.now();
-            else if (Date.now() - silenceStart > VAD_SILENCE_MS) {
-              hadSpeech = false;
-              silenceStart = 0;
-              ws.send(JSON.stringify({ type: "vad_end" }));
-            }
-          }
         };
 
         source.connect(processor);
@@ -1174,13 +1170,9 @@ function FindTab() {
   // 点球打断：静音 200ms 清空队列，继续说话 Gemini 自动检测到打断
   function interruptEl() {
     if (!callActive.current) return;
-    const gain = outputGainRef.current;
-    const ac = acRef.current;
-    if (gain && ac) {
-      gain.gain.setValueAtTime(0, ac.currentTime);
-      gain.gain.setValueAtTime(1, ac.currentTime + 0.2);
-    }
-    nextPlayTimeRef.current = 0;
+    try { currentSrcRef.current?.stop(); } catch {}
+    currentSrcRef.current = null;
+    botSpeaking.current = false;
     setCallState("listening");
   }
 

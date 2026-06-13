@@ -995,8 +995,7 @@ function FindTab() {
   const stkFileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const didInit = useRef(false);
-  const pinBottom = useRef(true); // 打开后的一小段时间内，强制钉在底部（图片/字体加载会改高度）
+  const stickBottom = useRef(true); // 默认粘在底部，只有用户主动上滑才松开
   const [atBottom, setAtBottom] = useState(true);
 
   function isNearBottom() {
@@ -1371,33 +1370,31 @@ function FindTab() {
     }
   }, [msgs]);
 
-  // 打开「找我」：第一次拿到消息就钉在最底。图片/表情/字体加载会改变高度，
-  // 用 rAF 每帧把滚动贴到底，约 1.2 秒——内容长高也"粘"在底部，不再一跳一跳。
+  // 聊天滚动：默认"粘"在最底（像 iMessage）。内容/图片/字体加载长高也一直贴底，
+  // reflow 抢不走；只有你主动往上滑才松开去看旧消息，滑回底部或发新消息又重新粘住。
   useEffect(() => {
-    if (!didInit.current && msgs.length) {
-      didInit.current = true;
-      pinBottom.current = true;
-      let raf = 0;
-      const glue = () => {
-        const el = messagesRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-        if (pinBottom.current) raf = requestAnimationFrame(glue);
-      };
-      raf = requestAnimationFrame(glue);
-      const release = setTimeout(() => (pinBottom.current = false), 1200);
-      return () => {
-        cancelAnimationFrame(raf);
-        clearTimeout(release);
-      };
-    }
-  }, [msgs]);
+    let raf = 0;
+    const loop = () => {
+      const el = messagesRef.current;
+      if (el && stickBottom.current) el.scrollTop = el.scrollHeight;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  // 之后有新消息 / 正在回复：只有当你本来就在底部时才跟着往下（在看历史就不打扰你）。
-  useEffect(() => {
-    if (didInit.current && atBottom) scrollToBottom(true);
-  }, [msgs, sending]); // eslint-disable-line react-hooks/exhaustive-deps
+  function onMsgScroll() {
+    const near = isNearBottom();
+    setAtBottom(near);
+    if (near) stickBottom.current = true; // 滑回底部就重新粘住
+  }
+  function userScrollAway() {
+    // 用户主动滑动且离开了底部 → 松开粘附，让她安心看旧消息
+    if (!isNearBottom()) stickBottom.current = false;
+  }
 
   async function post(text: string, image?: string, hint?: string) {
+    stickBottom.current = true; // 发消息就回到底部跟着走
     if ((!text && !image) || sending) return;
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
@@ -1519,7 +1516,13 @@ function FindTab() {
         </div>
       )}
 
-      <div className="messages" ref={messagesRef} onScroll={() => setAtBottom(isNearBottom())}>
+      <div
+        className="messages"
+        ref={messagesRef}
+        onScroll={onMsgScroll}
+        onWheel={(e) => e.deltaY < 0 && userScrollAway()}
+        onTouchMove={userScrollAway}
+      >
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
         {msgs.map((m, i) => (
           <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
@@ -1530,7 +1533,7 @@ function FindTab() {
                   className="msg-img"
                   src={m.image}
                   alt=""
-                  onLoad={() => (pinBottom.current || atBottom) && scrollToBottom(false)}
+                  onLoad={() => stickBottom.current && scrollToBottom(false)}
                 />
               )}
               {m.content && <div className="bubble">{m.content}</div>}
@@ -1562,7 +1565,14 @@ function FindTab() {
       </div>
 
       {!atBottom && msgs.length > 0 && (
-        <button className="jump-bottom" onClick={() => scrollToBottom(true)} aria-label="回到最新">
+        <button
+          className="jump-bottom"
+          onClick={() => {
+            stickBottom.current = true;
+            scrollToBottom(true);
+          }}
+          aria-label="回到最新"
+        >
           <Icon name="chevron-down" size={20} />
         </button>
       )}

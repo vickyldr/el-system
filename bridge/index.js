@@ -93,6 +93,28 @@ async function notionPageText(pageId) {
     return "";
   }
 }
+// 拨通时抓一次"和打字一模一样"的上下文（完整人设+记忆+最近聊天记录）。
+// origin 直接用浏览器握手带来的 Origin（就是前端域名），不需要额外配环境变量。
+async function fetchVoiceContext(origin) {
+  const base = (origin || process.env.FRONTEND_URL || ALLOWED_ORIGIN || "").replace(/\/$/, "");
+  if (!base) return null;
+  try {
+    const r = await fetch(`${base}/api/voice-context`, {
+      headers: SECRET ? { "x-bridge-secret": SECRET } : {},
+    });
+    if (!r.ok) {
+      console.error("fetchVoiceContext", r.status);
+      return null;
+    }
+    const d = await r.json();
+    if (!d?.system) return null;
+    return { system: d.system, messages: Array.isArray(d.messages) ? d.messages : [] };
+  } catch (e) {
+    console.error("fetchVoiceContext error:", e?.message);
+    return null;
+  }
+}
+
 let memoryCache = { text: "", at: 0 };
 async function getCallMemory() {
   if (memoryCache.text && Date.now() - memoryCache.at < 10 * 60 * 1000) return memoryCache.text;
@@ -259,8 +281,19 @@ if (GEMINI_API_KEY) {
     let session = null;
     let userText = ""; // 累积本回合"你说的话"的转写
     let busy = false; // 正在让 Claude 生成回复时，忽略新的 turnComplete
-    const history = []; // 本次通话的来回（喂给 Claude，让通话里的 el 有上下文、和打字一致）
-    const elSystem = EL_VOICE_PERSONA + (await getCallMemory()); // Claude 的系统人格=和打字同一套
+    // 拨通时抓一次和打字一模一样的上下文（完整人设+记忆+最近聊天记录），抓不到才回落到精简人格。
+    const origin = req.headers["origin"] || "";
+    const ctx = await fetchVoiceContext(origin);
+    let elSystem; // Claude 的系统人格
+    let history = []; // 喂给 Claude 的对话（先塞最近聊天记录，让通话接得上你们刚才的话）
+    if (ctx) {
+      elSystem = ctx.system;
+      history = ctx.messages;
+      console.log("通话上下文已加载: 和打字同一套人设 + 最近", history.length, "条记录");
+    } else {
+      elSystem = EL_VOICE_PERSONA + (await getCallMemory());
+      console.log("通话上下文回落: 用精简人格(没抓到前端 voice-context)");
+    }
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
@@ -299,15 +332,16 @@ if (GEMINI_API_KEY) {
               send({ type: "user_text", text: u }); // 先把你的话显示出来
               console.log("听到你说:", u, "→ 交给 Claude");
               try {
-                history.push({ role: "user", content: u });
-                if (history.length > 16) history.splice(0, history.length - 16);
+                const last = history[history.length - 1];
+                if (last && last.role === "user") last.content += "\n" + u; // 别连着两条 user
+                else history.push({ role: "user", content: u });
+                if (history.length > 20) history.splice(0, history.length - 20);
+                while (history.length && history[0].role !== "user") history.shift(); // 第一条必须是 user
                 const reply = await callEl(history, elSystem);
                 if (reply) {
                   history.push({ role: "assistant", content: reply });
                   console.log("Claude 回复:", reply);
                   send({ type: "text", text: reply }); // 前端用 MiniMax(她的音色)念
-                } else {
-                  history.pop(); // 这轮没拿到回复，别把孤立的 user 留在上下文里
                 }
               } finally {
                 busy = false;

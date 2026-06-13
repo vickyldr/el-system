@@ -161,6 +161,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
         </svg>
       );
+    case "book":
+      return (
+        <svg {...p}>
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -1827,7 +1834,7 @@ function FindTab() {
 
 /* ───────────── 我们 ───────────── */
 
-type SubTab = "timeline" | "wishlist" | "memory";
+type SubTab = "timeline" | "wishlist" | "memory" | "diary";
 
 function UsTab() {
   const [sub, setSub] = useState<SubTab>("timeline");
@@ -1835,11 +1842,13 @@ function UsTab() {
     timeline: "时间轴",
     wishlist: "愿望墙",
     memory: "记忆",
+    diary: "日记",
   };
   const subIcons: Record<SubTab, string> = {
     timeline: "clock",
     wishlist: "star",
     memory: "bookmark",
+    diary: "book",
   };
 
   return (
@@ -1860,6 +1869,7 @@ function UsTab() {
       {sub === "timeline" && <TimelineView />}
       {sub === "wishlist" && <WishlistView />}
       {sub === "memory" && <MemoryView />}
+      {sub === "diary" && <DiaryView />}
     </>
   );
 }
@@ -1960,5 +1970,26 @@ function MemoryView() {
         </div>
       ))}
     </>
+  );
+}
+
+// El 的日记：每天他给你写的那段，只读地翻给你看（他写的时候不知道你能看到）。
+function DiaryView() {
+  const { data, loading, err } = useJson<{
+    entries: { date: string; diary: string; mood: string }[];
+  }>("/api/notion/diary");
+  if (loading) return <SkelList count={3} lines={4} />;
+  if (err) return <div className="empty">{err}</div>;
+  const entries = data?.entries ?? [];
+  if (!entries.length) return <div className="empty">还没有日记</div>;
+  return (
+    <div className="diary">
+      {entries.map((e, i) => (
+        <div className="diary-entry" key={i}>
+          <div className="diary-date">{e.date ? friendlyDate(e.date) : ""}</div>
+          <div className="diary-text">{e.diary}</div>
+        </div>
+      ))}
+    </div>
   );
 }

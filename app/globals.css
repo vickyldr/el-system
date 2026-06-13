@@ -1351,6 +1351,34 @@ body::before {
   margin-top: 4px;
 }
 
+/* El 的日记 */
+.diary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.diary-entry {
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+
+.diary-date {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+
+.diary-text {
+  font-size: 15px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
 .song-name {
   font-family: var(--font-display);
   font-size: 19px;

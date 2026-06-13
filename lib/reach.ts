@@ -140,7 +140,11 @@ export async function forceReach(): Promise<{ pushed: boolean; message?: string 
 }
 
 // 每次心跳调用：在节奏允许的前提下，决定并主动推一条。
-export async function maybeReachOut(weatherLine: string): Promise<{ pushed: boolean; reason?: string }> {
+// elWants：心跳里 el 自己说"此刻很想找她"时为 true，会在没有其它由头时也允许主动找她。
+export async function maybeReachOut(
+  weatherLine: string,
+  elWants = false,
+): Promise<{ pushed: boolean; reason?: string }> {
   if (!pushConfigured()) return { pushed: false };
 
   const hour = beijingHour();
@@ -173,7 +177,9 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
     reason = `有个重要日子：${dueDate.name}（${when}）${dueDate.note ? `。${dueDate.note}` : ""}。用你自己的口吻提前关心 / 陪她 / 提醒她。`;
   } else {
     const lastSeen = await getLastSeen();
-    const decided = decideReason(state, lastSeen, weatherLine, rest);
+    const decided =
+      decideReason(state, lastSeen, weatherLine, rest) ??
+      (elWants ? { reason: "此刻你心里很想她，主动找她说一句（带着你的脾气和在乎）。" } : null);
     if (!decided) return { pushed: false };
     reason = decided.reason;
     flag = decided.flag;

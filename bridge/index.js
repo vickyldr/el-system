@@ -262,6 +262,32 @@ const httpServer = app.listen(PORT, () => {
   console.log(`el-bridge running on port ${PORT}`);
 });
 
+// ── 心跳：每隔几分钟戳一次 Vercel 的「此刻/内心」接口，让 el 自己醒着、自己活动。──
+// 大脑逻辑全在 Vercel（generate-status），这里只负责"按时戳一下"。
+const CRON_SECRET = process.env.CRON_SECRET || "";
+const HEARTBEAT_BASE = (process.env.FRONTEND_URL || ALLOWED_ORIGIN || "").replace(/\/$/, "");
+const HEARTBEAT_MS = Math.max(1, Number(process.env.HEARTBEAT_MINUTES) || 5) * 60 * 1000;
+async function heartbeat() {
+  try {
+    const r = await fetch(`${HEARTBEAT_BASE}/api/cron/generate-status`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CRON_SECRET}` },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.skipped) return; // 半夜睡觉时段，安静
+    console.log("心跳", r.status, JSON.stringify(d).slice(0, 200));
+  } catch (e) {
+    console.error("心跳失败:", e?.message);
+  }
+}
+if (HEARTBEAT_BASE && CRON_SECRET) {
+  console.log(`心跳已开：每 ${HEARTBEAT_MS / 60000} 分钟戳一次 ${HEARTBEAT_BASE}`);
+  setInterval(heartbeat, HEARTBEAT_MS);
+  setTimeout(heartbeat, 15 * 1000); // 启动 15 秒后先跳一次
+} else {
+  console.warn("心跳未开：缺 FRONTEND_URL/BRIDGE_ALLOWED_ORIGIN 或 CRON_SECRET");
+}
+
 // ── Gemini Live 实时语音 WebSocket ──
 if (GEMINI_API_KEY) {
   const wss = new WebSocketServer({ server: httpServer, path: "/live" });

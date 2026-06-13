@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { getClaudeFast } from "@/lib/claude";
+import { getClaude, getClaudeFast } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import {
@@ -362,11 +362,11 @@ export async function POST(req: Request) {
       break;
     }
 
-    // 还是空的（光调工具 / 空回复）就再要一次纯文字回复，别甩个省略号给她。
+    // 还是空的（Max 限流/抽风/光调工具）就改用中转站兜底要一次——稳，虽慢但有答案。
     // 这一下摘掉大图、不带工具，轻量又稳，专治带图带工具那种空返回。
     if (!reply) {
       try {
-        const res = await claude.messages.create({
+        const res = await getClaude().messages.create({
           model,
           max_tokens: maxTok,
           system,
@@ -377,12 +377,15 @@ export async function POST(req: Request) {
           .map((b) => b.text)
           .join("")
           .trim();
-      } catch {
-        /* ignore */
+      } catch (e) {
+        console.error("聊天兜底(中转站)也失败:", e instanceof Error ? e.message : e);
       }
     }
     } // end SDK block
-    if (!reply) reply = "在呢，刚卡了一下，你再说一遍？";
+    if (!reply) {
+      console.error("聊天最终空回复：Max 和中转站都没给出文字");
+      reply = "在呢，刚卡了一下，你再说一遍？";
+    }
 
     // 云端存档：base64 照片单独存、表情/外链 URL 直接存。
     if (cloud) {

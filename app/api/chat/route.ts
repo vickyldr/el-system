@@ -149,15 +149,17 @@ export async function POST(req: Request) {
   // 记忆上下文缓存 5 分钟，省掉每条消息都现读 Notion 的延迟。
   let profile = "";
   let longterm = "";
+  let patterns = ""; // 规律档案（作息/经期/情绪信号）——核心记忆，每条都喂
   let recent = "";
   let pageList = "";
   let nowStatus = "";
-  const cached = await getCache("el:memctx");
+  const cached = await getCache("el:memctx2");
   if (cached) {
     try {
       const c = JSON.parse(cached);
       profile = c.profile || "";
       longterm = c.longterm || "";
+      patterns = c.patterns || "";
       recent = c.recent || "";
       pageList = c.pageList || "";
       nowStatus = c.nowStatus || "";
@@ -175,19 +177,25 @@ export async function POST(req: Request) {
     profile = p;
     longterm = l;
     recent = buildMemoryContext(rows);
+    // 规律档案：跟着首页结构找（记忆层里标题带"规律"的那页），接回自动记忆
+    const patternPage = children.find((c) => c.layer === "memory" && c.title.includes("规律"));
+    patterns = patternPage ? await pageText(patternPage.id).catch(() => "") : "";
     const latestNow = (rows?.[0]?.now ?? "").trim();
     nowStatus = latestNow
       ? `你此刻在「此刻」页上的状态（就是你自己现在的心情/在想什么/想让她听的歌，她在小家首页看得到）：\n${latestNow.replace(/\n+/g, " / ")}`
       : "";
+    // 页面清单按「记忆层 / 工具层」分开列：工具层标明是辅助，别当成经历
+    const mem = children.filter((c) => c.layer === "memory").map((c) => c.title).filter(Boolean);
+    const tool = children.filter((c) => c.layer === "tool").map((c) => c.title).filter(Boolean);
     pageList = children.length
-      ? `你能读的「小家」页面有：${children
-          .map((c) => c.title)
-          .filter(Boolean)
-          .join("、")}。问到哪页的细节就用 read_notion 去读它。`
+      ? `你能读的「小家」页面——记忆层（你的记忆，要细节就用 read_notion 翻）：${mem.join("、")}。` +
+        (tool.length
+          ? `\n工具层（辅助资料，需要时才翻；不是你经历的事，别当成回忆）：${tool.join("、")}。`
+          : "")
       : "";
     await setCache(
-      "el:memctx",
-      JSON.stringify({ profile, longterm, recent, pageList, nowStatus }),
+      "el:memctx2",
+      JSON.stringify({ profile, longterm, patterns, recent, pageList, nowStatus }),
       300,
     );
   }
@@ -213,6 +221,7 @@ export async function POST(req: Request) {
     "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",
     pageList,
     profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
+    patterns && `——宝宝的规律（观察到的模式，自然地用，别一条条念）——\n\n${patterns}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,
     voice &&

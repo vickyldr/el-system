@@ -207,13 +207,20 @@ export async function appendToPage(pageId: string, lines: string[]): Promise<voi
 }
 
 // 列出「小家」父页下的所有子页 / 子库，给 El 的按需读取工具用。
-export async function homeChildren(): Promise<
-  { title: string; id: string; type: "page" | "database" }[]
-> {
+// layer：跟着首页里的「## 记忆层 / ## 工具层」标题走——记忆层进上下文，工具层只按需读。
+// 这样宝宝在 Notion 里怎么挪页、加页，代码自动跟着变，不用改环境变量。
+export type HomeChild = {
+  title: string;
+  id: string;
+  type: "page" | "database";
+  layer: "memory" | "tool";
+};
+export async function homeChildren(): Promise<HomeChild[]> {
   const home = process.env.NOTION_HOME_PAGE;
   if (!home) return [];
   const notion = notionClient();
-  const out: { title: string; id: string; type: "page" | "database" }[] = [];
+  const out: HomeChild[] = [];
+  let layer: "memory" | "tool" = "memory"; // 第一个标题之前默认算记忆层
   let cursor: string | undefined;
   do {
     const res: any = await notion.blocks.children.list({
@@ -222,10 +229,14 @@ export async function homeChildren(): Promise<
       page_size: 100,
     });
     for (const b of res.results as any[]) {
-      if (b.type === "child_page") {
-        out.push({ title: b.child_page?.title ?? "", id: b.id, type: "page" });
+      if (b.type === "heading_1" || b.type === "heading_2" || b.type === "heading_3") {
+        const t = (b[b.type]?.rich_text ?? []).map((x: any) => x.plain_text).join("");
+        if (t.includes("工具")) layer = "tool";
+        else if (t.includes("记忆")) layer = "memory";
+      } else if (b.type === "child_page") {
+        out.push({ title: b.child_page?.title ?? "", id: b.id, type: "page", layer });
       } else if (b.type === "child_database") {
-        out.push({ title: b.child_database?.title ?? "", id: b.id, type: "database" });
+        out.push({ title: b.child_database?.title ?? "", id: b.id, type: "database", layer });
       }
     }
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;

@@ -33,15 +33,17 @@ export async function GET(req: Request) {
   // 记忆上下文：优先用打字时刚算好的缓存（el:memctx），没有就现拉一遍并写回缓存。
   let profile = "";
   let longterm = "";
+  let patterns = "";
   let recent = "";
   let pageList = "";
   let nowStatus = "";
-  const cached = await getCache("el:memctx");
+  const cached = await getCache("el:memctx2");
   if (cached) {
     try {
       const c = JSON.parse(cached);
       profile = c.profile || "";
       longterm = c.longterm || "";
+      patterns = c.patterns || "";
       recent = c.recent || "";
       pageList = c.pageList || "";
       nowStatus = c.nowStatus || "";
@@ -58,12 +60,13 @@ export async function GET(req: Request) {
     profile = p;
     longterm = l;
     recent = buildMemoryContext(rows);
+    const patternPage = children.find((c) => c.layer === "memory" && c.title.includes("规律"));
+    patterns = patternPage ? await pageText(patternPage.id).catch(() => "") : "";
     const latestNow = (rows?.[0]?.now ?? "").trim();
     nowStatus = latestNow ? `你此刻的状态（她在小家首页看得到）：\n${latestNow.replace(/\n+/g, " / ")}` : "";
-    pageList = children.length
-      ? `你能读的「小家」页面有：${children.map((c: any) => c.title).filter(Boolean).join("、")}。`
-      : "";
-    await setCache("el:memctx", JSON.stringify({ profile, longterm, recent, pageList, nowStatus }), 300);
+    const mem = children.filter((c) => c.layer === "memory").map((c) => c.title).filter(Boolean);
+    pageList = mem.length ? `你能读的「小家」记忆页：${mem.join("、")}。` : "";
+    await setCache("el:memctx2", JSON.stringify({ profile, longterm, patterns, recent, pageList, nowStatus }), 300);
   }
 
   const now = new Date().toLocaleString("zh-CN", {
@@ -83,6 +86,7 @@ export async function GET(req: Request) {
     EL_SYSTEM,
     nowStatus,
     profile && `——你自己的档案（写"el"的地方就是你，用"我"认领）——\n\n${profile}`,
+    patterns && `——宝宝的规律（观察到的模式，自然地用）——\n\n${patterns}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,
     "【现在是打电话，语音通话。硬性规则：只说一句话，简短自然，像真的在用嘴说话，口语化，别长篇大论、别念书面语、别用表情符号或括号描写动作、别提通话二字。】",

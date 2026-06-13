@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 // 所有 /api/* 路由需要带 x-app-secret 头，防公网随意调用。
 // Cron 路由例外：它们自己用 Authorization: Bearer CRON_SECRET 鉴权。
 // Push subscription 例外：Service Worker 注册时不方便带自定义头。
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const secret = process.env.NEXT_PUBLIC_APP_SECRET;
   if (!secret) return NextResponse.next(); // 未配置就不拦（开发环境友好）
 

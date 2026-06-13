@@ -206,14 +206,12 @@ body::before {
 }
 
 .card {
-  background: var(--glass);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--hair);
   border-radius: 18px;
   padding: 16px 18px;
   margin-bottom: 14px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   animation: fadeInUp 0.42s ease both;
 }
 
@@ -310,39 +308,13 @@ body::before {
   margin-bottom: 0;
 }
 
-/* 呼吸动画：心情面板轻轻泛光，像在跳动 */
-@keyframes moodBreathe {
-  0%, 100% { box-shadow: var(--shadow), 0 0 0px transparent; }
-  50% { box-shadow: var(--shadow), 0 0 22px rgba(123, 111, 240, 0.22); }
-}
-
-.mood-pane-breathe {
-  animation: moodBreathe 3.6s ease-in-out infinite;
-}
-
 /* ── 今日签 ── */
 .fortune-card {
-  position: relative;
-  background: var(--bg-deep, rgba(20, 23, 34, 0.82));
-  animation: fadeInUp 0.42s ease both;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: var(--panel);
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 14px;
-  border: 1px solid transparent;
-  background-clip: padding-box;
-  box-shadow: var(--shadow), 0 0 14px rgba(123, 111, 240, 0.12);
-}
-
-/* 渐变描边：细细一圈，低调的紫色边 */
-.fortune-card::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: 17px;
-  background: linear-gradient(135deg, rgba(123,111,240,0.35), rgba(214,132,173,0.22), rgba(83,74,183,0.3));
-  z-index: -1;
+  border: 1px solid rgba(123, 111, 240, 0.4);
 }
 
 .fortune-label {
@@ -889,6 +861,71 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.stk-edit {
+  position: absolute;
+  bottom: -6px;
+  left: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(83, 74, 183, 0.85);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kaomoji-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.kaomoji-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kaomoji-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding-left: 2px;
+}
+
+.kaomoji-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kaomoji-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.kaomoji-btn:active {
+  background: rgba(123,111,240,0.15);
+  border-color: var(--accent-2);
 }
 
 .msg {

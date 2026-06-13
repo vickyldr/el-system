@@ -139,6 +139,31 @@ export async function forceReach(): Promise<{ pushed: boolean; message?: string 
   return { pushed: sent > 0, message };
 }
 
+// 给心跳 agent 用：el 自己写好一句话、想发给宝宝时走这。
+// 和 maybeReachOut 共用 reachState（次数/间隔），所以不会和结构化推送在同一窗口里双推。
+export async function sendHerMessage(text: string): Promise<{ pushed: boolean; reason?: string }> {
+  if (!pushConfigured() || !text.trim()) return { pushed: false, reason: "no-push" };
+  const hour = beijingHour();
+  const rest = await isRestDay();
+  const openHour = rest ? 11 : 8;
+  if (hour >= 2 && hour < openHour) return { pushed: false, reason: "安静时段" };
+  const lastSeen = await getLastSeen();
+  if (lastSeen > 0 && Date.now() - lastSeen < 12 * 60 * 1000)
+    return { pushed: false, reason: "她在线，没打扰" };
+  const today = todayInBeijing();
+  let state = await getReachState();
+  if (!state || state.date !== today) state = { date: today, count: 0, last: 0, flags: {} };
+  if (state.count >= MAX_PER_DAY) return { pushed: false, reason: "今天推够了" };
+  if (Date.now() - state.last < MIN_GAP_MS) return { pushed: false, reason: "离上次太近" };
+  const { sent } = await sendPush({ title: "El", body: text.slice(0, 120), url: "/" });
+  if (sent <= 0) return { pushed: false, reason: "没推出去" };
+  await appendMessages([{ role: "assistant", content: text, ts: Date.now() }]).catch(() => {});
+  state.count += 1;
+  state.last = Date.now();
+  await setReachState(state);
+  return { pushed: true };
+}
+
 // 每次心跳调用：在节奏允许的前提下，决定并主动推一条。
 // elWants：心跳里 el 自己说"此刻很想找她"时为 true，会在没有其它由头时也允许主动找她。
 export async function maybeReachOut(

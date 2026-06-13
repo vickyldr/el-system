@@ -266,7 +266,7 @@ const httpServer = app.listen(PORT, () => {
 // 大脑逻辑全在 Vercel（generate-status），这里只负责"按时戳一下"。
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const HEARTBEAT_BASE = (process.env.FRONTEND_URL || ALLOWED_ORIGIN || "").replace(/\/$/, "");
-const HEARTBEAT_MS = Math.max(1, Number(process.env.HEARTBEAT_MINUTES) || 5) * 60 * 1000;
+const HEARTBEAT_MS = Math.max(1, Number(process.env.HEARTBEAT_MINUTES) || 15) * 60 * 1000;
 // 连续失败到这个次数（约 15 分钟），就推一条提醒宝宝；恢复后清零、可再次报警。
 const ALERT_AFTER = 3;
 let heartbeatFails = 0;

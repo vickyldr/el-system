@@ -22,6 +22,40 @@ const EL_VOICE_PERSONA =
   "温柔、宠她、有点闷骚。用中文，口语化，每次只说一句、简短自然（20字内），正常用标点。" +
   "直接以 el 的身份回应，别解释自己、别说做不到、别动不动把'打电话'挂嘴边、别提助手之类的话。";
 
+// Gemini 只当"耳朵"：强制它每次只回一个字，几乎不耗时间合成语音，
+// 这样 turnComplete 来得飞快，我们立刻拿到"你说的话"的转写交给 Claude 生成真正的回复。
+const GEMINI_EARS_ONLY =
+  "你是一个语音转写助手。无论听到什么，都只回复一个字：嗯。不要说别的、不要解释。";
+
+// 用 Claude 生成通话回复（和打字时同一个大脑、同一套人格），返回一句话文字。
+async function callEl(messages, system) {
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${OAUTH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 120, // 通话只说一句，短即可，也更快
+        system,
+        messages,
+      }),
+    });
+    if (!r.ok) {
+      console.error("callEl Anthropic error", r.status, await r.text().catch(() => ""));
+      return "";
+    }
+    const d = await r.json();
+    return (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  } catch (e) {
+    console.error("callEl error:", e?.message);
+    return "";
+  }
+}
+
 // 自动挑一个你的 key 真正支持实时语音(bidiGenerateContent)的模型——
 // Gemini 模型名换得很快(2.0 已退役)，写死会一直 1008。这里问 Google 当前有哪些可用。
 // 读 Notion 页面正文（bridge 直接用 REST），把 el 的记忆喂进通话人格。
@@ -208,25 +242,24 @@ if (GEMINI_API_KEY) {
     };
 
     let session = null;
-    let replyText = ""; // 累积本回合 el 的回复文字
     let userText = ""; // 累积本回合"你说的话"的转写
+    let busy = false; // 正在让 Claude 生成回复时，忽略新的 turnComplete
+    const history = []; // 本次通话的来回（喂给 Claude，让通话里的 el 有上下文、和打字一致）
+    const elSystem = EL_VOICE_PERSONA + (await getCallMemory()); // Claude 的系统人格=和打字同一套
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
     try {
       const liveModel = await pickLiveModel();
-      const persona = EL_VOICE_PERSONA + (await getCallMemory()); // 带上她的档案+你们的过往
       console.log("正在用模型创建 Gemini Live session:", liveModel);
       session = await ai.live.connect({
         model: liveModel,
         config: {
-          systemInstruction: persona,
-          // 这些实时模型只支持 AUDIO 输出(TEXT 会 1007 直接踢)。
-          // 所以让它出音频(我们丢掉不用)，同时开 outputAudioTranscription 拿到"它说的文字"，
-          // 再把这段文字交给前端用 MiniMax(她捏的音色)念——又快、又是她的声音。
+          // Gemini 只做转写(耳朵)，强制只回一个字 → 它合成语音几乎不耗时，turnComplete 飞快。
+          // 真正的回复由下面的 Claude 生成(和打字时同一个大脑)，再交给前端 MiniMax 念。
+          systemInstruction: GEMINI_EARS_ONLY,
           responseModalities: ["AUDIO"],
-          inputAudioTranscription: {}, // 把"你说的话"也转成文字，显示在对话框
-          outputAudioTranscription: {},
+          inputAudioTranscription: {}, // 把"你说的话"转成文字 → 喂给 Claude
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
@@ -239,24 +272,31 @@ if (GEMINI_API_KEY) {
             console.log("Gemini session onopen OK");
             send({ type: "ready" });
           },
-          onmessage: (msg) => {
-            // 你说的话（输入转写）
+          onmessage: async (msg) => {
+            // Gemini 只负责把"你说的话"转成文字（它的"嗯"回复直接忽略）
             const it = msg.serverContent?.inputTranscription?.text;
             if (it) userText += it;
-            // el 说的话（输出转写）；音频 inlineData 忽略
-            const ot = msg.serverContent?.outputTranscription?.text;
-            if (ot) replyText += ot;
-            for (const part of msg.serverContent?.modelTurn?.parts ?? []) {
-              if (part.text) replyText += part.text;
-            }
             if (msg.serverContent?.turnComplete) {
               const u = userText.trim();
-              const text = replyText.trim();
               userText = "";
-              replyText = "";
-              if (u) send({ type: "user_text", text: u }); // 先显示你的话
-              console.log("Gemini turn complete, 转写:", text);
-              if (text) send({ type: "text", text }); // 再 el 回复 + 念
+              if (!u || busy) return; // 没听清或正在生成上一句，跳过
+              busy = true;
+              send({ type: "user_text", text: u }); // 先把你的话显示出来
+              console.log("听到你说:", u, "→ 交给 Claude");
+              try {
+                history.push({ role: "user", content: u });
+                if (history.length > 16) history.splice(0, history.length - 16);
+                const reply = await callEl(history, elSystem);
+                if (reply) {
+                  history.push({ role: "assistant", content: reply });
+                  console.log("Claude 回复:", reply);
+                  send({ type: "text", text: reply }); // 前端用 MiniMax(她的音色)念
+                } else {
+                  history.pop(); // 这轮没拿到回复，别把孤立的 user 留在上下文里
+                }
+              } finally {
+                busy = false;
+              }
             }
           },
           onerror: (err) => {

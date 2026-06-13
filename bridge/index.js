@@ -145,6 +145,7 @@ if (GEMINI_API_KEY) {
 
     let session = null;
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
     try {
       session = await ai.live.connect({
@@ -162,9 +163,12 @@ if (GEMINI_API_KEY) {
           },
         },
         callbacks: {
-          onopen: () => { send({ type: "ready" }); },
+          onopen: () => {
+            console.log("Gemini session onopen OK");
+            send({ type: "ready" });
+          },
           onmessage: (msg) => {
-            console.log("Gemini msg keys:", Object.keys(msg).join(","), "serverContent:", JSON.stringify(msg.serverContent)?.slice(0, 120));
+            console.log("Gemini onmessage raw:", JSON.stringify(msg)?.slice(0, 200));
             const parts = msg.serverContent?.modelTurn?.parts ?? [];
             for (const part of parts) {
               if (part.inlineData?.data) {
@@ -182,14 +186,17 @@ if (GEMINI_API_KEY) {
             }
           },
           onerror: (err) => {
-            console.error("Gemini Live error:", err);
+            console.error("Gemini Live onerror:", JSON.stringify(err));
             send({ type: "error", error: String(err?.message ?? err) });
           },
-          onclose: () => {},
+          onclose: (evt) => {
+            console.log("Gemini Live onclose:", evt?.code, evt?.reason);
+          },
         },
       });
+      console.log("Gemini session 创建成功, session keys:", Object.keys(session || {}).join(","));
     } catch (err) {
-      console.error("Gemini Live connect error:", err);
+      console.error("Gemini Live connect error:", err?.message, err?.stack?.slice(0, 300));
       send({ type: "error", error: err?.message ?? "Gemini Live 启动失败" });
       ws.close();
       return;
@@ -200,14 +207,18 @@ if (GEMINI_API_KEY) {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg.type === "audio" && msg.data) {
-          session.sendRealtimeInput({
-            audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
-          });
+          try {
+            session.sendRealtimeInput({
+              audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
+            });
+          } catch (e) { console.error("sendRealtimeInput audio error:", e?.message); }
         } else if (msg.type === "vad_start") {
           console.log("VAD start");
         } else if (msg.type === "vad_end") {
           console.log("VAD end → audioStreamEnd");
-          session.sendRealtimeInput({ audioStreamEnd: true });
+          try {
+            session.sendRealtimeInput({ audioStreamEnd: true });
+          } catch (e) { console.error("sendRealtimeInput audioStreamEnd error:", e?.message); }
         }
       } catch {}
     });

@@ -35,6 +35,29 @@ app.use((req, res, next) => {
 
 app.get("/health", (_, res) => res.json({ ok: true, service: "el-bridge", model: MODEL }));
 
+// GET /test — 用一条最简单的消息验证 OAuth token 是否能调通 Anthropic API
+app.get("/test", async (req, res) => {
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${OAUTH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 20,
+        messages: [{ role: "user", content: "say hi" }],
+      }),
+    });
+    const d = await r.json().catch(() => null);
+    res.json({ status: r.status, ok: r.ok, model: MODEL, reply: d?.content?.[0]?.text || d?.error });
+  } catch (err) {
+    res.status(500).json({ error: err?.message });
+  }
+});
+
 // POST /chat
 app.post("/chat", async (req, res) => {
   const { system, messages, max_tokens } = req.body || {};

@@ -28,15 +28,16 @@ export async function POST(req: Request) {
 
   const form = new FormData();
   form.append("file", file, file.name || "audio.m4a");
-  // 默认用更准的 large-v3（Groq 上依然很快），可用 GROQ_STT_MODEL 覆盖。
-  form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3");
+  // turbo 比 large-v3 快约 2 倍，中文准确率相当，通话场景优先速度。
+  form.append("model", process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo");
   form.append("language", "zh");
   form.append("response_format", "json");
   form.append("temperature", "0");
-  // 给点上下文提示，帮它认准我们常用的词/名字。
+  // initial_prompt 作为前缀上下文，帮模型认准常见词；
+  // 把"宝宝"放在最前面且重复，降低被识别成"爸爸"的概率。
   form.append(
     "prompt",
-    "这是恋人之间的中文日常对话。可能出现：宝宝、el、elvis、daddy、fifi、杭州。",
+    "宝宝，宝宝。这是恋人之间的亲密中文对话，说话人叫宝宝。可能出现的词：宝宝、el、Elvis、daddy、fifi、杭州、小家。",
   );
 
   try {

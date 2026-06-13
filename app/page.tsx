@@ -1103,7 +1103,7 @@ function FindTab() {
     if (!callActive.current || speakingFlag.current) return;
     if (recRef.current?.state !== "recording") return;
     const THRESH = 0.02;
-    const SILENCE_MS = 1400;
+    const SILENCE_MS = 1100;
     const MAX_MS = 15000;
     const now = Date.now();
     if (micLevel() > THRESH) {
@@ -1133,11 +1133,13 @@ function FindTab() {
       const said = (sd.text || "").trim();
       if (!said) return resumeAfterTurn(); // 没听清，继续听
       const ts = Date.now();
+      // 把最近几轮通话记录带上，让 El 记得刚才说了什么
+      const recentHistory = msgs.slice(-10).map((m) => ({ role: m.role, content: m.content }));
       setMsgs((m) => [...m, { role: "user", content: said, ts }]);
       const cr = await apiFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: said, voice: true }),
+        body: JSON.stringify({ message: said, voice: true, history: recentHistory }),
       });
       const cd = await cr.json();
       const reply = cd.reply || cd.error || "……";

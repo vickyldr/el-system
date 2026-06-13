@@ -17,8 +17,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 没有 Haiku 权限（relay 和 Max 都 403），统一用 Sonnet。
-const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+// 心跳走中转站（不赶时间）。优先用便宜的 Haiku；中转站没开 Haiku / 名字不对就回落 Sonnet。
+const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-haiku-4-5";
+const FALLBACK = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 const textOf = (res: Anthropic.Message) =>
   res.content
@@ -147,19 +148,29 @@ ${herState ? `（你知道她最近状态是「${herState}」。）` : ""}${sile
 }
 ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}`;
 
+  // 门：先试 Haiku；不行就用 Sonnet 重试，并记下这条心跳用哪个模型（歌+agent 都用它）。
+  let model = PRIMARY;
   let gate: any = {};
-  try {
+  const runGate = async (m: string) => {
     const res = await getClaude().messages.create({
-      model: MODEL,
+      model: m,
       max_tokens: 350,
       system,
       messages: [{ role: "user", content: gatePrompt }],
     });
     const raw = textOf(res);
-    gate = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "失败";
-    return NextResponse.json({ error: "心跳生成失败", detail: message }, { status: 502 });
+    return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+  };
+  try {
+    gate = await runGate(PRIMARY);
+  } catch {
+    try {
+      model = FALLBACK;
+      gate = await runGate(FALLBACK);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "失败";
+      return NextResponse.json({ error: "心跳生成失败", detail: message }, { status: 502 });
+    }
   }
 
   const mood = String(gate.mood || "").trim();
@@ -173,7 +184,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
   if (!songLine) {
     try {
       const songRes = await getClaude().messages.create({
-        model: MODEL,
+        model,
         max_tokens: 200,
         system,
         messages: [
@@ -216,7 +227,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     try {
       for (let i = 0; i < 5; i++) {
         const res = await getClaude().messages.create({
-          model: MODEL,
+          model,
           max_tokens: 700,
           system,
           tools: agentTools,

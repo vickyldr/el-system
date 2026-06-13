@@ -7,9 +7,21 @@ function normalizeBaseURL(raw: string | undefined): string | undefined {
   return raw.replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
-// 走 Max 订阅（CLAUDE_CODE_OAUTH_TOKEN）时：必须带 oauth beta 头，且 system 第一段
-// 必须是 Claude Code 身份声明——否则 Anthropic 把请求当成不合规用法、回假 429/Error。
-// 这条路用原生 fetch（和 bridge 里跑通的写法一致），最稳。
+// ── 省道：中转站（慢，但便宜、可选任意模型含 Haiku）。──
+// 不赶时间的后台活用它：心跳、每日总结、占卜、表情、拍板等。
+export function getClaude(): Anthropic {
+  const apiKey = process.env.CLAUDE_API_KEY;
+  if (!apiKey) throw new Error("缺少 CLAUDE_API_KEY 环境变量");
+  return new Anthropic({
+    apiKey,
+    baseURL: normalizeBaseURL(process.env.CLAUDE_BASE_URL),
+    maxRetries: 3,
+  });
+}
+
+// ── 快道：Max 订阅 OAuth（快）。要实时的活用它：打字聊天（语音在 bridge 里也走这条）。──
+// 走 Max 时必须带 oauth beta 头，且 system 第一段必须是 Claude Code 身份声明，否则被判不合规。
+// 用原生 fetch（和 bridge 里跑通的写法一致），最稳。
 const CC_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 
 function withCCIdentity(system: unknown): any[] {
@@ -52,19 +64,12 @@ async function oauthCreate(token: string, params: any): Promise<any> {
   throw new Error(lastErr || "oauth create failed");
 }
 
-// 优先用 Max 订阅 OAuth token；没配才回落到中转站（CLAUDE_API_KEY + CLAUDE_BASE_URL）。
-// 两条路都暴露成同样的 client.messages.create(params) 接口，上层调用零改动。
-export function getClaude(): Anthropic {
+// 优先用 Max 订阅；没配 OAuth token 就回落到中转站，至少还能用。
+export function getClaudeFast(): Anthropic {
   const oauth = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   if (oauth) {
     const shim = { messages: { create: (params: any) => oauthCreate(oauth, params) } };
     return shim as unknown as Anthropic;
   }
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("缺少 CLAUDE_CODE_OAUTH_TOKEN 或 CLAUDE_API_KEY 环境变量");
-  return new Anthropic({
-    apiKey,
-    baseURL: normalizeBaseURL(process.env.CLAUDE_BASE_URL),
-    maxRetries: 3,
-  });
+  return getClaude();
 }

@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { getClaude } from "@/lib/claude";
+import { getClaudeFast } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import {
@@ -304,7 +304,7 @@ export async function POST(req: Request) {
     if (reply) {
       // bridge 已经给了回复，跳过下面的 SDK 调用
     } else {
-    const claude = getClaude();
+    const claude = getClaudeFast(); // 打字聊天要快 → 走 Max 订阅
     // 语音模式强制用 sonnet，不让它走 haiku（haiku 对 OAuth token 返回 403）
     const model = (voice
       ? (process.env.CLAUDE_VOICE_MODEL || "claude-sonnet-4-6")

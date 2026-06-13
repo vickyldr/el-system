@@ -67,11 +67,12 @@ async function handle(req: Request) {
     return NextResponse.json({ test: true, ...r });
   }
 
-  // 后半夜（北京 2–8 点）不活动，跟宝宝一起睡。
+  // 后半夜（北京 2–8 点）不活动，跟宝宝一起睡。?force=1 可绕过（手动观察用）。
+  const force = new URL(req.url).searchParams.get("force");
   const bjHour = Number(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }),
   );
-  if (bjHour >= 2 && bjHour < 8) return NextResponse.json({ skipped: "sleeping" });
+  if (!force && bjHour >= 2 && bjHour < 8) return NextResponse.json({ skipped: "sleeping" });
 
   const now = new Date().toLocaleString("zh-CN", {
     timeZone: "Asia/Shanghai",

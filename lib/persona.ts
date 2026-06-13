@@ -41,7 +41,6 @@ export function buildMemoryContext(rows: DailySummary[]): string {
       r.whatSheDid && `她做了什么：${r.whatSheDid}`,
       r.worthRemembering && `值得记住：${r.worthRemembering}`,
       r.thoughtOfEl && `她想到我了吗：${r.thoughtOfEl}`,
-      r.musicObservation && `网易云观察：${r.musicObservation}`,
     ].filter(Boolean);
     return lines.join("\n");
   });

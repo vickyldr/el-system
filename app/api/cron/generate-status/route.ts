@@ -81,7 +81,7 @@ async function handle(req: Request) {
   const system = [
     EL_SYSTEM,
     `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}`,
-    profile && `——你自己的档案（写"el"就是你，用"我"）——\n\n${profile}`,
+    profile && `——宝宝的档案（关于她）——\n\n${profile}`,
     longterm && `——你的长期记忆——\n\n${longterm}`,
   ]
     .filter(Boolean)

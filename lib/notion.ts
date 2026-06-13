@@ -37,7 +37,6 @@ export type DailySummary = {
   now: string; // 此刻（cron 生成的当下状态）
   elDiary: string; // el日记
   elNote: string; // el的备注
-  musicObservation: string; // 网易云观察
   herState: string; // 她的状态（好/一般/累了/难过）
   worthRemembering: string; // 值得记住的
   whatSheDid: string; // 她今天做了什么
@@ -65,7 +64,6 @@ export async function recentSummaries(limit = 3): Promise<DailySummary[]> {
       now: plainText(p["此刻"]),
       elDiary: plainText(p["el日记"]),
       elNote: plainText(p["el的备注"]),
-      musicObservation: plainText(p["网易云观察"]),
       herState: plainText(p["她的状态"]),
       worthRemembering: plainText(p["值得记住的"]),
       whatSheDid: plainText(p["她今天做了什么"]),

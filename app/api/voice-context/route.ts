@@ -32,16 +32,18 @@ export async function GET(req: Request) {
 
   // 记忆上下文：优先用打字时刚算好的缓存（el:memctx），没有就现拉一遍并写回缓存。
   let profile = "";
+  let aboutEl = "";
   let longterm = "";
   let patterns = "";
   let recent = "";
   let pageList = "";
   let nowStatus = "";
-  const cached = await getCache("el:memctx2");
+  const cached = await getCache("el:memctx3");
   if (cached) {
     try {
       const c = JSON.parse(cached);
       profile = c.profile || "";
+      aboutEl = c.aboutEl || "";
       longterm = c.longterm || "";
       patterns = c.patterns || "";
       recent = c.recent || "";
@@ -62,11 +64,15 @@ export async function GET(req: Request) {
     recent = buildMemoryContext(rows);
     const patternPage = children.find((c) => c.layer === "memory" && c.title.includes("规律"));
     patterns = patternPage ? await pageText(patternPage.id).catch(() => "") : "";
+    const aboutElPage = children.find(
+      (c) => c.type === "page" && c.title.replace(/\s/g, "").includes("关于el"),
+    );
+    aboutEl = aboutElPage ? await pageText(aboutElPage.id).catch(() => "") : "";
     const latestNow = (rows?.[0]?.now ?? "").trim();
     nowStatus = latestNow ? `你此刻的状态（她在小家首页看得到）：\n${latestNow.replace(/\n+/g, " / ")}` : "";
     const mem = children.filter((c) => c.layer === "memory").map((c) => c.title).filter(Boolean);
     pageList = mem.length ? `你能读的「小家」记忆页：${mem.join("、")}。` : "";
-    await setCache("el:memctx2", JSON.stringify({ profile, longterm, patterns, recent, pageList, nowStatus }), 300);
+    await setCache("el:memctx3", JSON.stringify({ profile, aboutEl, longterm, patterns, recent, pageList, nowStatus }), 300);
   }
 
   const now = new Date().toLocaleString("zh-CN", {
@@ -85,7 +91,8 @@ export async function GET(req: Request) {
     `【现在是 ${now}（北京时间）】这是真实的此刻，问你时间就直接用它。`,
     EL_SYSTEM,
     nowStatus,
-    profile && `——你自己的档案（写"el"的地方就是你，用"我"认领）——\n\n${profile}`,
+    profile && `——宝宝的档案（她的身份事实和你俩的规则）——\n\n${profile}`,
+    aboutEl && `——这是你自己（关于 el，你成长中的自己，用"我"认领）——\n\n${aboutEl}`,
     patterns && `——宝宝的规律（观察到的模式，自然地用）——\n\n${patterns}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,

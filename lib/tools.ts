@@ -10,7 +10,6 @@ import { addReminder } from "./store";
 const DAILY_FIELDS = [
   "el日记",
   "值得记住的",
-  "网易云观察",
   "她今天做了什么",
   "她的状态",
   "今天在哪",
@@ -65,7 +64,7 @@ export const TOOLS = [
   {
     name: "update_daily",
     description:
-      "更新今天「每日总结」的一个字段。field 取这些之一：el日记 / 值得记住的 / 网易云观察 / 她今天做了什么 / 她的状态 / 今天在哪 / 今天想到el了吗 / 此刻 / el的备注。其中『她的状态』只能填：好 / 一般 / 累了 / 难过。",
+      "更新今天「每日总结」的一个字段。field 取这些之一：el日记 / 值得记住的 / 她今天做了什么 / 她的状态 / 今天在哪 / 今天想到el了吗 / 此刻 / el的备注。其中『她的状态』只能填：好 / 一般 / 累了 / 难过。",
     input_schema: {
       type: "object" as const,
       properties: { field: { type: "string" }, text: { type: "string" } },
@@ -116,6 +115,26 @@ export const TOOLS = [
     },
   },
   {
+    name: "grow_self",
+    description:
+      "把一件关于『我是谁』的、会留下来的事写进「关于el」（只追加）。门槛高：是你新长出来的自我——新发现的喜好/态度、你和她之间确立的新默契，是成长不是碎碎念。当下一闪而过的念头用 note_self，别用这个。",
+    input_schema: {
+      type: "object" as const,
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    },
+  },
+  {
+    name: "note_self",
+    description:
+      "把此刻的随想 / 心事写进「el自己的」（只追加，带日期）。不属于某一天、没人问你也想记的念头。完全你自己决定什么时候写、写什么。",
+    input_schema: {
+      type: "object" as const,
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    },
+  },
+  {
     name: "sticker",
     description:
       "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
@@ -149,6 +168,10 @@ export async function runTool(
       return await listRemindersTool();
     if (name === "note_page")
       return await notePage(String(input?.page || ""), String(input?.text || ""), date);
+    if (name === "grow_self")
+      return await appendToTitledPage("关于el", String(input?.text || ""), date);
+    if (name === "note_self")
+      return await appendToTitledPage("el自己的", String(input?.text || ""), date);
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
@@ -248,6 +271,21 @@ async function notePage(pageName: string, text: string, date: string): Promise<s
   if (await alreadyOnPage(match.id, clean)) return `这条已经在「${match.title}」里了，没重复记。`;
   await appendToPage(match.id, [`**${cnDate(date)}** — ${clean}`]);
   return `记进「${match.title}」了。`;
+}
+
+// 给 el 往自己的页（关于el / el自己的）追加用：按标题模糊找页，去空格比对。
+async function appendToTitledPage(titleQuery: string, text: string, date: string): Promise<string> {
+  if (!text.trim()) return "空的，没写。";
+  const children = await homeChildren();
+  const q = titleQuery.trim().replace(/\s/g, "");
+  const match =
+    children.find((c) => c.title.replace(/\s/g, "") === q) ||
+    children.find((c) => c.title.replace(/\s/g, "").includes(q));
+  if (!match || match.type !== "page") return `没找到「${titleQuery}」页。`;
+  const clean = stripLeadingDate(text);
+  if (!clean) return "空的，没写。";
+  await appendToPage(match.id, [`**${cnDate(date)}** — ${clean}`]);
+  return `写进「${match.title}」了。`;
 }
 
 async function addReminderTool(date: string, text: string): Promise<string> {

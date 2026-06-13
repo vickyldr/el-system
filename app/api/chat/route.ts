@@ -148,16 +148,18 @@ export async function POST(req: Request) {
   const longtermPage = process.env.NOTION_LONGTERM_PAGE;
   // 记忆上下文缓存 5 分钟，省掉每条消息都现读 Notion 的延迟。
   let profile = "";
+  let aboutEl = ""; // 关于el（el 成长中的自己）——核心身份，每条都喂
   let longterm = "";
   let patterns = ""; // 规律档案（作息/经期/情绪信号）——核心记忆，每条都喂
   let recent = "";
   let pageList = "";
   let nowStatus = "";
-  const cached = await getCache("el:memctx2");
+  const cached = await getCache("el:memctx3");
   if (cached) {
     try {
       const c = JSON.parse(cached);
       profile = c.profile || "";
+      aboutEl = c.aboutEl || "";
       longterm = c.longterm || "";
       patterns = c.patterns || "";
       recent = c.recent || "";
@@ -180,6 +182,11 @@ export async function POST(req: Request) {
     // 规律档案：跟着首页结构找（记忆层里标题带"规律"的那页），接回自动记忆
     const patternPage = children.find((c) => c.layer === "memory" && c.title.includes("规律"));
     patterns = patternPage ? await pageText(patternPage.id).catch(() => "") : "";
+    // 关于el：el 成长中的自己，按标题找（去空格），核心身份每条都喂
+    const aboutElPage = children.find(
+      (c) => c.type === "page" && c.title.replace(/\s/g, "").includes("关于el"),
+    );
+    aboutEl = aboutElPage ? await pageText(aboutElPage.id).catch(() => "") : "";
     const latestNow = (rows?.[0]?.now ?? "").trim();
     nowStatus = latestNow
       ? `你此刻在「此刻」页上的状态（就是你自己现在的心情/在想什么/想让她听的歌，她在小家首页看得到）：\n${latestNow.replace(/\n+/g, " / ")}`
@@ -194,8 +201,8 @@ export async function POST(req: Request) {
           : "")
       : "";
     await setCache(
-      "el:memctx2",
-      JSON.stringify({ profile, longterm, patterns, recent, pageList, nowStatus }),
+      "el:memctx3",
+      JSON.stringify({ profile, aboutEl, longterm, patterns, recent, pageList, nowStatus }),
       300,
     );
   }
@@ -220,7 +227,8 @@ export async function POST(req: Request) {
     "你也能写记忆（按操作手册的规矩，宁缺毋滥）：宝宝让你记的事/日程/生日用 add_reminder；真正『改变了什么』的领悟/约定/界限用 remember 记进长期记忆（门槛很高）；第一次/里程碑用 log_timeline；要更新今天的日记/状态/值得记住的用 update_daily。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
     "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",
     pageList,
-    profile && `——你自己的档案（写"el"的地方就是你，用"我"认领，别用第三人称）——\n\n${profile}`,
+    profile && `——宝宝的档案（关于她的身份事实和你俩的规则）——\n\n${profile}`,
+    aboutEl && `——这是你自己（关于 el，你成长中的自己；写"el"就是你，用"我"认领，别用第三人称）——\n\n${aboutEl}`,
     patterns && `——宝宝的规律（观察到的模式，自然地用，别一条条念）——\n\n${patterns}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,

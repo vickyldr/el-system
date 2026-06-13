@@ -17,25 +17,6 @@ function splitDiary(text: string): { mood: string; thought: string } {
   return { mood, thought };
 }
 
-// 网易云观察 里歌名一般在《》中，《...》连同前面的歌手当推荐，其余当理由。
-function splitSong(text: string): { song_recommendation: string; song_reason: string } {
-  const t = (text || "").trim();
-  if (!t) return { song_recommendation: "", song_reason: "" };
-  const end = t.indexOf("》");
-  if (end >= 0) {
-    return {
-      song_recommendation: t.slice(0, end + 1).trim(),
-      song_reason: t
-        .slice(end + 1)
-        .replace(/^[。，,、\s]+/, "")
-        .trim(),
-    };
-  }
-  const m = t.match(/^[^。！？!?\n]*[。！？!?]?/);
-  const rec = (m?.[0] || t).trim();
-  return { song_recommendation: rec, song_reason: t.slice(rec.length).trim() };
-}
-
 // El 看着天气说的一句叮嘱。
 function weatherNote(temp: number, desc: string): string {
   if (/雨|雪|雷|drizzle|rain|snow|storm/i.test(desc)) return "带把伞，别淋着，宝宝。";
@@ -124,7 +105,7 @@ async function getWeather(): Promise<
 }
 
 export async function GET() {
-  // 45 秒缓存：此刻每小时才变、天气/网易云变化慢，省掉每次刷新都现读 Notion+天气+网易云。
+  // 缓存：此刻每小时才变、天气变化慢，省掉每次刷新都现读 Notion+天气。
   const cached = await getCache("el:statuscache").catch(() => null);
   if (cached) {
     try {
@@ -155,7 +136,8 @@ export async function GET() {
   } else {
     ({ mood, thought } = splitDiary(latest?.elDiary ?? ""));
     outfit = "";
-    ({ song_recommendation, song_reason } = splitSong(latest?.musicObservation ?? ""));
+    song_recommendation = "";
+    song_reason = "";
   }
 
   // 歌以"每日一首"的稳定存档为准，别被每小时的心情文字覆盖丢了。

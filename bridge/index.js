@@ -204,6 +204,9 @@ if (GEMINI_API_KEY) {
           session.sendRealtimeInput({
             audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
           });
+        } else if (msg.type === "vad_end") {
+          // 前端检测到用户停顿，通知 Gemini 处理已缓冲的音频
+          session.sendRealtimeInput({ audioStreamEnd: true });
         }
       } catch {}
     });

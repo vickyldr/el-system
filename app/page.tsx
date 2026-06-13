@@ -1095,12 +1095,46 @@ function FindTab() {
         const processor = ac.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
 
+        // 前端 VAD：检测到静音 900ms 后发 vad_end，让 Gemini 处理已缓冲的音频
+        const VAD_THRESH = 0.015;
+        const VAD_SILENCE_MS = 900;
+        let hadSpeech = false;
+        let silenceStart = 0;
+        let elSpeaking = false; // Gemini 在说话时不发 vad_end
+
+        ws.addEventListener("message", (ev) => {
+          try {
+            const m = JSON.parse(ev.data);
+            if (m.type === "audio") elSpeaking = true;
+            if (m.type === "turn_end") { elSpeaking = false; hadSpeech = false; silenceStart = 0; }
+          } catch {}
+        });
+
         processor.onaudioprocess = (e) => {
           if (!callActive.current || ws.readyState !== WebSocket.OPEN) return;
           const f32 = e.inputBuffer.getChannelData(0);
           const down = downsampleBuffer(f32, nativeSR, 16000);
           const i16 = float32ToInt16(down);
           ws.send(JSON.stringify({ type: "audio", data: bufToBase64(i16.buffer as ArrayBuffer) }));
+
+          if (elSpeaking) return; // Gemini 说话中不做 VAD
+
+          // 计算音量
+          let sum = 0;
+          for (let i = 0; i < f32.length; i++) sum += f32[i] * f32[i];
+          const rms = Math.sqrt(sum / f32.length);
+
+          if (rms > VAD_THRESH) {
+            hadSpeech = true;
+            silenceStart = 0;
+          } else if (hadSpeech) {
+            if (!silenceStart) silenceStart = Date.now();
+            else if (Date.now() - silenceStart > VAD_SILENCE_MS) {
+              hadSpeech = false;
+              silenceStart = 0;
+              ws.send(JSON.stringify({ type: "vad_end" }));
+            }
+          }
         };
 
         source.connect(processor);

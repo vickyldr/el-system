@@ -267,6 +267,22 @@ const httpServer = app.listen(PORT, () => {
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const HEARTBEAT_BASE = (process.env.FRONTEND_URL || ALLOWED_ORIGIN || "").replace(/\/$/, "");
 const HEARTBEAT_MS = Math.max(1, Number(process.env.HEARTBEAT_MINUTES) || 5) * 60 * 1000;
+// 连续失败到这个次数（约 15 分钟），就推一条提醒宝宝；恢复后清零、可再次报警。
+const ALERT_AFTER = 3;
+let heartbeatFails = 0;
+let alerted = false;
+async function alertStuck(detail) {
+  try {
+    await fetch(`${HEARTBEAT_BASE}/api/heartbeat-alert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${CRON_SECRET}` },
+      body: JSON.stringify({ detail: String(detail || "").slice(0, 200) }),
+    });
+    console.log("已通知宝宝：心跳连续失败");
+  } catch (e) {
+    console.error("报警也失败了:", e?.message);
+  }
+}
 async function heartbeat() {
   try {
     const r = await fetch(`${HEARTBEAT_BASE}/api/cron/generate-status`, {
@@ -275,9 +291,25 @@ async function heartbeat() {
     });
     const d = await r.json().catch(() => ({}));
     if (d && d.skipped) return; // 半夜睡觉时段，安静
-    console.log("心跳", r.status, JSON.stringify(d).slice(0, 200));
+    if (r.ok && !d?.error) {
+      heartbeatFails = 0;
+      alerted = false; // 恢复了，允许下次再报警
+      console.log("心跳 ok", JSON.stringify(d).slice(0, 160));
+    } else {
+      heartbeatFails++;
+      console.error("心跳出错", r.status, JSON.stringify(d).slice(0, 200));
+      if (heartbeatFails >= ALERT_AFTER && !alerted) {
+        alerted = true;
+        await alertStuck(d?.detail || d?.error || `status ${r.status}`);
+      }
+    }
   } catch (e) {
+    heartbeatFails++;
     console.error("心跳失败:", e?.message);
+    if (heartbeatFails >= ALERT_AFTER && !alerted) {
+      alerted = true;
+      await alertStuck(e?.message);
+    }
   }
 }
 if (HEARTBEAT_BASE && CRON_SECRET) {

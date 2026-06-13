@@ -2,6 +2,45 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// ── Gemini Live 音频工具函数 ──
+function downsampleBuffer(buffer: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (fromRate === toRate) return buffer;
+  const ratio = fromRate / toRate;
+  const newLen = Math.round(buffer.length / ratio);
+  const result = new Float32Array(newLen);
+  for (let i = 0; i < newLen; i++) {
+    const start = Math.round(i * ratio);
+    const end = Math.round((i + 1) * ratio);
+    let sum = 0, count = 0;
+    for (let j = start; j < end && j < buffer.length; j++) { sum += buffer[j]; count++; }
+    result[i] = count > 0 ? sum / count : 0;
+  }
+  return result;
+}
+function float32ToInt16(f32: Float32Array): Int16Array {
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return i16;
+}
+function bufToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let b = "";
+  for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i]);
+  return btoa(b);
+}
+function base64ToPCMFloat32(b64: string): Float32Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const i16 = new Int16Array(bytes.buffer);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  return f32;
+}
+
 type Tab = "now" | "find" | "us";
 
 // 统一的线性图标（描边跟随当前文字色，跟玻璃质感更配，告别杂乱 emoji）。
@@ -940,20 +979,16 @@ function FindTab() {
   const [ttsOn, setTtsOn] = useState(false);
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [sttOn, setSttOn] = useState(false);
+  const [liveOn, setLiveOn] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
   const streamRef = useRef<MediaStream | null>(null);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const callAudioRef = useRef<HTMLAudioElement | null>(null);
   const acRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const outputGainRef = useRef<GainNode | null>(null);
+  const nextPlayTimeRef = useRef(0);
   const callActive = useRef(false);
-  const speakingFlag = useRef(false);
-  const hadSpeech = useRef(false);
-  const silenceStart = useRef(0);
-  const segStart = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -985,35 +1020,96 @@ function FindTab() {
       .then((r) => r.json())
       .then((d) => setSttOn(!!d.configured))
       .catch(() => {});
+    fetch("/api/live-token")
+      .then((r) => r.json())
+      .then((d) => setLiveOn(!d.error && !!d.wsUrl))
+      .catch(() => {});
   }, []);
 
-  // ── 打电话（免提连续模式，像 GPT 语音）：点一下进入，我一直听；你说完(静音一会儿)我自动识别→想→用声音回你→再听，循环到你挂断 ──
-  const SILENT =
-    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+  // ── 打电话（Gemini Live 实时双向语音，低延迟 ~300ms）──
+
+  function playPCMChunk(ac: AudioContext, base64: string) {
+    try {
+      const f32 = base64ToPCMFloat32(base64);
+      const buf = ac.createBuffer(1, f32.length, 24000);
+      buf.copyToChannel(f32 as Float32Array<ArrayBuffer>, 0);
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const dest = outputGainRef.current ?? ac.destination;
+      src.connect(dest);
+      const now = ac.currentTime;
+      const start = Math.max(nextPlayTimeRef.current, now + 0.02);
+      src.start(start);
+      nextPlayTimeRef.current = start + buf.duration;
+    } catch {}
+  }
 
   async function startCall() {
     try {
-      // 在用户手势里"解锁"音频，否则 iOS 不让后面自动出声
-      const a = callAudioRef.current || new Audio();
-      a.src = SILENT;
-      a.play().then(() => a.pause()).catch(() => {});
-      callAudioRef.current = a;
+      const tokenRes = await fetch("/api/live-token");
+      const { wsUrl, secret, error } = await tokenRes.json();
+      if (error || !wsUrl) { alert("通话服务未配置，请检查 GEMINI_API_KEY"); return; }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
       });
       streamRef.current = stream;
+
       const AC = window.AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new AC();
       await ac.resume().catch(() => {});
-      const an = ac.createAnalyser();
-      an.fftSize = 1024;
-      ac.createMediaStreamSource(stream).connect(an);
       acRef.current = ac;
-      analyserRef.current = an;
+
+      const gain = ac.createGain();
+      gain.connect(ac.destination);
+      outputGainRef.current = gain;
+
+      const ws = new WebSocket(`${wsUrl}/live?secret=${encodeURIComponent(secret || "")}`);
+      wsRef.current = ws;
       callActive.current = true;
       setInCall(true);
-      beginListening();
-      vadLoop();
+      setCallState("idle");
+
+      ws.onmessage = (event) => {
+        if (!callActive.current) return;
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "ready") {
+            setCallState("listening");
+          } else if (msg.type === "audio" && msg.data) {
+            setCallState("speaking");
+            playPCMChunk(ac, msg.data);
+          } else if (msg.type === "turn_end") {
+            nextPlayTimeRef.current = 0;
+            setCallState("listening");
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => { if (callActive.current) endCall(); };
+      ws.onclose = () => { if (callActive.current) endCall(); };
+
+      ws.onopen = () => {
+        const nativeSR = ac.sampleRate;
+        const source = ac.createMediaStreamSource(stream);
+        const processor = ac.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        processor.onaudioprocess = (e) => {
+          if (!callActive.current || ws.readyState !== WebSocket.OPEN) return;
+          const f32 = e.inputBuffer.getChannelData(0);
+          const down = downsampleBuffer(f32, nativeSR, 16000);
+          const i16 = float32ToInt16(down);
+          ws.send(JSON.stringify({ type: "audio", data: bufToBase64(i16.buffer as ArrayBuffer) }));
+        };
+
+        source.connect(processor);
+        // 静音输出，部分浏览器需要连 destination 才会触发 onaudioprocess
+        const silentGain = ac.createGain();
+        silentGain.gain.value = 0;
+        processor.connect(silentGain);
+        silentGain.connect(ac.destination);
+      };
     } catch {
       alert("打电话需要麦克风权限哦");
     }
@@ -1021,135 +1117,31 @@ function FindTab() {
 
   function endCall() {
     callActive.current = false;
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    try {
-      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
-    } catch {
-      /* ignore */
-    }
+    try { wsRef.current?.close(); } catch {}
+    wsRef.current = null;
+    try { processorRef.current?.disconnect(); } catch {}
+    processorRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     acRef.current?.close().catch(() => {});
     acRef.current = null;
-    callAudioRef.current?.pause();
-    speakingFlag.current = false;
+    outputGainRef.current = null;
+    nextPlayTimeRef.current = 0;
     setInCall(false);
     setCallState("idle");
   }
 
-  // 开一段录音、开始听你说
-  function beginListening() {
-    const stream = streamRef.current;
-    if (!stream || !callActive.current) return;
-    chunksRef.current = [];
-    hadSpeech.current = false;
-    silenceStart.current = 0;
-    segStart.current = Date.now();
-    const rec = new MediaRecorder(stream);
-    recRef.current = rec;
-    rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
-    rec.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/mp4" });
-      if (hadSpeech.current) void processUtterance(blob);
-      else if (callActive.current && !speakingFlag.current) beginListening(); // 没说话就接着听
-    };
-    rec.start();
-    setCallState("listening");
-  }
-
-  function endSegment() {
-    const rec = recRef.current;
-    if (rec && rec.state !== "inactive") rec.stop();
-  }
-
-  function micLevel() {
-    const an = analyserRef.current;
-    if (!an) return 0;
-    const buf = new Uint8Array(an.fftSize);
-    an.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) {
-      const v = (buf[i] - 128) / 128;
-      sum += v * v;
-    }
-    return Math.sqrt(sum / buf.length);
-  }
-
-  // 静音检测循环：你出声→记下；说完静默 ~1.1s→自动收尾发送
-  function vadLoop() {
-    rafRef.current = requestAnimationFrame(vadLoop);
-    if (!callActive.current || speakingFlag.current) return;
-    if (recRef.current?.state !== "recording") return;
-    const THRESH = 0.02;
-    const SILENCE_MS = 1400;
-    const MAX_MS = 15000;
-    const now = Date.now();
-    if (micLevel() > THRESH) {
-      hadSpeech.current = true;
-      silenceStart.current = 0;
-    } else if (hadSpeech.current) {
-      if (!silenceStart.current) silenceStart.current = now;
-      else if (now - silenceStart.current > SILENCE_MS) return endSegment();
-    }
-    if (hadSpeech.current && now - segStart.current > MAX_MS) endSegment();
-  }
-
-  function resumeAfterTurn() {
-    speakingFlag.current = false;
-    if (callActive.current) beginListening();
-    else setCallState("idle");
-  }
-
-  async function processUtterance(blob: Blob) {
-    setCallState("thinking");
-    try {
-      const ext = blob.type.includes("webm") ? "webm" : "m4a";
-      const fd = new FormData();
-      fd.append("audio", blob, `u.${ext}`);
-      const sr = await fetch("/api/stt", { method: "POST", body: fd });
-      const sd = await sr.json();
-      const said = (sd.text || "").trim();
-      if (!said) return resumeAfterTurn(); // 没听清，继续听
-      const ts = Date.now();
-      setMsgs((m) => [...m, { role: "user", content: said, ts }]);
-      const cr = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: said, voice: true }),
-      });
-      const cd = await cr.json();
-      const reply = cd.reply || cd.error || "……";
-      setMsgs((m) => [...m, { role: "assistant", content: reply, image: cd.sticker || undefined, ts: ts + 1 }]);
-      const tr = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: reply, fast: true }),
-      });
-      const a = callAudioRef.current;
-      if (tr.ok && a) {
-        const url = URL.createObjectURL(await tr.blob());
-        a.src = url;
-        speakingFlag.current = true;
-        setCallState("speaking");
-        a.onended = () => {
-          URL.revokeObjectURL(url);
-          resumeAfterTurn();
-        };
-        await a.play().catch(() => resumeAfterTurn());
-      } else {
-        resumeAfterTurn();
-      }
-    } catch {
-      resumeAfterTurn();
-    }
-  }
-
-  // 通话时点中间的球：打断我说话、立刻继续听你
+  // 点球打断：静音 200ms 清空队列，继续说话 Gemini 自动检测到打断
   function interruptEl() {
-    if (speakingFlag.current && callAudioRef.current) {
-      callAudioRef.current.pause();
-      resumeAfterTurn();
+    if (!callActive.current) return;
+    const gain = outputGainRef.current;
+    const ac = acRef.current;
+    if (gain && ac) {
+      gain.gain.setValueAtTime(0, ac.currentTime);
+      gain.gain.setValueAtTime(1, ac.currentTime + 0.2);
     }
+    nextPlayTimeRef.current = 0;
+    setCallState("listening");
   }
 
   // 用 el 的音色把这条念出来（点一下才念，省额度）。
@@ -1429,7 +1421,7 @@ function FindTab() {
         </div>
         <div className="top-actions">
           <NotifyButton />
-          {ttsOn && sttOn && (
+          {liveOn && (
             <button className="icon-btn" onClick={startCall} aria-label="打电话">
               <Icon name="phone" size={19} />
             </button>

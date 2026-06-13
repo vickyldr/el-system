@@ -282,18 +282,21 @@ if (GEMINI_API_KEY) {
     let userText = ""; // 累积本回合"你说的话"的转写
     let busy = false; // 正在让 Claude 生成回复时，忽略新的 turnComplete
     // 拨通时抓一次和打字一模一样的上下文（完整人设+记忆+最近聊天记录），抓不到才回落到精简人格。
+    // 关键：不阻塞拨通——和下面建 Gemini 连接并行准备；你开口第一句之前肯定就绪了，零额外等待。
     const origin = req.headers["origin"] || "";
-    const ctx = await fetchVoiceContext(origin);
-    let elSystem; // Claude 的系统人格
+    let elSystem = null; // Claude 的系统人格
     let history = []; // 喂给 Claude 的对话（先塞最近聊天记录，让通话接得上你们刚才的话）
-    if (ctx) {
-      elSystem = ctx.system;
-      history = ctx.messages;
-      console.log("通话上下文已加载: 和打字同一套人设 + 最近", history.length, "条记录");
-    } else {
-      elSystem = EL_VOICE_PERSONA + (await getCallMemory());
-      console.log("通话上下文回落: 用精简人格(没抓到前端 voice-context)");
-    }
+    const ctxReady = (async () => {
+      const ctx = await fetchVoiceContext(origin);
+      if (ctx) {
+        elSystem = ctx.system;
+        history = ctx.messages;
+        console.log("通话上下文已加载: 和打字同一套人设 + 最近", history.length, "条记录");
+      } else {
+        elSystem = EL_VOICE_PERSONA + (await getCallMemory());
+        console.log("通话上下文回落: 用精简人格(没抓到前端 voice-context)");
+      }
+    })();
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
@@ -332,6 +335,7 @@ if (GEMINI_API_KEY) {
               send({ type: "user_text", text: u }); // 先把你的话显示出来
               console.log("听到你说:", u, "→ 交给 Claude");
               try {
+                await ctxReady; // 确保人设/记忆就位（通常早已就绪，不会真的等）
                 const last = history[history.length - 1];
                 if (last && last.role === "user") last.content += "\n" + u; // 别连着两条 user
                 else history.push({ role: "user", content: u });

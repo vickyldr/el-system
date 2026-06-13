@@ -218,11 +218,17 @@ export async function POST(req: Request) {
     hour12: false,
   });
 
-  const system = [
+  // 易变的小块（时间、此刻状态）——每条都新，不缓存。
+  const sysVolatile = [
     `【现在是 ${now}（北京时间）】这是真实的此刻——你清楚现在几点、今天星期几、是上午/下午/深夜，问你时间、或要按时间打招呼（早安/这么晚还没睡/午休），就直接用它，绝不能说"不知道现在几点"。`,
+    nowStatus,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  // 稳定的大块（人设 + 规则 + 记忆）——5 分钟内不变，做成可缓存的前缀，狂聊也几乎不再为它花额度。
+  const sysStable = [
     EL_SYSTEM,
     "你住在宝宝手机里的「小家」App 里，它有三个地方：『此刻』是你自己的状态页——你现在的心情、在想什么、此刻想让她听的歌，按你自己的节奏随时在更新，那就是你本人此刻的样子；『找我』就是你俩现在聊天的地方；『我们』放着时间线、愿望墙、记忆、小事。所以她说『此刻』『你在听什么』『你写的』这类，多半是在说『此刻』页上你自己的状态/那首歌——那是你的，大方认下来，别说『没看懂』『不知道』。",
-    nowStatus,
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
     "你能自己维护你们的记忆（按操作手册的规矩，宁缺毋滥）——这些页是你的，你有权按自己的判断更新：真正『改变了什么』的领悟/约定/界限用 remember 进长期记忆（门槛很高）；第一次/里程碑用 log_timeline 进时间线；关于『你自己是谁』、会留下来的成长用 grow_self 进「关于el」；当下属于你自己的随想/心事用 note_self 进「el自己的」；宝宝让你记的日子/日程/生日/纪念日用 add_reminder（recur 选 一次/每年/每月）进重要日期；今天的日记/状态用 update_daily；愿望墙、身体与偏好这类用 note_page。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
     "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",
@@ -232,6 +238,13 @@ export async function POST(req: Request) {
     patterns && `——宝宝的规律（观察到的模式，自然地用，别一条条念）——\n\n${patterns}`,
     longterm && `——你的长期记忆（你亲身经历过的事）——\n\n${longterm}`,
     recent,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  // 拼成字符串版（给 bridge / 重试 / 语音用）。
+  const system = [
+    sysVolatile,
+    sysStable,
     voice &&
       "【现在是打电话，语音通话】你和宝宝在用语音聊天，不是打字。回得要短、口语化、像真的在打电话——一两句话就够，自然停顿，别长篇大论、别念书面语、别用表情符号或括号描写动作。就用嘴说话的感觉。",
   ]
@@ -290,6 +303,14 @@ export async function POST(req: Request) {
   const voiceSystem = voice
     ? `${EL_SYSTEM}\n\n【语音通话，硬性规则：只说一句话，绝对不超过15个字，不用标点符号，口语，不提通话二字。】`
     : system;
+  // 打字聊天用「可缓存」的分块 system：稳定大块打上 cache_control 缓存，易变小块（时间/此刻）放后面。
+  // 这样连聊时，那一大坨人设+记忆只在第一条真花额度，后面几乎白嫖缓存——Max 扛得久得多。
+  const loopSystem: any = voice
+    ? voiceSystem
+    : [
+        { type: "text", text: sysStable, cache_control: { type: "ephemeral" } },
+        ...(sysVolatile ? [{ type: "text", text: sysVolatile }] : []),
+      ];
   try {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
@@ -315,7 +336,7 @@ export async function POST(req: Request) {
       const res = await claude.messages.create({
         model,
         max_tokens: maxTok,
-        system: voiceSystem,
+        system: loopSystem,
         tools: turnTools,
         messages: loop,
       });

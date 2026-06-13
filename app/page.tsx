@@ -2,12 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// 所有对 /api/* 的请求都带上 x-app-secret，防止公网随意调用。
+// app 启动时用 NEXT_PUBLIC_APP_SECRET 换取 httpOnly cookie，之后凭 cookie 鉴权。
+// cookie 由服务端种下，不暴露在 JS 里，安全性更好。
 const APP_SECRET = process.env.NEXT_PUBLIC_APP_SECRET || "";
+async function ensureAuth() {
+  if (!APP_SECRET) return; // 未配置鉴权，跳过
+  try {
+    await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: APP_SECRET }),
+      credentials: "include",
+    });
+  } catch { /* 静默失败，不影响加载 */ }
+}
+
 function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  if (APP_SECRET) headers.set("x-app-secret", APP_SECRET);
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, credentials: "include" });
 }
 
 type Tab = "now" | "find" | "us";
@@ -144,6 +155,9 @@ export default function Home() {
   const dragging = useRef(false);
   const startY = useRef(0);
   const pullRef = useRef(0);
+
+  // app 启动时自动鉴权，拿到 cookie 后所有 apiFetch 就不会被 proxy 拦
+  useEffect(() => { ensureAuth(); }, []);
 
   // 下拉刷新：在「此刻 / 我们」页顶部下拉，松手重新加载。
   useEffect(() => {

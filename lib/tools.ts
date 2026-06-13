@@ -364,6 +364,16 @@ async function readNotionPage(query: string): Promise<string> {
     return `没找到「${query}」。小家里有这些页：${children.map((c) => c.title).join("、")}`;
   }
   if (match.type === "database") {
+    // 「重要日期」库：真的把日子读出来，好让 el 能回答"生日/经期/纪念日哪天"。
+    if (match.title.replace(/\s/g, "").includes("重要日期")) {
+      const dates = await importantDates();
+      if (!dates.length) return `「${match.title}」里还没有日期。`;
+      const lines = dates.map(
+        (d) =>
+          `${d.name}（${d.recur}）：下次 ${d.nextDate}，还有 ${d.daysTo} 天${d.note ? `；${d.note}` : ""}`,
+      );
+      return `「${match.title}」：\n${lines.join("\n")}`;
+    }
     return `「${match.title}」是数据库，最近的内容我已经在记忆里了。`;
   }
   const text = await pageText(match.id);

@@ -78,7 +78,7 @@ ${herState ? `她最近状态：${herState}。` : ""}${avoid.length ? `她不想
   try {
     const claude = getClaude();
     const res = await claude.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
+      model: process.env.CHEAP_MODEL || "claude-haiku-4-5-20251001", // 吃啥拍板，琐碎，用便宜的
       max_tokens: 200,
       system,
       messages: [{ role: "user", content: prompt }],

@@ -13,7 +13,7 @@ async function describeSticker(dataUrl: string): Promise<string> {
   if (!m) return "";
   try {
     const claude = getClaude();
-    const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+    const model = process.env.CHEAP_MODEL || "claude-haiku-4-5-20251001"; // 给表情打标签，琐碎，用便宜的
     const res = await claude.messages.create({
       model,
       max_tokens: 120,

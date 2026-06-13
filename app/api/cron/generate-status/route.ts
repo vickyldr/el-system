@@ -17,9 +17,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 心跳走中转站（不赶时间）。优先用便宜的 Haiku；中转站没开 Haiku / 名字不对就回落 Sonnet。
-const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-haiku-4-5";
-const FALLBACK = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+// 心跳走中转站（不赶时间，但比 Max 省）。用 Sonnet——它又出「此刻」又用工具写真实记忆，
+// 风险高、不该省；Haiku 在这容易崩 JSON / 用错工具 / 乱写。想省可设 HEARTBEAT_MODEL，失败自动回落 Sonnet。
+const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-sonnet-4-6";
+const FALLBACK = "claude-sonnet-4-6";
 
 const textOf = (res: Anthropic.Message) =>
   res.content

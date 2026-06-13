@@ -68,6 +68,7 @@ type ChatTurn = {
   content: string;
   image?: string;
   stickerHint?: string;
+  call?: boolean;
 };
 
 // 当前这条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
@@ -91,14 +92,19 @@ function toContent(text: string, image?: string): Anthropic.MessageParam["conten
 // 历史只留文字（图片相对地址 Claude 取不到，会报错），带过图就标一下。
 // 尤其：我自己贴过的表情，要在历史里告诉我"我发过、什么意思"，免得事后否认。
 function priorContent(t: ChatTurn): string {
+  let s: string;
   if (t.role === "assistant" && t.image) {
     const tag = t.stickerHint
       ? `（你刚才给她配了一张表情，意思是：${t.stickerHint}）`
       : "（你刚才给她配了一张表情）";
-    return t.content ? `${t.content} ${tag}` : tag;
+    s = t.content ? `${t.content} ${tag}` : tag;
+  } else if (t.content) {
+    s = t.content;
+  } else {
+    s = t.image ? "（一张表情/图片）" : "";
   }
-  if (t.content) return t.content;
-  return t.image ? "（一张表情/图片）" : "";
+  // 语音通话里说的话，标一下，让 el 知道那会儿你们在打电话。
+  return t.call && s ? `（语音通话中）${s}` : s;
 }
 
 // 把消息里的图块摘掉（保留文字 / 工具块），用于「补救那一句」的轻量调用——

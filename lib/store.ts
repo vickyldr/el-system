@@ -7,6 +7,7 @@ export type StoredMsg = {
   ts?: number;
   image?: string;
   stickerHint?: string; // 这条若是 el 贴的表情，记下它的意思，好让 el 事后知道自己发过啥
+  call?: boolean; // 这条是不是语音通话里的（显示成通话卡片，el 回顾时也知道当时在打电话）
 };
 
 const KEY = "el:chat"; // 单用户，整段对话存一个 key

@@ -933,6 +933,74 @@ body::before {
   animation: fadeInUp 0.26s ease both;
 }
 
+/* 语音通话卡片 */
+.call-card-wrap {
+  animation: fadeInUp 0.26s ease both;
+}
+
+.call-card {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  background: var(--glass);
+  border: 1px solid rgba(123, 111, 240, 0.32);
+  border-radius: 16px;
+  padding: 11px 14px;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: var(--shadow);
+}
+
+.call-card-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  box-shadow: 0 0 12px var(--glow);
+}
+
+.call-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.call-card-text b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.call-card-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.call-card-chev {
+  color: var(--ink-soft);
+  transition: transform 0.2s ease;
+}
+.call-card-chev.open {
+  transform: rotate(180deg);
+}
+
+.call-card-body {
+  margin-top: 8px;
+  padding: 10px 4px 2px;
+  border-left: 2px solid rgba(123, 111, 240, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .msg.user {
   justify-content: flex-end;
 }

@@ -828,7 +828,72 @@ function FortuneCard() {
 
 /* ───────────── 找我（聊天） ───────────── */
 
-type Msg = { role: "user" | "assistant"; content: string; ts?: number; image?: string };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  ts?: number;
+  image?: string;
+  call?: boolean;
+};
+
+// 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
+type MsgGroup =
+  | { kind: "msg"; m: Msg; i: number }
+  | { kind: "call"; items: { m: Msg; i: number }[] };
+
+function groupMessages(msgs: Msg[]): MsgGroup[] {
+  const out: MsgGroup[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.call) {
+      const last = out[out.length - 1];
+      if (last && last.kind === "call") last.items.push({ m, i });
+      else out.push({ kind: "call", items: [{ m, i }] });
+    } else {
+      out.push({ kind: "msg", m, i });
+    }
+  }
+  return out;
+}
+
+// 「📞 语音通话」卡片：收起时一行，点开看当时通话的文字。
+function CallCard({ items }: { items: { m: Msg; i: number }[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="call-card-wrap">
+      <button className={`call-card ${open ? "open" : ""}`} onClick={() => setOpen((o) => !o)}>
+        <span className="call-card-ic">
+          <Icon name="phone" size={17} />
+        </span>
+        <span className="call-card-text">
+          <b>语音通话</b>
+          <span className="call-card-sub">
+            {items.length} 句 · {fmtTime(items[0].m.ts)}
+          </span>
+        </span>
+        <span className={`call-card-chev ${open ? "open" : ""}`}>
+          <Icon name="chevron-down" size={16} />
+        </span>
+      </button>
+      {open && (
+        <div className="call-card-body">
+          {items.map(({ m, i }) => (
+            <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
+              <div className="bubble-col">
+                {m.content && <div className="bubble">{m.content}</div>}
+                {m.ts && (
+                  <div className="msg-foot">
+                    <span className="msg-time">{fmtTime(m.ts)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function fmtTime(ts?: number): string {
   if (!ts) return "";
@@ -1046,6 +1111,17 @@ function FindTab() {
     } catch {}
   }
 
+  // 通话里的一句话：标记成 call、显示在对话框、并存进云端（el 回顾时能看到当时在打电话）。
+  function addCallMsg(role: "user" | "assistant", content: string) {
+    const m: Msg = { role, content, ts: Date.now(), call: true };
+    setMsgs((s) => [...s, m]);
+    fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [m] }),
+    }).catch(() => {});
+  }
+
   // Gemini 给文字 → MiniMax（她捏的音色）念出来，走已解锁的 AudioContext 播放。
   async function speakReply(ac: AudioContext, text: string) {
     botSpeaking.current = true;
@@ -1111,11 +1187,9 @@ function FindTab() {
           if (msg.type === "ready") {
             setCallState("listening");
           } else if (msg.type === "user_text" && msg.text) {
-            // 你在电话里说的话，也显示在对话框
-            setMsgs((m) => [...m, { role: "user", content: msg.text, ts: Date.now() }]);
+            addCallMsg("user", msg.text); // 你在电话里说的话
           } else if (msg.type === "text" && msg.text) {
-            // Gemini 给的文字回复 → 用 MiniMax（她捏的音色）念出来
-            setMsgs((m) => [...m, { role: "assistant", content: msg.text, ts: Date.now() }]);
+            addCallMsg("assistant", msg.text); // el 的回复
             void speakReply(ac, msg.text);
           }
         } catch {}
@@ -1519,34 +1593,38 @@ function FindTab() {
         onTouchMove={userScrollAway}
       >
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
-        {msgs.map((m, i) => (
-          <div key={i} className={`msg ${m.role === "user" ? "user" : "el"}`}>
-            <div className="bubble-col">
-              {m.image && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  className="msg-img"
-                  src={m.image}
-                  alt=""
-                  onLoad={() => stickBottom.current && scrollToBottom(false)}
-                />
-              )}
-              {m.content && <div className="bubble">{m.content}</div>}
-              <div className="msg-foot">
-                {ttsOn && m.role === "assistant" && m.content && (
-                  <button
-                    className={`speak-btn ${speaking === i ? "on" : ""}`}
-                    onClick={() => speak(m.content, i)}
-                    aria-label="听"
-                  >
-                    <Icon name="volume" size={15} />
-                  </button>
+        {groupMessages(msgs).map((g) =>
+          g.kind === "call" ? (
+            <CallCard key={`call-${g.items[0].i}`} items={g.items} />
+          ) : (
+            <div key={g.i} className={`msg ${g.m.role === "user" ? "user" : "el"}`}>
+              <div className="bubble-col">
+                {g.m.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    className="msg-img"
+                    src={g.m.image}
+                    alt=""
+                    onLoad={() => stickBottom.current && scrollToBottom(false)}
+                  />
                 )}
-                {m.ts && <span className="msg-time">{fmtTime(m.ts)}</span>}
+                {g.m.content && <div className="bubble">{g.m.content}</div>}
+                <div className="msg-foot">
+                  {ttsOn && g.m.role === "assistant" && g.m.content && (
+                    <button
+                      className={`speak-btn ${speaking === g.i ? "on" : ""}`}
+                      onClick={() => speak(g.m.content, g.i)}
+                      aria-label="听"
+                    >
+                      <Icon name="volume" size={15} />
+                    </button>
+                  )}
+                  {g.m.ts && <span className="msg-time">{fmtTime(g.m.ts)}</span>}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
         {sending && (
           <div className="msg el">
             <div className="bubble typing">

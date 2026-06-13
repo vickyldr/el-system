@@ -263,6 +263,10 @@ export async function POST(req: Request) {
   const turnTools = voice ? [] : allowSticker ? TOOLS : TOOLS.filter((t) => t.name !== "sticker");
   // 语音模式最多 60 token：一两句话够了，越短 Claude 越快回、TTS 越快念
   const maxTok = voice ? 60 : 1024;
+  // 语音模式用轻量 system prompt：去掉大段记忆/档案，只保留核心人设 + 硬性字数规则
+  const voiceSystem = voice
+    ? `${EL_SYSTEM}\n\n【语音通话，硬性规则：只说一句话，绝对不超过15个字，不用标点符号，口语，不提通话二字。】`
+    : system;
   try {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
@@ -271,7 +275,7 @@ export async function POST(req: Request) {
     // 语音模式也走 bridge——实际通话每轮间隔够长，不会触发 429。
     // bridge 有 8s 超时 + error 即时 fallback，失败代价很小。
     if (process.env.BRIDGE_URL) {
-      reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok, voice);
+      reply = await callBridge(process.env.BRIDGE_URL, voiceSystem, loop, maxTok, voice);
     }
 
     if (reply) {
@@ -289,7 +293,7 @@ export async function POST(req: Request) {
       const res = await claude.messages.create({
         model,
         max_tokens: maxTok,
-        system,
+        system: voiceSystem,
         tools: turnTools,
         messages: loop,
       });

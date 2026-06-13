@@ -241,3 +241,127 @@ export async function homeChildren(): Promise<HomeChild[]> {
   } while (cursor);
   return out;
 }
+
+// ── 重要日期（数据库）：生日/经期/纪念日/一次性。前端、推送、add_reminder 的唯一源。──
+export type ImportantDate = {
+  id: string;
+  name: string;
+  date: string; // 参照日 YYYY-MM-DD
+  recur: string; // 每年 / 每月 / 一次
+  leadDays: number; // 提前提醒（天）
+  note: string;
+  daysTo: number; // 距「下一次」还有几天（一次性过期则为负）
+  nextDate: string; // 下一次发生的具体日期
+};
+
+function ymd(s: string): [number, number, number] | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((s || "").trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+function diffDays(aY: number, aM: number, aD: number, bY: number, bM: number, bD: number): number {
+  return Math.round((Date.UTC(aY, aM - 1, aD) - Date.UTC(bY, bM - 1, bD)) / 86400000);
+}
+// 把"号"夹到当月最大天数（处理 31 号落到 2 月这种）。m 为 1-based。
+function clampDay(y: number, m: number, d: number): number {
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return Math.min(d, last);
+}
+const fmtYmd = (y: number, m: number, d: number) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+// 按「循环」算下一次发生：每年看月日，每月看号，一次看原日期。
+function nextOccurrence(refDate: string, recur: string, today: string): { daysTo: number; nextDate: string } {
+  const r = ymd(refDate);
+  const t = ymd(today);
+  if (!r || !t) return { daysTo: 9999, nextDate: refDate };
+  const [, rm, rd] = r;
+  const [ty, tm, td] = t;
+  if (recur === "每年") {
+    let y = ty;
+    let d = clampDay(y, rm, rd);
+    if (diffDays(y, rm, d, ty, tm, td) < 0) {
+      y = ty + 1;
+      d = clampDay(y, rm, rd);
+    }
+    return { daysTo: diffDays(y, rm, d, ty, tm, td), nextDate: fmtYmd(y, rm, d) };
+  }
+  if (recur === "每月") {
+    let y = ty;
+    let m = tm;
+    let d = clampDay(y, m, rd);
+    if (diffDays(y, m, d, ty, tm, td) < 0) {
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+      d = clampDay(y, m, rd);
+    }
+    return { daysTo: diffDays(y, m, d, ty, tm, td), nextDate: fmtYmd(y, m, d) };
+  }
+  // 一次
+  const [ry, rmm, rdd] = r;
+  return { daysTo: diffDays(ry, rmm, rdd, ty, tm, td), nextDate: refDate };
+}
+
+// 找「重要日期」库（首页里那张），算出每条"下一次还有几天"，按近到远排。
+export async function importantDates(): Promise<ImportantDate[]> {
+  const children = await homeChildren();
+  const db = children.find(
+    (c) => c.type === "database" && c.title.replace(/\s/g, "").includes("重要日期"),
+  );
+  if (!db) return [];
+  const notion = notionClient();
+  let rows: any[] = [];
+  try {
+    const res = await notion.databases.query({ database_id: db.id, page_size: 100 });
+    rows = res.results as any[];
+  } catch {
+    return [];
+  }
+  const today = todayInBeijing();
+  const out: ImportantDate[] = [];
+  for (const page of rows) {
+    const p = page.properties ?? {};
+    const name = plainText(p["名称"]);
+    const date = plainText(p["日期"]);
+    if (!name || !date) continue;
+    const recur = plainText(p["循环"]) || "一次";
+    const leadNum = Number(plainText(p["提前提醒"]));
+    const leadDays = Number.isFinite(leadNum) && leadNum > 0 ? leadNum : 3;
+    const { daysTo, nextDate } = nextOccurrence(date, recur, today);
+    out.push({ id: page.id, name, date, recur, leadDays, note: plainText(p["备注"]), daysTo, nextDate });
+  }
+  return out.sort((a, b) => a.daysTo - b.daysTo);
+}
+
+// 往「重要日期」加一行（el 的 add_reminder 走这）。返回是否成功。
+export async function addImportantDate(
+  name: string,
+  date: string,
+  recur = "一次",
+  leadDays = 3,
+): Promise<boolean> {
+  const children = await homeChildren();
+  const db = children.find(
+    (c) => c.type === "database" && c.title.replace(/\s/g, "").includes("重要日期"),
+  );
+  if (!db) return false;
+  const notion = notionClient();
+  await notion.pages.create({
+    parent: { database_id: db.id },
+    properties: {
+      名称: { title: [{ text: { content: name } }] },
+      日期: { date: { start: date } },
+      循环: { select: { name: recur } },
+      提前提醒: { number: leadDays },
+    } as any,
+  });
+  return true;
+}
+
+// 归档（删除）一条重要日期。
+export async function deleteImportantDate(pageId: string): Promise<void> {
+  const notion = notionClient();
+  await notion.pages.update({ page_id: pageId, archived: true } as any);
+}

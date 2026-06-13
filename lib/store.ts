@@ -232,6 +232,32 @@ export async function addReminder(date: string, text: string): Promise<boolean> 
   }
 }
 
+// ── 重要日期：已推过的去重（跨天持久，key = 名称|下次日期）──
+const DT_PUSHED_KEY = "el:dtpushed";
+export async function getDatePushed(): Promise<string[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<string[]>(DT_PUSHED_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+export async function addDatePushed(key: string): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    const list = await getDatePushed();
+    if (!list.includes(key)) {
+      list.push(key);
+      await r.set(DT_PUSHED_KEY, list.slice(-100));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 // ── 通用短期缓存（给记忆上下文提速）──
 export async function getCache(key: string): Promise<string | null> {
   const r = redis();

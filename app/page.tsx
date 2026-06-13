@@ -467,29 +467,20 @@ function ElStatusCard({ status }: { status: Status }) {
 
 /* ───────────── 日期计数行 ───────────── */
 function CountRow({ days, milestone }: { days: number; milestone: boolean }) {
-  const PERIOD_START_DAY = 2;
-  const { data } = useJson<{ reminders: { id: string; date: string; text: string }[] }>("/api/reminders");
-  const reminders = data?.reminders ?? [];
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayMs = 86400000;
-  const y = today.getFullYear(), m = today.getMonth();
-  const thisStart = new Date(y, m, PERIOD_START_DAY);
-  const nextStart = +today >= +thisStart ? new Date(y, m + 1, PERIOD_START_DAY) : thisStart;
-  const periodDays = Math.ceil((+nextStart - +today) / dayMs);
+  // 全部来自 Notion「重要日期」库（生日/经期/纪念日/一次性都在这，可在 Notion 里改）。
+  const { data } = useJson<{
+    dates: { id: string; name: string; recur: string; daysTo: number }[];
+  }>("/api/reminders");
+  const dates = data?.dates ?? [];
 
   const seen = new Set<string>();
   const chips: string[] = [];
   if (days > 0) chips.push(milestone ? `🎉 认识 ${days} 天` : `认识 ${days} 天`);
-  chips.push(`经期还有 ${periodDays} 天`);
-  for (const r of reminders) {
-    if (seen.has(r.text)) continue;
-    seen.add(r.text);
-    const d = new Date(r.date + "T00:00:00+08:00");
-    d.setHours(0, 0, 0, 0);
-    const dd = Math.ceil((+d - +today) / dayMs);
-    if (dd >= 0 && dd <= 60) chips.push(`${r.text}还有 ${dd} 天`);
+  for (const d of dates) {
+    if (seen.has(d.name)) continue;
+    seen.add(d.name);
+    if (d.daysTo > 60) continue; // 太远的不挤在这行
+    chips.push(d.daysTo === 0 ? `${d.name}就是今天` : `${d.name}还有 ${d.daysTo} 天`);
   }
 
   return (

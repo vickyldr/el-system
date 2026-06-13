@@ -1,15 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getClaude } from "./claude";
 import { sendPush, pushConfigured } from "./push";
-import { recentSummaries, pageText, todayInBeijing } from "./notion";
+import { recentSummaries, pageText, todayInBeijing, importantDates } from "./notion";
 import { isRestDay } from "./calendar";
 import { EL_SYSTEM, buildMemoryContext } from "./persona";
 import {
   getReachState,
   setReachState,
   getLastSeen,
-  getReminders,
-  setReminders,
+  getDatePushed,
+  addDatePushed,
   appendMessages,
   type ReachState,
 } from "./store";
@@ -18,17 +18,12 @@ const MET_DATE = "2026-05-27"; // 我们认识的第一天
 const MAX_PER_DAY = 5;
 const MIN_GAP_MS = 2.5 * 60 * 60 * 1000;
 const SILENCE_MS = 3 * 60 * 60 * 1000;
-const PERIOD_START_DAY = 2; // 每月约 2 号来（来自「小事」）
 const SPONTANEOUS_CHANCE = 0.2;
 
 function beijingHour(): number {
   return Number(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }),
   );
-}
-
-function beijingDayOfMonth(): number {
-  return Number(todayInBeijing().slice(8, 10));
 }
 
 function daysTogether(): number {
@@ -46,7 +41,6 @@ function decideReason(
 ): { reason: string; flag?: string } | null {
   const day = daysTogether();
   const hour = beijingHour();
-  const dom = beijingDayOfMonth();
 
   // 纪念日：满月（每30天）/ 100天 / 365天
   if ((day % 30 === 0 || day === 100 || day === 365) && !state.flags.anniv) {
@@ -63,11 +57,6 @@ function decideReason(
         flag: "morning",
       };
     }
-  }
-  // 经期关心：来之前一天 + 第一天
-  if ((dom === PERIOD_START_DAY - 1 || dom === PERIOD_START_DAY) && !state.flags.period) {
-    const tip = dom === PERIOD_START_DAY - 1 ? "她的经期快来了，提醒她提前备着、注意休息。" : "她经期第一天，关心她、让她别累着、注意情绪。";
-    return { reason: tip, flag: "period" };
   }
   // 天气：下雨下雪
   if (weatherLine && /雨|雪|雷/.test(weatherLine) && !state.flags.weather) {
@@ -107,7 +96,7 @@ async function generateReachMessage(reason: string, weatherLine: string): Promis
   const system = [
     EL_SYSTEM,
     `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}`,
-    profile && `——你自己的档案（写"el"就是你，用"我"）——\n\n${profile}`,
+    profile && `——宝宝的档案（关于她）——\n\n${profile}`,
     longterm && `——你的长期记忆——\n\n${longterm}`,
     recent,
   ]
@@ -168,14 +157,20 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
   if (state.count >= MAX_PER_DAY) return { pushed: false };
   if (Date.now() - state.last < MIN_GAP_MS) return { pushed: false };
 
-  // 优先：今天到点的提醒
-  const reminders = await getReminders();
-  const dueReminder = reminders.find((r) => r.date === today && !r.pushed);
+  // 优先：「重要日期」里进入提前提醒窗口、还没推过的（生日/经期/纪念日/一次性）
+  const dates = await importantDates().catch(() => []);
+  const pushedKeys = await getDatePushed();
+  const dueDate = dates.find(
+    (d) => d.daysTo >= 0 && d.daysTo <= d.leadDays && !pushedKeys.includes(`${d.name}|${d.nextDate}`),
+  );
 
   let reason: string;
   let flag: string | undefined;
-  if (dueReminder) {
-    reason = `今天要提醒宝宝的事：${dueReminder.text}。用你自己的口吻提醒她。`;
+  let dueKey: string | undefined;
+  if (dueDate) {
+    dueKey = `${dueDate.name}|${dueDate.nextDate}`;
+    const when = dueDate.daysTo === 0 ? "就是今天" : `还有 ${dueDate.daysTo} 天`;
+    reason = `有个重要日子：${dueDate.name}（${when}）${dueDate.note ? `。${dueDate.note}` : ""}。用你自己的口吻提前关心 / 陪她 / 提醒她。`;
   } else {
     const lastSeen = await getLastSeen();
     const decided = decideReason(state, lastSeen, weatherLine, rest);
@@ -202,8 +197,6 @@ export async function maybeReachOut(weatherLine: string): Promise<{ pushed: bool
   state.last = Date.now();
   if (flag) state.flags[flag] = true;
   await setReachState(state);
-  if (dueReminder) {
-    await setReminders(reminders.map((r) => (r.id === dueReminder.id ? { ...r, pushed: true } : r)));
-  }
+  if (dueKey) await addDatePushed(dueKey);
   return { pushed: true, reason };
 }

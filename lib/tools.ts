@@ -4,8 +4,10 @@ import {
   appendToPage,
   updateDailyFields,
   todayInBeijing,
+  importantDates,
+  addImportantDate,
+  deleteImportantDate,
 } from "./notion";
-import { addReminder } from "./store";
 
 const DAILY_FIELDS = [
   "el日记",
@@ -74,31 +76,31 @@ export const TOOLS = [
   {
     name: "add_reminder",
     description:
-      "记一条提醒（宝宝让你记的事 / 日程 / 生日）。date 用 YYYY-MM-DD（不确定年份就用今年）。到点我会推送提醒她，也会显示在「小事」。",
+      "往「重要日期」记一条（宝宝让你记的事 / 日程 / 生日 / 纪念日）。date 用 YYYY-MM-DD（不确定年份就用今年）。recur：一次性的填『一次』，每年的（生日/纪念日）填『每年』，每月的填『每月』，不填默认『一次』。快到时我会推送提醒她，也显示在前端日期行。",
     input_schema: {
       type: "object" as const,
       properties: {
         date: { type: "string", description: "YYYY-MM-DD" },
-        text: { type: "string" },
+        text: { type: "string", description: "这个日子的名称，如 妈妈生日 / 下周三体检" },
+        recur: { type: "string", description: "一次 / 每年 / 每月，默认 一次" },
       },
       required: ["date", "text"],
     },
   },
   {
     name: "delete_reminder",
-    description:
-      "删除提醒。用 id 删单条（先用 list_reminders 拿 id），或 all:true 清空全部。",
+    description: "删除「重要日期」里的一条。用 id 删单条（先用 list_reminders 拿 id）。",
     input_schema: {
       type: "object" as const,
       properties: {
-        id: { type: "string", description: "提醒的 id，单条删除时填" },
-        all: { type: "boolean", description: "true 则清空全部提醒" },
+        id: { type: "string", description: "重要日期的 id" },
       },
+      required: ["id"],
     },
   },
   {
     name: "list_reminders",
-    description: "列出当前所有未来的提醒，含 id，用于确认要删哪条。",
+    description: "列出「重要日期」里所有条目（含 id 和距离天数），用于确认要删哪条。",
     input_schema: { type: "object" as const, properties: {} },
   },
   {
@@ -161,11 +163,14 @@ export async function runTool(
     if (name === "update_daily")
       return await updateDaily(String(input?.field || ""), String(input?.text || ""), date);
     if (name === "add_reminder")
-      return await addReminderTool(String(input?.date || ""), String(input?.text || ""));
+      return await addReminderTool(
+        String(input?.date || ""),
+        String(input?.text || ""),
+        String(input?.recur || "一次"),
+      );
     if (name === "delete_reminder")
-      return await deleteReminderTool(input?.id ? String(input.id) : undefined, !!input?.all);
-    if (name === "list_reminders")
-      return await listRemindersTool();
+      return await deleteReminderTool(input?.id ? String(input.id) : undefined);
+    if (name === "list_reminders") return await listRemindersTool();
     if (name === "note_page")
       return await notePage(String(input?.page || ""), String(input?.text || ""), date);
     if (name === "grow_self")
@@ -239,18 +244,17 @@ async function updateDaily(field: string, text: string, date: string): Promise<s
 }
 
 async function listRemindersTool(): Promise<string> {
-  const { getReminders } = await import("./store");
-  const list = await getReminders();
-  if (list.length === 0) return "没有提醒。";
-  return list.map((r) => `id:${r.id} | ${r.date} | ${r.text}`).join("\n");
+  const list = await importantDates();
+  if (list.length === 0) return "「重要日期」里没有条目。";
+  return list
+    .map((d) => `id:${d.id} | ${d.name} | ${d.recur} | 下次 ${d.nextDate}（还有 ${d.daysTo} 天）`)
+    .join("\n");
 }
 
-async function deleteReminderTool(id?: string, all?: boolean): Promise<string> {
-  const { getReminders, setReminders } = await import("./store");
-  const list = await getReminders();
-  const next = all ? [] : list.filter((r) => r.id !== id);
-  await setReminders(next);
-  return `删了，剩 ${next.length} 条。`;
+async function deleteReminderTool(id?: string): Promise<string> {
+  if (!id) return "要删哪条？先用 list_reminders 拿 id。";
+  await deleteImportantDate(id);
+  return "删了。";
 }
 
 async function notePage(pageName: string, text: string, date: string): Promise<string> {
@@ -288,12 +292,13 @@ async function appendToTitledPage(titleQuery: string, text: string, date: string
   return `写进「${match.title}」了。`;
 }
 
-async function addReminderTool(date: string, text: string): Promise<string> {
+async function addReminderTool(date: string, text: string, recur: string): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
     return "日期格式要 YYYY-MM-DD。";
   }
-  const ok = await addReminder(date.trim(), text.trim());
-  return ok ? "记下了，到点提醒你。" : "没存上（云存储没配？）。";
+  const r = ["一次", "每年", "每月"].includes(recur.trim()) ? recur.trim() : "一次";
+  const ok = await addImportantDate(text.trim(), date.trim(), r).catch(() => false);
+  return ok ? "记进「重要日期」了，快到时提醒你。" : "没存上（没找到「重要日期」库？）。";
 }
 
 async function readLink(url: string): Promise<string> {

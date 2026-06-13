@@ -272,7 +272,11 @@ export async function POST(req: Request) {
       // bridge 已经给了回复，跳过下面的 SDK 调用
     } else {
     const claude = getClaude();
-    const model = (voice && process.env.CLAUDE_VOICE_MODEL) || process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+    // 语音模式强制用 sonnet，不让它走 haiku（haiku 对 OAuth token 返回 403）
+    const model = (voice
+      ? (process.env.CLAUDE_VOICE_MODEL || "claude-sonnet-4-6")
+      : (process.env.CLAUDE_MODEL || "claude-sonnet-4-6")
+    ).replace(/haiku[^"]*/i, "claude-sonnet-4-6");
 
     // 工具循环：El 需要时读链接 / 读 Notion / 写记忆 / 贴表情，最多几轮。
     for (let i = 0; i < 6; i++) {

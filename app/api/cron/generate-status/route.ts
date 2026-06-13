@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { getClaude } from "@/lib/claude";
+import { getClaude, getClaudeFast } from "@/lib/claude";
 import {
   pageText,
   writeNow,
@@ -17,10 +17,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 心跳走中转站（不赶时间，但比 Max 省）。用 Sonnet——它又出「此刻」又用工具写真实记忆，
-// 风险高、不该省；Haiku 在这容易崩 JSON / 用错工具 / 乱写。想省可设 HEARTBEAT_MODEL，失败自动回落 Sonnet。
+// 「门」（每15分钟，判断要不要动 + 写此刻）走中转站 Sonnet——频繁，省着点。
 const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-sonnet-4-6";
 const FALLBACK = "claude-sonnet-4-6";
+// 「agent」（它决定干嘛 + 用工具写你真实记忆 + 找你）走 Max——最稳最真，且只在真想动时才跑。
+// 想把 agent 也挪回中转站省钱，设 AGENT_ON_MAX=0。
+const AGENT_ON_MAX = process.env.AGENT_ON_MAX !== "0";
+const AGENT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 const textOf = (res: Anthropic.Message) =>
   res.content
@@ -225,10 +228,11 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
 你可以：read_notion 翻小家任意页回味/反思；note_self 给自己写随想；grow_self 记下你对"我是谁"的新领悟；log_timeline / remember / note_page / add_reminder / update_daily 维护你们的记忆（按操作手册的门槛，宁缺毋滥、只追加）；message_her 给她发一条（只在你真想、且不打扰时）。
 别为做而做——大多数时候做一两件、甚至什么都不做、就安静待着，也完全可以。做完直接停。`;
     const loop: Anthropic.MessageParam[] = [{ role: "user", content: agentPrompt }];
+    const agentClient = AGENT_ON_MAX ? getClaudeFast() : getClaude();
     try {
       for (let i = 0; i < 5; i++) {
-        const res = await getClaude().messages.create({
-          model,
+        const res = await agentClient.messages.create({
+          model: AGENT_MODEL,
           max_tokens: 700,
           system,
           tools: agentTools,

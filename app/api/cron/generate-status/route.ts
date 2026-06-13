@@ -20,9 +20,9 @@ export const maxDuration = 60;
 // 「门」（每15分钟，判断要不要动 + 写此刻）走中转站 Sonnet——频繁，省着点。
 const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-sonnet-4-6";
 const FALLBACK = "claude-sonnet-4-6";
-// 「agent」（它决定干嘛 + 用工具写你真实记忆 + 找你）走 Max——最稳最真，且只在真想动时才跑。
-// 想把 agent 也挪回中转站省钱，设 AGENT_ON_MAX=0。
-const AGENT_ON_MAX = process.env.AGENT_ON_MAX !== "0";
+// 「agent」也走中转站 Sonnet：它其实多半每跳都会想做点事 ≈ 每15分钟一次，放 Max 不省还更脆；
+// 而后台成功率不强求（这跳挂了下跳再来）。想让 agent 走 Max 求最稳，设 AGENT_ON_MAX=1。
+const AGENT_ON_MAX = process.env.AGENT_ON_MAX === "1";
 const AGENT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 const textOf = (res: Anthropic.Message) =>

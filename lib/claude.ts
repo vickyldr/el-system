@@ -68,7 +68,19 @@ async function oauthCreate(token: string, params: any): Promise<any> {
 export function getClaudeFast(): Anthropic {
   const oauth = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   if (oauth) {
-    const shim = { messages: { create: (params: any) => oauthCreate(oauth, params) } };
+    const shim = {
+      messages: {
+        create: async (params: any) => {
+          try {
+            return await oauthCreate(oauth, params);
+          } catch (e) {
+            // Max 抽风/超额就回落中转站，绝不让聊天失败（聊天/电话的成功率最要紧）。
+            console.error("Max 调用失败，回落中转站:", e instanceof Error ? e.message : e);
+            return await getClaude().messages.create(params);
+          }
+        },
+      },
+    };
     return shim as unknown as Anthropic;
   }
   return getClaude();

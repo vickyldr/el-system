@@ -197,6 +197,6 @@ export async function GET() {
     weather,
     date: latest?.date ?? null,
   };
-  await setCache("el:statuscache", JSON.stringify(result), 45).catch(() => {});
+  await setCache("el:statuscache", JSON.stringify(result), 180).catch(() => {});
   return NextResponse.json(result);
 }

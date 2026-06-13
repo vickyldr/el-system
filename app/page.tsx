@@ -996,6 +996,7 @@ function FindTab() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const didInit = useRef(false);
+  const pinBottom = useRef(true); // 打开后的一小段时间内，强制钉在底部（图片/字体加载会改高度）
   const [atBottom, setAtBottom] = useState(true);
 
   function isNearBottom() {
@@ -1045,10 +1046,14 @@ function FindTab() {
   }
 
   async function startCall() {
+    if (callActive.current) return; // 防重复点
+    callActive.current = true;
+    setInCall(true); // 立刻弹出通话界面，别让人觉得"点了没反应"
+    setCallState("idle");
     try {
       const tokenRes = await fetch("/api/live-token");
       const { wsUrl, secret, error } = await tokenRes.json();
-      if (error || !wsUrl) { alert("通话服务未配置，请检查 GEMINI_API_KEY"); return; }
+      if (error || !wsUrl) { alert("通话服务未配置，请检查 GEMINI_API_KEY"); endCall(); return; }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
@@ -1147,6 +1152,7 @@ function FindTab() {
       };
     } catch {
       alert("打电话需要麦克风权限哦");
+      endCall();
     }
   }
 
@@ -1365,12 +1371,21 @@ function FindTab() {
     }
   }, [msgs]);
 
-  // 打开「找我」：第一次拿到消息就稳稳停到最底（瞬移，且图片/表情加载完再补几次，别停在中间）。
+  // 打开「找我」：第一次拿到消息就稳稳停到最底。图片/表情/字体加载会改变高度，
+  // 所以在打开后约 2 秒内"钉死"在底部，反复回到底，别再跳到中间的旧消息。
   useEffect(() => {
     if (!didInit.current && msgs.length) {
       didInit.current = true;
+      pinBottom.current = true;
       scrollToBottom(false);
-      [120, 350, 700].forEach((t) => setTimeout(() => scrollToBottom(false), t));
+      const timers = [60, 150, 300, 500, 800, 1200, 1700].map((t) =>
+        setTimeout(() => pinBottom.current && scrollToBottom(false), t),
+      );
+      const release = setTimeout(() => (pinBottom.current = false), 2000);
+      return () => {
+        timers.forEach(clearTimeout);
+        clearTimeout(release);
+      };
     }
   }, [msgs]);
 
@@ -1512,7 +1527,7 @@ function FindTab() {
                   className="msg-img"
                   src={m.image}
                   alt=""
-                  onLoad={() => atBottom && scrollToBottom(false)}
+                  onLoad={() => (pinBottom.current || atBottom) && scrollToBottom(false)}
                 />
               )}
               {m.content && <div className="bubble">{m.content}</div>}

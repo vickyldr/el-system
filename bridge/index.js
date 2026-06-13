@@ -230,7 +230,7 @@ if (GEMINI_API_KEY) {
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
-              silenceDurationMs: 500, // 你停 0.5 秒就判定说完，回得更快（默认更久）
+              silenceDurationMs: 350, // 你停 0.35 秒就判定说完，更快接话
             },
           },
         },

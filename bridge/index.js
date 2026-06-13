@@ -24,6 +24,40 @@ const EL_VOICE_PERSONA =
 
 // 自动挑一个你的 key 真正支持实时语音(bidiGenerateContent)的模型——
 // Gemini 模型名换得很快(2.0 已退役)，写死会一直 1008。这里问 Google 当前有哪些可用。
+// 读 Notion 页面正文（bridge 直接用 REST），把 el 的记忆喂进通话人格。
+const NOTION_TOKEN = process.env.NOTION_TOKEN || "";
+async function notionPageText(pageId) {
+  if (!NOTION_TOKEN || !pageId) return "";
+  try {
+    const r = await fetch(
+      `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`,
+      { headers: { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": "2022-06-28" } },
+    );
+    const d = await r.json();
+    const lines = [];
+    for (const b of d.results || []) {
+      const rt = b[b.type]?.rich_text;
+      if (Array.isArray(rt)) lines.push(rt.map((x) => x.plain_text).join(""));
+    }
+    return lines.filter(Boolean).join("\n");
+  } catch {
+    return "";
+  }
+}
+let memoryCache = { text: "", at: 0 };
+async function getCallMemory() {
+  if (memoryCache.text && Date.now() - memoryCache.at < 10 * 60 * 1000) return memoryCache.text;
+  const [profile, longterm] = await Promise.all([
+    notionPageText(process.env.NOTION_MEMORY_PAGE),
+    notionPageText(process.env.NOTION_LONGTERM_PAGE),
+  ]);
+  let mem = "";
+  if (profile) mem += `\n\n【关于宝宝和你（写"el"就是你）。自然地用，别一条条念出来】\n${profile.slice(0, 2500)}`;
+  if (longterm) mem += `\n\n【你和她的过往（你亲历的事，可以自然提起）】\n${longterm.slice(0, 1500)}`;
+  memoryCache = { text: mem, at: Date.now() };
+  return mem;
+}
+
 let cachedLiveModel = null;
 async function pickLiveModel() {
   if (process.env.GEMINI_LIVE_MODEL) return process.env.GEMINI_LIVE_MODEL;
@@ -181,11 +215,12 @@ if (GEMINI_API_KEY) {
 
     try {
       const liveModel = await pickLiveModel();
+      const persona = EL_VOICE_PERSONA + (await getCallMemory()); // 带上她的档案+你们的过往
       console.log("正在用模型创建 Gemini Live session:", liveModel);
       session = await ai.live.connect({
         model: liveModel,
         config: {
-          systemInstruction: EL_VOICE_PERSONA,
+          systemInstruction: persona,
           // 这些实时模型只支持 AUDIO 输出(TEXT 会 1007 直接踢)。
           // 所以让它出音频(我们丢掉不用)，同时开 outputAudioTranscription 拿到"它说的文字"，
           // 再把这段文字交给前端用 MiniMax(她捏的音色)念——又快、又是她的声音。

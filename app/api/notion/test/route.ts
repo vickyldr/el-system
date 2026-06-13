@@ -1,29 +1,29 @@
 import { NextResponse } from "next/server";
-import { notionClient } from "@/lib/notion";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const token = process.env.NOTION_TOKEN;
-  const timelinePage = process.env.NOTION_TIMELINE_PAGE;
-  if (!token) return NextResponse.json({ error: "NOTION_TOKEN 未设置" });
+  const token = process.env.NOTION_TOKEN ?? "(not set)";
+  const timelinePage = process.env.NOTION_TIMELINE_PAGE ?? "(not set)";
 
+  // 直接用 fetch 测试，绕过 SDK
+  let notionResult: unknown = null;
   try {
-    const notion = notionClient();
-    const me = await notion.users.me({});
-    return NextResponse.json({
-      ok: true,
-      bot: me.name,
-      tokenPrefix: token.slice(0, 10) + "...",
-      timelinePage,
+    const r = await fetch("https://api.notion.com/v1/users/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": "2022-06-28",
+      },
     });
-  } catch (err) {
-    return NextResponse.json({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-      tokenPrefix: token.slice(0, 10) + "...",
-      timelinePage,
-    });
+    notionResult = await r.json();
+  } catch (e) {
+    notionResult = { fetchError: String(e) };
   }
+
+  return NextResponse.json({
+    tokenPrefix: token.slice(0, 12) + "...",
+    timelinePage,
+    notion: notionResult,
+  });
 }

@@ -75,7 +75,9 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/";
+  const raw = (event.notification.data && event.notification.data.url) || "/";
+  // 只允许同源路径，防止推送数据被篡改后打开第三方 URL
+  const target = typeof raw === "string" && raw.startsWith("/") ? raw : "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const c of list) {

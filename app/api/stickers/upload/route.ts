@@ -63,6 +63,10 @@ export async function POST(req: Request) {
   if (!/^data:image\//i.test(dataUrl)) {
     return NextResponse.json({ error: "要传一张图片" }, { status: 400 });
   }
+  // base64 约 1.5MB → 原图约 1MB，够表情包用了
+  if (dataUrl.length > 1.5 * 1024 * 1024) {
+    return NextResponse.json({ error: "图片太大，压缩一下再传" }, { status: 400 });
+  }
   // 我看一眼自动写的标签 + 她自己补的（如果有），合起来更准。
   const auto = await describeSticker(dataUrl);
   const tags = [note, auto].filter(Boolean).join("，") || "表情";

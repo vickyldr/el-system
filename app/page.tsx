@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// 所有对 /api/* 的请求都带上 x-app-secret，防止公网随意调用。
+const APP_SECRET = process.env.NEXT_PUBLIC_APP_SECRET || "";
+function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (APP_SECRET) headers.set("x-app-secret", APP_SECRET);
+  return fetch(input, { ...init, headers });
+}
+
 type Tab = "now" | "find" | "us";
 
 // 统一的线性图标（描边跟随当前文字色，跟玻璃质感更配，告别杂乱 emoji）。
@@ -293,7 +301,7 @@ function NowTab() {
   useEffect(() => {
     let alive = true;
     const load = () => {
-      fetch("/api/status")
+      apiFetch("/api/status")
         .then((r) => r.json())
         .then((d) => alive && setStatus(d))
         .catch(() => alive && setStatus({ error: "拉不到状态" }))
@@ -466,7 +474,7 @@ function EatDecider() {
     setLoading(true);
     const nextAvoid = reroll && pick ? [...avoid, pick].slice(-6) : avoid;
     try {
-      const r = await fetch("/api/decide", {
+      const r = await apiFetch("/api/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avoid: nextAvoid }),
@@ -600,7 +608,7 @@ function FortuneCard() {
 
   function fetchTagline(state: FortuneState, idx: number, cb: (t: string) => void) {
     const vibe = state.vibes[idx];
-    fetch("/api/fortune", {
+    apiFetch("/api/fortune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "tagline", vibe }),
@@ -620,7 +628,7 @@ function FortuneCard() {
   }
 
   async function callFortune(action: string, vibe: string) {
-    const res = await fetch("/api/fortune", {
+    const res = await apiFetch("/api/fortune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, vibe }),
@@ -679,7 +687,7 @@ function FortuneCard() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await fetch("/api/upload", { method: "POST", body: form });
+      await apiFetch("/api/upload", { method: "POST", body: form });
       completeTask();
     } catch {
       alert("上传失败，再试一次");
@@ -867,7 +875,7 @@ async function subscribePush(welcome: boolean): Promise<boolean> {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
     }));
-  await fetch("/api/push/subscribe", {
+  await apiFetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subscription: sub, welcome }),
@@ -977,11 +985,11 @@ function FindTab() {
 
   // 语音配好了才显示「听」按钮；语音识别也配好了才显示「打电话」。
   useEffect(() => {
-    fetch("/api/tts")
+    apiFetch("/api/tts")
       .then((r) => r.json())
       .then((d) => setTtsOn(!!d.configured))
       .catch(() => {});
-    fetch("/api/stt")
+    apiFetch("/api/stt")
       .then((r) => r.json())
       .then((d) => setSttOn(!!d.configured))
       .catch(() => {});
@@ -1106,13 +1114,13 @@ function FindTab() {
       const ext = blob.type.includes("webm") ? "webm" : "m4a";
       const fd = new FormData();
       fd.append("audio", blob, `u.${ext}`);
-      const sr = await fetch("/api/stt", { method: "POST", body: fd });
+      const sr = await apiFetch("/api/stt", { method: "POST", body: fd });
       const sd = await sr.json();
       const said = (sd.text || "").trim();
       if (!said) return resumeAfterTurn(); // 没听清，继续听
       const ts = Date.now();
       setMsgs((m) => [...m, { role: "user", content: said, ts }]);
-      const cr = await fetch("/api/chat", {
+      const cr = await apiFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: said, voice: true }),
@@ -1120,7 +1128,7 @@ function FindTab() {
       const cd = await cr.json();
       const reply = cd.reply || cd.error || "……";
       setMsgs((m) => [...m, { role: "assistant", content: reply, image: cd.sticker || undefined, ts: ts + 1 }]);
-      const tr = await fetch("/api/tts", {
+      const tr = await apiFetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: reply, fast: true }),
@@ -1161,7 +1169,7 @@ function FindTab() {
     }
     setSpeaking(idx);
     try {
-      const r = await fetch("/api/tts", {
+      const r = await apiFetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -1186,7 +1194,7 @@ function FindTab() {
 
   async function loadLib() {
     try {
-      const r = await fetch("/api/stickers/lib");
+      const r = await apiFetch("/api/stickers/lib");
       const d = await r.json();
       setLib(Array.isArray(d.stickers) ? d.stickers : []);
     } catch {
@@ -1205,7 +1213,7 @@ function FindTab() {
 
   async function putSticker(dataUrl: string, note: string): Promise<boolean> {
     try {
-      const r = await fetch("/api/stickers/upload", {
+      const r = await apiFetch("/api/stickers/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataUrl, tags: note }),
@@ -1261,7 +1269,7 @@ function FindTab() {
     }
     setSearching(true);
     try {
-      const r = await fetch(`/api/stickers?q=${encodeURIComponent(q)}`);
+      const r = await apiFetch(`/api/stickers?q=${encodeURIComponent(q)}`);
       const d = await r.json();
       setStickers(Array.isArray(d.stickers) ? d.stickers : []);
     } catch {
@@ -1299,7 +1307,7 @@ function FindTab() {
       /* ignore */
     }
     try {
-      await fetch("/api/messages", { method: "DELETE" });
+      await apiFetch("/api/messages", { method: "DELETE" });
     } catch {
       /* ignore */
     }
@@ -1316,7 +1324,7 @@ function FindTab() {
         /* ignore */
       }
     };
-    fetch("/api/messages")
+    apiFetch("/api/messages")
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
@@ -1359,7 +1367,7 @@ function FindTab() {
     setMsgs((m) => [...m, { role: "user", content: text, image: image || undefined, ts: Date.now() }]);
     setSending(true);
     try {
-      const r = await fetch("/api/chat", {
+      const r = await apiFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, image, hint, history }),
@@ -1408,7 +1416,7 @@ function FindTab() {
     if (!window.confirm("删掉这张表情？")) return;
     setLib((l) => l.filter((s) => s.id !== id)); // 先本地移掉，手感快
     try {
-      await fetch(`/api/stickers/lib?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      await apiFetch(`/api/stickers/lib?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     } catch {
       void loadLib(); // 失败了就拉回真实状态
     }
@@ -1630,7 +1638,7 @@ function FindTab() {
                     onClick={async () => {
                       const t = window.prompt("改这张表情的意思：", s.tags);
                       if (t === null) return;
-                      await fetch("/api/stickers/lib", {
+                      await apiFetch("/api/stickers/lib", {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ id: s.id, tags: t.trim() }),

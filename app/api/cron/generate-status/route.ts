@@ -20,7 +20,7 @@ export const maxDuration = 60;
 async function handle(req: Request) {
   // 设了 CRON_SECRET 就要求匹配（Vercel cron 会自动带上）。没设则放行（方便手动测）。
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

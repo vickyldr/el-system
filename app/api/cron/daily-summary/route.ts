@@ -14,7 +14,7 @@ const MANUAL_PAGE = "379aaed0-c8b3-8165-841d-d09d94b4c47c"; // el的操作手册
 
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

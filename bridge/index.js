@@ -6,15 +6,28 @@ app.use(express.json({ limit: "10mb" }));
 const SECRET = process.env.BRIDGE_SECRET || "";
 const MODEL = process.env.BRIDGE_MODEL || "claude-sonnet-4-6";
 const OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN || "";
+const ALLOWED_ORIGIN = process.env.BRIDGE_ALLOWED_ORIGIN || "";
 
-if (!OAUTH_TOKEN) {
-  console.warn("警告: CLAUDE_CODE_OAUTH_TOKEN 未设置");
-}
+if (!OAUTH_TOKEN) console.warn("警告: CLAUDE_CODE_OAUTH_TOKEN 未设置");
+if (!SECRET) console.warn("警告: BRIDGE_SECRET 未设置，接口无保护");
 console.log(`el-bridge 启动，model=${MODEL}`);
 
 app.use((req, res, next) => {
+  // CORS：只允许配置的前端域名，未配置则拒绝跨域请求
+  const origin = req.headers["origin"];
+  if (origin) {
+    if (ALLOWED_ORIGIN && origin === ALLOWED_ORIGIN) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    // 预检请求
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-bridge-secret");
+      return res.status(204).end();
+    }
+  }
   if (req.path === "/health") return next();
-  if (SECRET && req.headers["x-bridge-secret"] !== SECRET) {
+  if (!SECRET || req.headers["x-bridge-secret"] !== SECRET) {
     return res.status(401).json({ error: "unauthorized" });
   }
   next();
@@ -32,7 +45,6 @@ app.post("/chat", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin", "*");
 
   try {
     const body = {

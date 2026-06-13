@@ -15,6 +15,13 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "没有文件" }, { status: 400 });
   }
+  const ALLOWED = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  if (!ALLOWED.includes(file.type)) {
+    return NextResponse.json({ error: "只能上传图片（jpg/png/gif/webp）" }, { status: 400 });
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return NextResponse.json({ error: "图片不能超过 5MB" }, { status: 400 });
+  }
   try {
     const blob = await put(file.name || "upload", file, {
       access: "public",

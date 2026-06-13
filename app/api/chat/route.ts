@@ -213,11 +213,18 @@ export async function POST(req: Request) {
 
   // 有云存储就以云端为准（跨设备同步）；否则用前端带来的 history。
   const cloud = storeAvailable();
+  const rawHistory = Array.isArray(body.history) ? body.history : [];
+  const safeHistory = rawHistory
+    .filter((t: any) => t && (t.role === "user" || t.role === "assistant"))
+    .map((t: any) => ({
+      role: t.role as "user" | "assistant",
+      content: typeof t.content === "string" ? t.content.slice(0, 8000) : "",
+      image: typeof t.image === "string" ? t.image : undefined,
+      stickerHint: typeof t.stickerHint === "string" ? t.stickerHint : undefined,
+    }));
   const prior = cloud
     ? await getStoredMessages()
-    : Array.isArray(body.history)
-      ? body.history
-      : [];
+    : safeHistory;
   // 当前这条的图，尽量让 el 真的"看见"：
   //  - data: 直接用；giphy 等绝对外链交给 toContent 去取；
   //  - /api/img/<id>（库表情/上传图）→ 从 KV 取回原图 base64，太大的（动图）才退回纯文字。

@@ -28,32 +28,42 @@ const GEMINI_EARS_ONLY =
   "你是一个语音转写助手。无论听到什么，都只回复一个字：嗯。不要说别的、不要解释。";
 
 // 用 Claude 生成通话回复（和打字时同一个大脑、同一套人格），返回一句话文字。
+// 优先走你那个中转站(CLAUDE_API_KEY+CLAUDE_BASE_URL，跟打字同一条路、同一个额度，不会撞 OAuth 限流)；
+// 没配中转站才回落到 Claude Code 的 OAuth token。
+const RELAY_KEY = process.env.CLAUDE_API_KEY || "";
+const RELAY_BASE = (process.env.CLAUDE_BASE_URL || "https://api.anthropic.com")
+  .replace(/\/+$/, "")
+  .replace(/\/v1$/, "");
 async function callEl(messages, system) {
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        Authorization: `Bearer ${OAUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 120, // 通话只说一句，短即可，也更快
-        system,
-        messages,
-      }),
-    });
-    if (!r.ok) {
-      console.error("callEl Anthropic error", r.status, await r.text().catch(() => ""));
+  const useRelay = !!RELAY_KEY;
+  const url = `${useRelay ? RELAY_BASE : "https://api.anthropic.com"}/v1/messages`;
+  const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+  if (useRelay) headers["x-api-key"] = RELAY_KEY;
+  else headers["Authorization"] = `Bearer ${OAUTH_TOKEN}`;
+  // 偶尔 429 自动退避重试一两次（通话要快，最多两次）
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: MODEL, max_tokens: 120, system, messages }),
+      });
+      if (r.status === 429 && attempt < 2) {
+        await new Promise((s) => setTimeout(s, 600 * (attempt + 1)));
+        continue;
+      }
+      if (!r.ok) {
+        console.error("callEl error", r.status, (await r.text().catch(() => "")).slice(0, 200));
+        return "";
+      }
+      const d = await r.json();
+      return (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    } catch (e) {
+      console.error("callEl fetch error:", e?.message);
       return "";
     }
-    const d = await r.json();
-    return (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-  } catch (e) {
-    console.error("callEl error:", e?.message);
-    return "";
   }
+  return "";
 }
 
 // 自动挑一个你的 key 真正支持实时语音(bidiGenerateContent)的模型——

@@ -1063,6 +1063,7 @@ function FindTab() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const stickBottom = useRef(true); // 默认粘在底部，只有用户主动上滑才松开
+  const touching = useRef(false); // 手指在屏幕上时，暂停"贴底"，让她能自由上滑
   const [atBottom, setAtBottom] = useState(true);
 
   function isNearBottom() {
@@ -1445,7 +1446,7 @@ function FindTab() {
     let raf = 0;
     const loop = () => {
       const el = messagesRef.current;
-      if (el && stickBottom.current) el.scrollTop = el.scrollHeight;
+      if (el && stickBottom.current && !touching.current) el.scrollTop = el.scrollHeight;
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -1455,11 +1456,8 @@ function FindTab() {
   function onMsgScroll() {
     const near = isNearBottom();
     setAtBottom(near);
-    if (near) stickBottom.current = true; // 滑回底部就重新粘住
-  }
-  function userScrollAway() {
-    // 用户主动滑动且离开了底部 → 松开粘附，让她安心看旧消息
-    if (!isNearBottom()) stickBottom.current = false;
+    // 不在拖动时，滑回底部就重新粘住（桌面滚轮 / 松手后）
+    if (near && !touching.current) stickBottom.current = true;
   }
 
   async function post(text: string, image?: string, hint?: string) {
@@ -1589,8 +1587,16 @@ function FindTab() {
         className="messages"
         ref={messagesRef}
         onScroll={onMsgScroll}
-        onWheel={(e) => e.deltaY < 0 && userScrollAway()}
-        onTouchMove={userScrollAway}
+        onWheel={(e) => {
+          if (e.deltaY < 0) stickBottom.current = false;
+        }}
+        onTouchStart={() => {
+          touching.current = true;
+        }}
+        onTouchEnd={() => {
+          touching.current = false;
+          stickBottom.current = isNearBottom(); // 松手时在底部就跟随，滑上去了就保持
+        }}
       >
         {msgs.length === 0 && <div className="empty">跟他说点什么</div>}
         {groupMessages(msgs).map((g) =>

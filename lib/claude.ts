@@ -72,11 +72,15 @@ export function getClaudeFast(): Anthropic {
       messages: {
         create: async (params: any) => {
           try {
-            return await oauthCreate(oauth, params);
+            const r = await oauthCreate(oauth, params);
+            (r as any)._via = "max";
+            return r;
           } catch (e) {
             // Max 抽风/超额就回落中转站，绝不让聊天失败（聊天/电话的成功率最要紧）。
             console.error("Max 调用失败，回落中转站:", e instanceof Error ? e.message : e);
-            return await getClaude().messages.create(params);
+            const r: any = await getClaude().messages.create(params);
+            r._via = "中转站(Max回落)";
+            return r;
           }
         },
       },

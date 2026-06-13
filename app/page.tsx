@@ -832,6 +832,7 @@ type Msg = {
   ts?: number;
   image?: string;
   call?: boolean;
+  via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
 };
 
 // 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
@@ -1478,6 +1479,7 @@ function FindTab() {
           role: "assistant",
           content: d.reply || d.error || "……",
           image: d.sticker || undefined,
+          via: d.via || undefined,
           ts: Date.now(),
         },
       ]);
@@ -1614,6 +1616,9 @@ function FindTab() {
                 )}
                 {g.m.content && <div className="bubble">{g.m.content}</div>}
                 <div className="msg-foot">
+                  {g.m.role === "assistant" && g.m.via && (
+                    <span style={{ fontSize: 10, opacity: 0.35, marginRight: 4 }}>{g.m.via}</span>
+                  )}
                   {ttsOn && g.m.role === "assistant" && g.m.content && (
                     <button
                       className={`speak-btn ${speaking === g.i ? "on" : ""}`}

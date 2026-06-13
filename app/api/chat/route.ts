@@ -314,11 +314,13 @@ export async function POST(req: Request) {
   try {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
+    let via = ""; // 这条回复是哪条路给的：max / 中转站 / bridge
 
     // 只有语音才走 bridge（短句、实时）。打字聊天直接用 getClaudeFast（Vercel→Max 直连，
     // 同样快、且带合规头），不再绕 bridge——之前绕 bridge 的 /chat 没带 oauth 头会吃假 429。
     if (process.env.BRIDGE_URL && voice) {
       reply = await callBridge(process.env.BRIDGE_URL, voiceSystem, loop, maxTok, voice);
+      if (reply) via = "bridge";
     }
 
     if (reply) {
@@ -340,6 +342,7 @@ export async function POST(req: Request) {
         tools: turnTools,
         messages: loop,
       });
+      via = (res as any)._via || via;
 
       if (res.stop_reason === "tool_use") {
         loop.push({ role: "assistant", content: res.content });
@@ -393,6 +396,7 @@ export async function POST(req: Request) {
           system,
           messages: stripImages(loop),
         });
+        via = "中转站(兜底)";
         reply = res.content
           .filter((b): b is Anthropic.TextBlock => b.type === "text")
           .map((b) => b.text)
@@ -426,7 +430,8 @@ export async function POST(req: Request) {
       ]);
     }
 
-    return NextResponse.json({ reply, cloud, sticker: elSticker });
+    console.log(`聊天回复 via=${via || "?"}`);
+    return NextResponse.json({ reply, cloud, sticker: elSticker, via });
   } catch (err) {
     // 配置类错误（key 不对/没权限）才把硬报错抛给前端，好让她知道要去修。
     if (err instanceof Anthropic.APIError && (err.status === 401 || err.status === 403)) {

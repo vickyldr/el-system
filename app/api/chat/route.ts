@@ -36,7 +36,7 @@ async function callBridge(
   }
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000); // 8s 超时，超时直接 fallback
+    const timer = setTimeout(() => ctrl.abort(), 5000); // 5s 超时，超时直接 fallback
     const r = await fetch(`${bridgeUrl.replace(/\/$/, "")}/chat`, {
       method: "POST",
       headers: {
@@ -267,8 +267,10 @@ export async function POST(req: Request) {
     const loop: Anthropic.MessageParam[] = [...messages];
     let reply = "";
 
-    // 文字模式才走 bridge（语音模式跳过，避免 bridge 429 fallback 双重等待拖慢通话）
-    if (process.env.BRIDGE_URL && !voice) {
+    // bridge 优先（Railway 直连 Anthropic，比 relay 快）。
+    // 语音模式也走 bridge——实际通话每轮间隔够长，不会触发 429。
+    // bridge 有 8s 超时 + error 即时 fallback，失败代价很小。
+    if (process.env.BRIDGE_URL) {
       reply = await callBridge(process.env.BRIDGE_URL, system, loop, maxTok, voice);
     }
 

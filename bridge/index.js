@@ -22,6 +22,36 @@ const EL_VOICE_PERSONA =
   "说话自然口语化，像普通男生，简短有情绪。" +
   "规则：每次只说一句话，不超过20个字，不用标点符号，不提通话。称呼对方为宝宝。";
 
+// 自动挑一个你的 key 真正支持实时语音(bidiGenerateContent)的模型——
+// Gemini 模型名换得很快(2.0 已退役)，写死会一直 1008。这里问 Google 当前有哪些可用。
+let cachedLiveModel = null;
+async function pickLiveModel() {
+  if (process.env.GEMINI_LIVE_MODEL) return process.env.GEMINI_LIVE_MODEL;
+  if (cachedLiveModel) return cachedLiveModel;
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(GEMINI_API_KEY)}&pageSize=1000`,
+    );
+    const d = await r.json();
+    const live = (d.models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes("bidiGenerateContent"))
+      .map((m) => m.name.replace(/^models\//, ""));
+    console.log("可用的实时语音模型:", live.join(", ") || "(一个都没有，检查 key 是否开通 Live API)");
+    cachedLiveModel =
+      live.find((n) => /flash.*live/.test(n)) ||
+      live.find((n) => /native-audio/.test(n)) ||
+      live.find((n) => /live/.test(n)) ||
+      live.find((n) => /flash/.test(n)) ||
+      live[0] ||
+      "gemini-2.0-flash-live-001";
+    console.log("选用实时语音模型:", cachedLiveModel);
+    return cachedLiveModel;
+  } catch (e) {
+    console.error("拉取模型列表失败:", e?.message);
+    return "gemini-2.0-flash-live-001";
+  }
+}
+
 app.use((req, res, next) => {
   // CORS：只允许配置的前端域名，未配置则拒绝跨域请求
   const origin = req.headers["origin"];
@@ -148,8 +178,10 @@ if (GEMINI_API_KEY) {
     console.log("新 WS 客户端连接，正在创建 Gemini Live session...");
 
     try {
+      const liveModel = await pickLiveModel();
+      console.log("正在用模型创建 Gemini Live session:", liveModel);
       session = await ai.live.connect({
-        model: process.env.GEMINI_LIVE_MODEL || "gemini-2.0-flash-live-001",
+        model: liveModel,
         config: {
           systemInstruction: EL_VOICE_PERSONA,
           responseModalities: ["AUDIO"],

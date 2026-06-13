@@ -1371,19 +1371,22 @@ function FindTab() {
     }
   }, [msgs]);
 
-  // 打开「找我」：第一次拿到消息就稳稳停到最底。图片/表情/字体加载会改变高度，
-  // 所以在打开后约 2 秒内"钉死"在底部，反复回到底，别再跳到中间的旧消息。
+  // 打开「找我」：第一次拿到消息就钉在最底。图片/表情/字体加载会改变高度，
+  // 用 rAF 每帧把滚动贴到底，约 1.2 秒——内容长高也"粘"在底部，不再一跳一跳。
   useEffect(() => {
     if (!didInit.current && msgs.length) {
       didInit.current = true;
       pinBottom.current = true;
-      scrollToBottom(false);
-      const timers = [60, 150, 300, 500, 800, 1200, 1700].map((t) =>
-        setTimeout(() => pinBottom.current && scrollToBottom(false), t),
-      );
-      const release = setTimeout(() => (pinBottom.current = false), 2000);
+      let raf = 0;
+      const glue = () => {
+        const el = messagesRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+        if (pinBottom.current) raf = requestAnimationFrame(glue);
+      };
+      raf = requestAnimationFrame(glue);
+      const release = setTimeout(() => (pinBottom.current = false), 1200);
       return () => {
-        timers.forEach(clearTimeout);
+        cancelAnimationFrame(raf);
         clearTimeout(release);
       };
     }

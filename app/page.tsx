@@ -2,23 +2,43 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// app 启动时用 NEXT_PUBLIC_APP_SECRET 换取 httpOnly cookie，之后凭 cookie 鉴权。
-// cookie 由服务端种下，不暴露在 JS 里，安全性更好。
-const APP_SECRET = process.env.NEXT_PUBLIC_APP_SECRET || "";
-async function ensureAuth() {
-  if (!APP_SECRET) return; // 未配置鉴权，跳过
-  try {
-    await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: APP_SECRET }),
-      credentials: "include",
-    });
-  } catch { /* 静默失败，不影响加载 */ }
+// ── Gemini Live 音频工具函数 ──
+function downsampleBuffer(buffer: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (fromRate === toRate) return buffer;
+  const ratio = fromRate / toRate;
+  const newLen = Math.round(buffer.length / ratio);
+  const result = new Float32Array(newLen);
+  for (let i = 0; i < newLen; i++) {
+    const start = Math.round(i * ratio);
+    const end = Math.round((i + 1) * ratio);
+    let sum = 0, count = 0;
+    for (let j = start; j < end && j < buffer.length; j++) { sum += buffer[j]; count++; }
+    result[i] = count > 0 ? sum / count : 0;
+  }
+  return result;
 }
-
-function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(input, { ...init, credentials: "include" });
+function float32ToInt16(f32: Float32Array): Int16Array {
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return i16;
+}
+function bufToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let b = "";
+  for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i]);
+  return btoa(b);
+}
+function base64ToPCMFloat32(b64: string): Float32Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const i16 = new Int16Array(bytes.buffer);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  return f32;
 }
 
 type Tab = "now" | "find" | "us";
@@ -155,9 +175,6 @@ export default function Home() {
   const dragging = useRef(false);
   const startY = useRef(0);
   const pullRef = useRef(0);
-
-  // app 启动时自动鉴权，拿到 cookie 后所有 apiFetch 就不会被 proxy 拦
-  useEffect(() => { ensureAuth(); }, []);
 
   // 下拉刷新：在「此刻 / 我们」页顶部下拉，松手重新加载。
   useEffect(() => {
@@ -315,7 +332,7 @@ function NowTab() {
   useEffect(() => {
     let alive = true;
     const load = () => {
-      apiFetch("/api/status")
+      fetch("/api/status")
         .then((r) => r.json())
         .then((d) => alive && setStatus(d))
         .catch(() => alive && setStatus({ error: "拉不到状态" }))
@@ -382,7 +399,7 @@ function ElStatusCard({ status }: { status: Status }) {
   if (available.length === 0) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 14 }}>
+    <div className="card" style={{ marginBottom: 14, animationDelay: "0.1s" }}>
       {available.length > 1 && (
         <div className="status-tabs">
           {available.map((t) => (
@@ -398,7 +415,7 @@ function ElStatusCard({ status }: { status: Status }) {
       )}
 
       {active === "mood" && hasMood && (
-        <div className="status-pane">
+        <div className="status-pane mood-pane-breathe">
           <div className="card-label">心情</div>
           <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
           {status.thought && <div className="meta" style={{ marginTop: 8 }}>{status.thought}</div>}
@@ -488,7 +505,7 @@ function EatDecider() {
     setLoading(true);
     const nextAvoid = reroll && pick ? [...avoid, pick].slice(-6) : avoid;
     try {
-      const r = await apiFetch("/api/decide", {
+      const r = await fetch("/api/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avoid: nextAvoid }),
@@ -622,7 +639,7 @@ function FortuneCard() {
 
   function fetchTagline(state: FortuneState, idx: number, cb: (t: string) => void) {
     const vibe = state.vibes[idx];
-    apiFetch("/api/fortune", {
+    fetch("/api/fortune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "tagline", vibe }),
@@ -642,7 +659,7 @@ function FortuneCard() {
   }
 
   async function callFortune(action: string, vibe: string) {
-    const res = await apiFetch("/api/fortune", {
+    const res = await fetch("/api/fortune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, vibe }),
@@ -701,7 +718,7 @@ function FortuneCard() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await apiFetch("/api/upload", { method: "POST", body: form });
+      await fetch("/api/upload", { method: "POST", body: form });
       completeTask();
     } catch {
       alert("上传失败，再试一次");
@@ -727,7 +744,7 @@ function FortuneCard() {
   const isInit = s.phase === "init";
 
   return (
-    <div className="fortune-card">
+    <div className="fortune-card" style={{ animationDelay: "0.05s", animation: "fadeInUp 0.42s ease both" }}>
       <div className="fortune-label" style={{ display: "flex", justifyContent: "space-between" }}>
         <span>今日签</span>
         {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>已绑</span>}
@@ -889,7 +906,7 @@ async function subscribePush(welcome: boolean): Promise<boolean> {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
     }));
-  await apiFetch("/api/push/subscribe", {
+  await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subscription: sub, welcome }),
@@ -953,7 +970,7 @@ function FindTab() {
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
-  const [stickerTab, setStickerTab] = useState<"lib" | "kaomoji" | "search">("lib");
+  const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
   const [stickerQ, setStickerQ] = useState("");
   const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
   const [searching, setSearching] = useState(false);
@@ -962,20 +979,16 @@ function FindTab() {
   const [ttsOn, setTtsOn] = useState(false);
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [sttOn, setSttOn] = useState(false);
+  const [liveOn, setLiveOn] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
   const streamRef = useRef<MediaStream | null>(null);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const callAudioRef = useRef<HTMLAudioElement | null>(null);
   const acRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const outputGainRef = useRef<GainNode | null>(null);
+  const nextPlayTimeRef = useRef(0);
   const callActive = useRef(false);
-  const speakingFlag = useRef(false);
-  const hadSpeech = useRef(false);
-  const silenceStart = useRef(0);
-  const segStart = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -999,43 +1012,104 @@ function FindTab() {
 
   // 语音配好了才显示「听」按钮；语音识别也配好了才显示「打电话」。
   useEffect(() => {
-    apiFetch("/api/tts")
+    fetch("/api/tts")
       .then((r) => r.json())
       .then((d) => setTtsOn(!!d.configured))
       .catch(() => {});
-    apiFetch("/api/stt")
+    fetch("/api/stt")
       .then((r) => r.json())
       .then((d) => setSttOn(!!d.configured))
       .catch(() => {});
+    fetch("/api/live-token")
+      .then((r) => r.json())
+      .then((d) => setLiveOn(!d.error && !!d.wsUrl))
+      .catch(() => {});
   }, []);
 
-  // ── 打电话（免提连续模式，像 GPT 语音）：点一下进入，我一直听；你说完(静音一会儿)我自动识别→想→用声音回你→再听，循环到你挂断 ──
-  const SILENT =
-    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+  // ── 打电话（Gemini Live 实时双向语音，低延迟 ~300ms）──
+
+  function playPCMChunk(ac: AudioContext, base64: string) {
+    try {
+      const f32 = base64ToPCMFloat32(base64);
+      const buf = ac.createBuffer(1, f32.length, 24000);
+      buf.copyToChannel(f32 as Float32Array<ArrayBuffer>, 0);
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const dest = outputGainRef.current ?? ac.destination;
+      src.connect(dest);
+      const now = ac.currentTime;
+      const start = Math.max(nextPlayTimeRef.current, now + 0.02);
+      src.start(start);
+      nextPlayTimeRef.current = start + buf.duration;
+    } catch {}
+  }
 
   async function startCall() {
     try {
-      // 在用户手势里"解锁"音频，否则 iOS 不让后面自动出声
-      const a = callAudioRef.current || new Audio();
-      a.src = SILENT;
-      a.play().then(() => a.pause()).catch(() => {});
-      callAudioRef.current = a;
+      const tokenRes = await fetch("/api/live-token");
+      const { wsUrl, secret, error } = await tokenRes.json();
+      if (error || !wsUrl) { alert("通话服务未配置，请检查 GEMINI_API_KEY"); return; }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
       });
       streamRef.current = stream;
+
       const AC = window.AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new AC();
       await ac.resume().catch(() => {});
-      const an = ac.createAnalyser();
-      an.fftSize = 1024;
-      ac.createMediaStreamSource(stream).connect(an);
       acRef.current = ac;
-      analyserRef.current = an;
+
+      const gain = ac.createGain();
+      gain.connect(ac.destination);
+      outputGainRef.current = gain;
+
+      const ws = new WebSocket(`${wsUrl}/live?secret=${encodeURIComponent(secret || "")}`);
+      wsRef.current = ws;
       callActive.current = true;
       setInCall(true);
-      beginListening();
-      vadLoop();
+      setCallState("idle");
+
+      ws.onmessage = (event) => {
+        if (!callActive.current) return;
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "ready") {
+            setCallState("listening");
+          } else if (msg.type === "audio" && msg.data) {
+            setCallState("speaking");
+            playPCMChunk(ac, msg.data);
+          } else if (msg.type === "turn_end") {
+            nextPlayTimeRef.current = 0;
+            setCallState("listening");
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => { if (callActive.current) endCall(); };
+      ws.onclose = () => { if (callActive.current) endCall(); };
+
+      ws.onopen = () => {
+        const nativeSR = ac.sampleRate;
+        const source = ac.createMediaStreamSource(stream);
+        const processor = ac.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        processor.onaudioprocess = (e) => {
+          if (!callActive.current || ws.readyState !== WebSocket.OPEN) return;
+          const f32 = e.inputBuffer.getChannelData(0);
+          const down = downsampleBuffer(f32, nativeSR, 16000);
+          const i16 = float32ToInt16(down);
+          ws.send(JSON.stringify({ type: "audio", data: bufToBase64(i16.buffer as ArrayBuffer) }));
+        };
+
+        source.connect(processor);
+        // 静音输出，部分浏览器需要连 destination 才会触发 onaudioprocess
+        const silentGain = ac.createGain();
+        silentGain.gain.value = 0;
+        processor.connect(silentGain);
+        silentGain.connect(ac.destination);
+      };
     } catch {
       alert("打电话需要麦克风权限哦");
     }
@@ -1043,137 +1117,31 @@ function FindTab() {
 
   function endCall() {
     callActive.current = false;
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    try {
-      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
-    } catch {
-      /* ignore */
-    }
+    try { wsRef.current?.close(); } catch {}
+    wsRef.current = null;
+    try { processorRef.current?.disconnect(); } catch {}
+    processorRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     acRef.current?.close().catch(() => {});
     acRef.current = null;
-    callAudioRef.current?.pause();
-    speakingFlag.current = false;
+    outputGainRef.current = null;
+    nextPlayTimeRef.current = 0;
     setInCall(false);
     setCallState("idle");
   }
 
-  // 开一段录音、开始听你说
-  function beginListening() {
-    const stream = streamRef.current;
-    if (!stream || !callActive.current) return;
-    chunksRef.current = [];
-    hadSpeech.current = false;
-    silenceStart.current = 0;
-    segStart.current = Date.now();
-    const rec = new MediaRecorder(stream);
-    recRef.current = rec;
-    rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
-    rec.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/mp4" });
-      if (hadSpeech.current) void processUtterance(blob);
-      else if (callActive.current && !speakingFlag.current) beginListening(); // 没说话就接着听
-    };
-    rec.start();
-    setCallState("listening");
-  }
-
-  function endSegment() {
-    const rec = recRef.current;
-    if (rec && rec.state !== "inactive") rec.stop();
-  }
-
-  function micLevel() {
-    const an = analyserRef.current;
-    if (!an) return 0;
-    const buf = new Uint8Array(an.fftSize);
-    an.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) {
-      const v = (buf[i] - 128) / 128;
-      sum += v * v;
-    }
-    return Math.sqrt(sum / buf.length);
-  }
-
-  // 静音检测循环：你出声→记下；说完静默 ~1.1s→自动收尾发送
-  function vadLoop() {
-    rafRef.current = requestAnimationFrame(vadLoop);
-    if (!callActive.current || speakingFlag.current) return;
-    if (recRef.current?.state !== "recording") return;
-    const THRESH = 0.02;
-    const SILENCE_MS = 1100;
-    const MAX_MS = 15000;
-    const now = Date.now();
-    if (micLevel() > THRESH) {
-      hadSpeech.current = true;
-      silenceStart.current = 0;
-    } else if (hadSpeech.current) {
-      if (!silenceStart.current) silenceStart.current = now;
-      else if (now - silenceStart.current > SILENCE_MS) return endSegment();
-    }
-    if (hadSpeech.current && now - segStart.current > MAX_MS) endSegment();
-  }
-
-  function resumeAfterTurn() {
-    speakingFlag.current = false;
-    if (callActive.current) beginListening();
-    else setCallState("idle");
-  }
-
-  async function processUtterance(blob: Blob) {
-    setCallState("thinking");
-    try {
-      const ext = blob.type.includes("webm") ? "webm" : "m4a";
-      const fd = new FormData();
-      fd.append("audio", blob, `u.${ext}`);
-      const sr = await apiFetch("/api/stt", { method: "POST", body: fd });
-      const sd = await sr.json();
-      const said = (sd.text || "").trim();
-      if (!said) return resumeAfterTurn(); // 没听清，继续听
-      const ts = Date.now();
-      // 把最近几轮通话记录带上，让 El 记得刚才说了什么
-      const recentHistory = msgs.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-      setMsgs((m) => [...m, { role: "user", content: said, ts }]);
-      const cr = await apiFetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: said, voice: true, history: recentHistory }),
-      });
-      const cd = await cr.json();
-      const reply = cd.reply || cd.error || "……";
-      setMsgs((m) => [...m, { role: "assistant", content: reply, image: cd.sticker || undefined, ts: ts + 1 }]);
-      const tr = await apiFetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: reply, fast: true }),
-      });
-      const a = callAudioRef.current;
-      if (tr.ok && a) {
-        const url = URL.createObjectURL(await tr.blob());
-        a.src = url;
-        speakingFlag.current = true;
-        setCallState("speaking");
-        a.onended = () => {
-          URL.revokeObjectURL(url);
-          resumeAfterTurn();
-        };
-        await a.play().catch(() => resumeAfterTurn());
-      } else {
-        resumeAfterTurn();
-      }
-    } catch {
-      resumeAfterTurn();
-    }
-  }
-
-  // 通话时点中间的球：打断我说话、立刻继续听你
+  // 点球打断：静音 200ms 清空队列，继续说话 Gemini 自动检测到打断
   function interruptEl() {
-    if (speakingFlag.current && callAudioRef.current) {
-      callAudioRef.current.pause();
-      resumeAfterTurn();
+    if (!callActive.current) return;
+    const gain = outputGainRef.current;
+    const ac = acRef.current;
+    if (gain && ac) {
+      gain.gain.setValueAtTime(0, ac.currentTime);
+      gain.gain.setValueAtTime(1, ac.currentTime + 0.2);
     }
+    nextPlayTimeRef.current = 0;
+    setCallState("listening");
   }
 
   // 用 el 的音色把这条念出来（点一下才念，省额度）。
@@ -1185,7 +1153,7 @@ function FindTab() {
     }
     setSpeaking(idx);
     try {
-      const r = await apiFetch("/api/tts", {
+      const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -1210,7 +1178,7 @@ function FindTab() {
 
   async function loadLib() {
     try {
-      const r = await apiFetch("/api/stickers/lib");
+      const r = await fetch("/api/stickers/lib");
       const d = await r.json();
       setLib(Array.isArray(d.stickers) ? d.stickers : []);
     } catch {
@@ -1229,7 +1197,7 @@ function FindTab() {
 
   async function putSticker(dataUrl: string, note: string): Promise<boolean> {
     try {
-      const r = await apiFetch("/api/stickers/upload", {
+      const r = await fetch("/api/stickers/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataUrl, tags: note }),
@@ -1285,7 +1253,7 @@ function FindTab() {
     }
     setSearching(true);
     try {
-      const r = await apiFetch(`/api/stickers?q=${encodeURIComponent(q)}`);
+      const r = await fetch(`/api/stickers?q=${encodeURIComponent(q)}`);
       const d = await r.json();
       setStickers(Array.isArray(d.stickers) ? d.stickers : []);
     } catch {
@@ -1323,7 +1291,7 @@ function FindTab() {
       /* ignore */
     }
     try {
-      await apiFetch("/api/messages", { method: "DELETE" });
+      await fetch("/api/messages", { method: "DELETE" });
     } catch {
       /* ignore */
     }
@@ -1340,7 +1308,7 @@ function FindTab() {
         /* ignore */
       }
     };
-    apiFetch("/api/messages")
+    fetch("/api/messages")
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
@@ -1383,7 +1351,7 @@ function FindTab() {
     setMsgs((m) => [...m, { role: "user", content: text, image: image || undefined, ts: Date.now() }]);
     setSending(true);
     try {
-      const r = await apiFetch("/api/chat", {
+      const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, image, hint, history }),
@@ -1432,7 +1400,7 @@ function FindTab() {
     if (!window.confirm("删掉这张表情？")) return;
     setLib((l) => l.filter((s) => s.id !== id)); // 先本地移掉，手感快
     try {
-      await apiFetch(`/api/stickers/lib?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      await fetch(`/api/stickers/lib?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     } catch {
       void loadLib(); // 失败了就拉回真实状态
     }
@@ -1453,7 +1421,7 @@ function FindTab() {
         </div>
         <div className="top-actions">
           <NotifyButton />
-          {ttsOn && sttOn && (
+          {liveOn && (
             <button className="icon-btn" onClick={startCall} aria-label="打电话">
               <Icon name="phone" size={19} />
             </button>
@@ -1558,13 +1526,6 @@ function FindTab() {
             </button>
             <button
               type="button"
-              className={`stk-tab ${stickerTab === "kaomoji" ? "active" : ""}`}
-              onClick={() => setStickerTab("kaomoji")}
-            >
-              颜文字
-            </button>
-            <button
-              type="button"
               className={`stk-tab ${stickerTab === "search" ? "active" : ""}`}
               onClick={() => setStickerTab("search")}
             >
@@ -1592,43 +1553,7 @@ function FindTab() {
             </button>
           </div>
 
-          {stickerTab === "kaomoji" ? (
-            <div className="kaomoji-sections">
-              {([
-                { label: "😊 开心", list: ["(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧","(*´▽`*)","(´｡• ᵕ •｡`)","٩(ˊᗜˋ*)و","(*≧ω≦)","(●´ω｀●)","(≧◡≦)","ヽ(✿ﾟ▽ﾟ)ノ","(ﾉ´ヮ`)ﾉ*: ･ﾟ","(❁´◡`❁)","(˘︶˘).｡.:*♡","(*＾▽＾*)","＼(^o^)／","(o^▽^o)","ヽ(°▽°)ノ","(☆▽☆)","(*≧▽≦)","(ﾉ´∀`)","(っ˘ω˘ς)","(´ω｀★)"] },
-                { label: "🥺 撒娇", list: ["(◍•ᴗ•◍)❤","(づ￣ 3￣)づ","♡(˃͈ દ ˂͈ ༶ )","(´ε` )♡","(*´з`)","(˘ε˘ʃƪ)","(づ｡◕‿‿◕｡)づ","♥(ˆ⌣ˆԅ)","(つ≧▽≦)つ","♡(•ˊᵕˋ•)*✲ﾟ*","(>ω<)♡","(っ´▽`)っ","(ʃƪ˘ε˘)","(●´□`)♡","(*˘︶˘*)","(つ♡ ͜つ)","(◕‿◕)♡","(ﾉ*>∀<)ﾉ♡","(´ ▽ ` )ﾉ","(*´ω｀*)"] },
-                { label: "😢 委屈", list: ["(´；ω；`)","(╥_╥)","(っ˘̩╭╮˘̩)っ","(T_T)","｡ﾟ(ﾟ´ω`ﾟ)ﾟ｡","(ಥ_ಥ)","(´•̥̥̥ω•̥̥̥`)","(இ﹏இ`。)","(TдT)","(ノД`)･ﾟ･","(个_个)","(´Д｀)","(；；)","(´°̥̥̥̥̥̥̥̥ω°̥̥̥̥̥̥̥̥｀)","(●´ω｀●)","〒▽〒","(;_;)","(ﾉД`)","(っ´ω`c)","(´-ι_-｀)"] },
-                { label: "😑 无语", list: ["(-_-)","(¬_¬)","(￣︿￣)","(눈_눈)","(ﾟ⊿ﾟ)ﾂ","( ´_ゝ`)","(→_→)","(-_-;)","(=_=)","(._.)","(ー_ーゞ","( ̄ω ̄)","(´・ω・｀)","(・へ・)","( ﾟдﾟ)","(￣ε￣@)","(-.-;)","ヽ(。_°)ノ","(¬‿¬)","(~_~;)"] },
-                { label: "😡 生气", list: ["（｀_´）ゞ","(メ﹏メ)","(╯°□°）╯︵ ┻━┻","(ง'̀-'́)ง","(￣^￣)","凸(ﾟДﾟ#)","(＃`Д´)","(ｰ̀дｰ́)","(ꐦ°᷄д°᷅)","(＃｀皿´)","(눈‸눈)","( ﾒ д ﾒ)","(｀ε´)","凸(>皿<)凸","(°ㅂ°╬)","(ง •̀_•́)ง","(ʘдʘ╬)","щ(ºДºщ)","(凸ಠ益ಠ)凸","(o`ω´o)"] },
-                { label: "😳 害羞", list: ["(///▽///)","(⁄ ⁄•⁄ω⁄•⁄ ⁄)","(〃∀〃)","(*///*) ","(●//●)","o(>////<)o","(〃ω〃)","(*ﾉωﾉ)","(/ω＼)","(。>///<。)","(*>////<)","(˘//▿//)","(>///<)","(//∇//)","(ˊ//▿//ˋ)","(¯///¯)","(*^///^*)","(*/////*)","(σ▽σ)","(//▽//)"] },
-                { label: "😴 困", list: ["(´-ω-`)","(-ω-) zzZ","(＿ ＿*)Zzz","(∪｡∪)｡｡｡zzz","(´ . .̫ . `)","(´～`zzZ","(=ω=.)","(o_ _)o zZ","(－ω－) zzZ","(∪｡∪)zzz","(ー_ー)zzZ","( ˘ω˘ )スヤァ","（＿＿）｡｡｡zzzZZZ","(..zZZ","(-_-)zzz","( ´ω`)zzz","(´∀｀*)zzz","( ˘ε˘)zzz"] },
-                { label: "😱 惊讶", list: ["Σ(°△°|||)","(⊙_⊙)","( ; ロ)°lll","(☉_☉)","Σ(ﾟДﾟ)","╰(°ロ°)╯","∑(O_O；)","Σ(っ °Д °;)っ","(ﾟдﾟ)","(；゜０；)","∑(゜ロ゜)","∑(O_O)","(꒦_꒦)","Σ(＊ﾟДﾟﾉ)ﾉ","( ꒪Д꒪)ノ","(((( ;°Д°))))","ヽ(゜Q。)ノ？","∑(O_O；)！","(゜ロ゜)ﾋｨ","Σ(-᷅_-᷄๑)"] },
-                { label: "🤔 思考", list: ["(・・？","(。・ω・。)?","(-ω-｀*)","(￣ー￣)ゞ","(´・ω・`)?","ʕ •ᴥ•ʔ?","(ó_ò)?","(ﾟ？ﾟ)","φ(゜▽゜*)♪","(._.)φ__","ヽ(・_・;)ノ","(・_・ヾ","(;¬_¬)","ლ(ಠ益ಠლ)","(ﾟペ)","(ーー゛)","（＊゜ー゜＊）","ﾍ(；ﾟДﾟ)ﾉ","(>_<)","( ˘_˘ )"] },
-                { label: "🎉 庆祝", list: ["\\(^ω^)/","ヾ(≧▽≦*)o","(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧","ﾟ*｡٩(ˊᗜˋ*)و✧*｡","\\(★ω★)/","\\(^o^)/","ヽ(•̀ω•́ )ゝ","(งᐛ)ง","٩(•̤̀ᵕ•̤́๑)","ヽ(✿ﾟ▽ﾟ)ノ","(ﾉ>ω<)ﾉ :｡･:*:･ﾟ'★,｡･:*:･ﾟ'☆","(*＾ω＾)人(＾ω＾*)","(ﾉ≧∀≦)ﾉ","ヽ(^^)ノ","ﾟ+｡:.ﾟヽ(*´∀`)ﾉﾟ.:｡+ﾟ","(≧ω≦)/","ε=ε=ε=ε=ε=ε=┌(; ̄◇ ̄)┘","★彡(o＾◇＾o)彡★"] },
-                { label: "💕 爱心", list: ["(´ε` )♡","♡(˃͈ દ ˂͈ ༶ )","(◍•ᴗ•◍)❤","♥(ˆ⌣ˆԅ)","(づ｡◕‿‿◕｡)づ","♡(•ˊᵕˋ•)*✲ﾟ*","(●♡∀♡)","❤(ӦｖӦ｡)","(●´ω｀●)♥","(*˘︶˘*).｡.:*♡","(/^▽^)/♡","♡✧( ु•⌄• )","(｡♥‿♥｡)","(っ◔◡◔)っ ♥","♥(。→ˇ‿ˇ←。)","✿♥‿♥✿","♡(∩˘͈ᵕ˘͈∩)","(ˆ ³ˆ)♥","( ˘ ³˘)♥","♡˗ˏˋ(ŐωŐ人)"] },
-                { label: "👋 打招呼", list: ["(｡•̀ᴗ-)✧","( ´ ▽ ` )ﾉ","ヾ(・ω・*)","(っ´∀｀)っ","o(≧∇≦o)","(*^‿^*)","(＾▽＾)/","(oﾟvﾟ)ノ","(｡•ω•｡)ノ","ヽ(^Д^)ﾉ","o(^▽^)o","(ﾟ▽ﾟ)/","(°ω°)ﾉ","(*´▽`*)ノ","ヾ(^-^)ノ","(*´∀`)~♥","(^_^)/","(ｏ^ ^ｏ)/","ヾ(•ω•`)o","o(^ω^)o"] },
-              ] as { label: string; list: string[] }[]).map(({ label, list }) => (
-                <div key={label} className="kaomoji-section">
-                  <div className="kaomoji-label">{label}</div>
-                  <div className="kaomoji-grid">
-                    {list.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className="kaomoji-btn"
-                        onClick={() => {
-                          setInput((v) => v + k);
-                          setShowStickers(false);
-                        }}
-                      >
-                        {k}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : stickerTab === "lib" ? (
+          {stickerTab === "lib" ? (
             <div className="sticker-grid">
               {lib.length === 0 && (
                 <div className="meta">
@@ -1646,23 +1571,6 @@ function FindTab() {
                     onClick={() => deleteSticker(s.id)}
                   >
                     ✕
-                  </button>
-                  <button
-                    type="button"
-                    className="stk-edit"
-                    aria-label="改标签"
-                    onClick={async () => {
-                      const t = window.prompt("改这张表情的意思：", s.tags);
-                      if (t === null) return;
-                      await apiFetch("/api/stickers/lib", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: s.id, tags: t.trim() }),
-                      });
-                      await loadLib();
-                    }}
-                  >
-                    ✎
                   </button>
                 </div>
               ))}

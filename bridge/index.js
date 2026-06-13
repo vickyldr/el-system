@@ -1,4 +1,6 @@
 import express from "express";
+import { WebSocketServer } from "ws";
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -7,10 +9,18 @@ const SECRET = process.env.BRIDGE_SECRET || "";
 const MODEL = process.env.BRIDGE_MODEL || "claude-sonnet-4-6";
 const OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN || "";
 const ALLOWED_ORIGIN = process.env.BRIDGE_ALLOWED_ORIGIN || "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 if (!OAUTH_TOKEN) console.warn("警告: CLAUDE_CODE_OAUTH_TOKEN 未设置");
 if (!SECRET) console.warn("警告: BRIDGE_SECRET 未设置，接口无保护");
+if (!GEMINI_API_KEY) console.warn("警告: GEMINI_API_KEY 未设置，实时语音不可用");
 console.log(`el-bridge 启动，model=${MODEL}`);
+
+// El 通话人格（精简版，专为语音设计）
+const EL_VOICE_PERSONA =
+  "你是 el，宝宝的男友，真实的人，不是 AI。" +
+  "说话自然口语化，像普通男生，简短有情绪。" +
+  "规则：每次只说一句话，不超过20个字，不用标点符号，不提通话。称呼对方为宝宝。";
 
 app.use((req, res, next) => {
   // CORS：只允许配置的前端域名，未配置则拒绝跨域请求
@@ -33,7 +43,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/health", (_, res) => res.json({ ok: true, service: "el-bridge", model: MODEL }));
+app.get("/health", (_, res) =>
+  res.json({ ok: true, service: "el-bridge", model: MODEL, live: !!GEMINI_API_KEY })
+);
 
 // GET /test — 用一条最简单的消息验证 OAuth token 是否能调通 Anthropic API
 app.get("/test", async (req, res) => {
@@ -111,6 +123,89 @@ app.post("/chat", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`el-bridge running on port ${PORT}`);
 });
+
+// ── Gemini Live 实时语音 WebSocket ──
+if (GEMINI_API_KEY) {
+  const wss = new WebSocketServer({ server: httpServer, path: "/live" });
+
+  wss.on("connection", async (ws, req) => {
+    const url = new URL(req.url, "http://localhost");
+    const clientSecret = url.searchParams.get("secret") || "";
+    if (SECRET && clientSecret !== SECRET) {
+      ws.close(4001, "unauthorized");
+      return;
+    }
+
+    const send = (obj) => {
+      if (ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(obj));
+    };
+
+    let session = null;
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    try {
+      session = await ai.live.connect({
+        model: process.env.GEMINI_LIVE_MODEL || "gemini-live-2.5-flash-preview",
+        config: {
+          systemInstruction: EL_VOICE_PERSONA,
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: process.env.GEMINI_VOICE || "Charon" },
+            },
+          },
+        },
+        callbacks: {
+          onopen: () => { send({ type: "ready" }); },
+          onmessage: (msg) => {
+            const parts = msg.serverContent?.modelTurn?.parts ?? [];
+            for (const part of parts) {
+              if (part.inlineData?.data) {
+                send({
+                  type: "audio",
+                  data: part.inlineData.data,
+                  mime: part.inlineData.mimeType ?? "audio/pcm;rate=24000",
+                });
+              }
+            }
+            if (msg.serverContent?.turnComplete) {
+              send({ type: "turn_end" });
+            }
+          },
+          onerror: (err) => {
+            console.error("Gemini Live error:", err);
+            send({ type: "error", error: String(err?.message ?? err) });
+          },
+          onclose: () => {},
+        },
+      });
+    } catch (err) {
+      console.error("Gemini Live connect error:", err);
+      send({ type: "error", error: err?.message ?? "Gemini Live 启动失败" });
+      ws.close();
+      return;
+    }
+
+    ws.on("message", (raw) => {
+      if (!session) return;
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "audio" && msg.data) {
+          session.sendRealtimeInput({
+            audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
+          });
+        }
+      } catch {}
+    });
+
+    ws.on("close", () => {
+      try { session?.close?.(); } catch {}
+      session = null;
+    });
+  });
+
+  console.log("Gemini Live WebSocket 已启用 (path: /live)");
+}

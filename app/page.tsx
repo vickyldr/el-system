@@ -1125,6 +1125,7 @@ function FindTab() {
           const rms = Math.sqrt(sum / f32.length);
 
           if (rms > VAD_THRESH) {
+            if (!hadSpeech) ws.send(JSON.stringify({ type: "vad_start" }));
             hadSpeech = true;
             silenceStart = 0;
           } else if (hadSpeech) {

@@ -124,7 +124,7 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 优先用 cron 生成的「此刻」；没有就回落到日记/网易云观察。
+  // 优先用 cron 生成的「此刻」；没有就回落到日记。
   const nowText = (latest?.now ?? "").trim();
   let mood: string;
   let thought: string;

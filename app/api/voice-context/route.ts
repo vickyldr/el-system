@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // 记忆上下文：优先用打字时刚算好的缓存（el:memctx），没有就现拉一遍并写回缓存。
+  // 记忆上下文：优先用打字时刚算好的缓存（el:memctx3），没有就现拉一遍并写回缓存。
   let profile = "";
   let aboutEl = "";
   let longterm = "";

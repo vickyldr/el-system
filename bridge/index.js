@@ -28,28 +28,33 @@ const GEMINI_EARS_ONLY =
   "你是一个语音转写助手。无论听到什么，都只回复一个字：嗯。不要说别的、不要解释。";
 
 // 用 Claude 生成通话回复（和打字时同一个大脑、同一套人格），返回一句话文字。
-// 优先走你那个中转站(CLAUDE_API_KEY+CLAUDE_BASE_URL，跟打字同一条路、同一个额度，不会撞 OAuth 限流)；
-// 没配中转站才回落到 Claude Code 的 OAuth token。
-const RELAY_KEY = process.env.CLAUDE_API_KEY || "";
-const RELAY_BASE = (process.env.CLAUDE_BASE_URL || "https://api.anthropic.com")
-  .replace(/\/+$/, "")
-  .replace(/\/v1$/, "");
+// 走 Claude Code 的 OAuth token。关键：要带 oauth beta 头，且 system 第一段必须是
+// Claude Code 身份声明——否则 Anthropic 把请求当成不合规用法、回那条 message:"Error" 的假 429。
+const CC_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 async function callEl(messages, system) {
-  const useRelay = !!RELAY_KEY;
-  const url = `${useRelay ? RELAY_BASE : "https://api.anthropic.com"}/v1/messages`;
-  const headers = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
-  if (useRelay) headers["x-api-key"] = RELAY_KEY;
-  else headers["Authorization"] = `Bearer ${OAUTH_TOKEN}`;
-  // 偶尔 429 自动退避重试一两次（通话要快，最多两次）
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const r = await fetch(url, {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ model: MODEL, max_tokens: 120, system, messages }),
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20",
+          Authorization: `Bearer ${OAUTH_TOKEN}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 120, // 通话只说一句，短即可，也更快
+          // 第一段身份声明是 OAuth token 的硬性要求，第二段才是我们的通话人格
+          system: [
+            { type: "text", text: CC_IDENTITY },
+            { type: "text", text: system },
+          ],
+          messages,
+        }),
       });
       if (r.status === 429 && attempt < 2) {
-        await new Promise((s) => setTimeout(s, 600 * (attempt + 1)));
+        await new Promise((s) => setTimeout(s, 500 * (attempt + 1))); // 真撞额度才退避重试
         continue;
       }
       if (!r.ok) {

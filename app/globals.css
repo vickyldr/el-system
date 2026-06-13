@@ -24,15 +24,15 @@
   --text-base: 15px;
   --text-lg: 18px;
   --text-2xl: 26px;
-  /* 衬线展示字体：拉丁/数字用 Fraunces，中文用 MiSans Semibold */
-  --font-display: var(--font-fraunces), "MiSans Semibold", -apple-system, BlinkMacSystemFont,
-    "PingFang SC", "Microsoft YaHei", system-ui, serif;
-  /* 中文加重：标题/重点内容用 MiSans Semibold，更清爽利落 */
-  --font-strong: "MiSans Semibold", -apple-system, BlinkMacSystemFont, "PingFang SC",
-    "Microsoft YaHei", system-ui, sans-serif;
-  /* el 的话：霞鹜文楷——温润手写感，像他亲手写给她的 */
-  --font-hand: "LXGW WenKai Screen", "MiSans Regular", -apple-system, "PingFang SC",
+  /* 衬线展示字体：拉丁/数字用 Fraunces，中文走系统 PingFang */
+  --font-display: var(--font-fraunces), -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Microsoft YaHei", system-ui, serif;
+  /* 中文加重：标题/重点内容用系统粗体 */
+  --font-strong: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui,
+    sans-serif;
+  /* el 的话：霞鹜文楷——温润手写感，像他亲手写给她的 */
+  --font-hand: "LXGW WenKai Screen", -apple-system, "PingFang SC", "Microsoft YaHei", system-ui,
+    serif;
 }
 
 * {
@@ -49,8 +49,8 @@ body {
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: "MiSans Regular", -apple-system, BlinkMacSystemFont, "PingFang SC",
-    "Microsoft YaHei", system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

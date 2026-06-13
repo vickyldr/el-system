@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recentSummaries, todayInBeijing } from "@/lib/notion";
 import { resolveNeteaseSong } from "@/lib/netease";
-import { getDailySong } from "@/lib/store";
+import { getDailySong, getCache, setCache } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
@@ -124,6 +124,16 @@ async function getWeather(): Promise<
 }
 
 export async function GET() {
+  // 45 秒缓存：此刻每小时才变、天气/网易云变化慢，省掉每次刷新都现读 Notion+天气+网易云。
+  const cached = await getCache("el:statuscache").catch(() => null);
+  if (cached) {
+    try {
+      return NextResponse.json(JSON.parse(cached));
+    } catch {
+      /* 缓存坏了就重算 */
+    }
+  }
+
   let latest;
   try {
     const rows = await recentSummaries(1);
@@ -175,7 +185,7 @@ export async function GET() {
       : Promise.resolve(null),
   ]);
 
-  return NextResponse.json({
+  const result = {
     mood,
     thought,
     outfit: outfit || null,
@@ -186,5 +196,7 @@ export async function GET() {
     her_state: latest?.herState ?? "",
     weather,
     date: latest?.date ?? null,
-  });
+  };
+  await setCache("el:statuscache", JSON.stringify(result), 45).catch(() => {});
+  return NextResponse.json(result);
 }

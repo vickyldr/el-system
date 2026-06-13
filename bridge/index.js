@@ -193,7 +193,10 @@ if (GEMINI_API_KEY) {
           inputAudioTranscription: {}, // 把"你说的话"也转成文字，显示在对话框
           outputAudioTranscription: {},
           realtimeInputConfig: {
-            automaticActivityDetection: { disabled: false }, // 自动 VAD 判断回合
+            automaticActivityDetection: {
+              disabled: false,
+              silenceDurationMs: 500, // 你停 0.5 秒就判定说完，回得更快（默认更久）
+            },
           },
         },
         callbacks: {

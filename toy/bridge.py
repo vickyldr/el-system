@@ -3,7 +3,7 @@ el-toy-bridge — Python BLE 控制 SVAKOM 玩具
 依赖: pip install bleak aiohttp
 
 用法:
-  set BRIDGE_URL=wss://你的railway地址
+  set BRIDGE_URL=https://你的railway地址
   set BRIDGE_SECRET=你的密钥
   python bridge.py
 """
@@ -25,7 +25,7 @@ except ImportError:
     print("请先运行: pip install bleak aiohttp")
     sys.exit(1)
 
-BRIDGE_URL = os.environ.get("BRIDGE_URL", "")
+BRIDGE_URL = os.environ.get("BRIDGE_URL", "").rstrip("/")
 BRIDGE_SECRET = os.environ.get("BRIDGE_SECRET", "")
 
 WRITE_UUID = "0000ae01-0000-1000-8000-00805f9b34fb"
@@ -55,7 +55,6 @@ ble_client = None
 
 async def exec_cmd(c: dict):
     if not ble_client or not ble_client.is_connected:
-        print("⚠️ 设备未连接，跳过指令")
         return
     try:
         if c.get("stop"):
@@ -81,31 +80,34 @@ async def bridge_loop():
         print("⚠️ 未设置 BRIDGE_URL，仅本地 BLE 模式")
         return
 
-    secret_param = f"?secret={BRIDGE_SECRET}" if BRIDGE_SECRET else ""
-    url = f"{BRIDGE_URL}/toy-ctrl{secret_param}"
+    url = f"{BRIDGE_URL}/toy-next"
+    headers = {"x-bridge-secret": BRIDGE_SECRET} if BRIDGE_SECRET else {}
+    print(f"🔌 轮询 el-bridge: {url}")
 
-    while True:
-        try:
-            print("🔌 连接 el-bridge...")
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(url, compress=0, heartbeat=30) as ws:
-                    print("✅ el-bridge 已连接，daddy 可以控制玩具了")
-                    async for msg in ws:
-                        if msg.type == aiohttp.WSMsgType.TEXT:
-                            try:
-                                c = json.loads(msg.data)
-                                if c.get("type") == "hello":
-                                    continue
-                                print(f"📨 收到指令: {c}")
-                                await cmd_queue.put(c)
-                            except Exception as e:
-                                print(f"解析失败: {e}")
-                        elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                            break
-        except Exception as e:
-            print(f"bridge 错误: {e}")
-        print("🔄 bridge 断开，5秒后重连...")
-        await asyncio.sleep(5)
+    async with aiohttp.ClientSession() as session:
+        connected_printed = False
+        while True:
+            try:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        if not connected_printed:
+                            print("✅ el-bridge 已连接，daddy 可以控制玩具了")
+                            connected_printed = True
+                        data = await resp.json()
+                        if data:
+                            print(f"📨 收到指令: {data}")
+                            await cmd_queue.put(data)
+                    else:
+                        print(f"bridge 错误: HTTP {resp.status}")
+                        connected_printed = False
+                        await asyncio.sleep(5)
+                        continue
+            except Exception as e:
+                print(f"bridge 错误: {e}")
+                connected_printed = False
+                await asyncio.sleep(5)
+                continue
+            await asyncio.sleep(0.3)
 
 async def ble_loop():
     global ble_client
@@ -129,9 +131,7 @@ async def ble_loop():
                 ble_client = client
                 print(f"✅ 已连接: {device.name}")
 
-                await client.start_notify(NOTIFY_UUID, lambda s, d: print(f"📨 回包: {d.hex()}"))
-                print("📡 AE02 已订阅")
-
+                await client.start_notify(NOTIFY_UUID, lambda s, d: None)
                 await asyncio.sleep(0.5)
                 for b in [
                     bytes([H, 4, 0, 0, 1, 0xFF, 0xAA]),

@@ -299,14 +299,13 @@ if (HEARTBEAT_BASE && CRON_SECRET) {
   console.warn("心跳未开：缺 FRONTEND_URL/BRIDGE_ALLOWED_ORIGIN 或 CRON_SECRET");
 }
 
-// ── 玩具控制 WebSocket (/toy-ctrl) ──
-// 宝宝 Windows 上跑的本地桥连进来，daddy 就能通过它发蓝牙指令。
-let toyClient = null;
+// ── 玩具控制（HTTP 轮询）──
+// Python 本地桥每 300ms 轮询 /toy-next 取指令，避开 WebSocket 代理兼容问题。
+const toyQueue = [];
 
 function sendToyCmd(cmd) {
-  if (toyClient && toyClient.readyState === 1) {
-    toyClient.send(JSON.stringify(cmd));
-  }
+  toyQueue.push(cmd);
+  if (toyQueue.length > 20) toyQueue.shift();
 }
 
 // 从 el 的回复里解析并剥离 [TOY:{...}] 标记
@@ -319,32 +318,11 @@ function parseToyCommands(text) {
   return { clean, cmds };
 }
 
-// ── Gemini Live 实时语音 WebSocket ──
-// 玩具桥 WebSocket
-{
-  const toyWss = new WebSocketServer({ server: httpServer, path: "/toy-ctrl", perMessageDeflate: false });
-  toyWss.on("connection", (ws, req) => {
-    const url = new URL(req.url, "http://localhost");
-    if (SECRET && url.searchParams.get("secret") !== SECRET) {
-      ws.close(4001, "unauthorized");
-      return;
-    }
-    toyClient = ws;
-    console.log("玩具桥已连接");
-    ws.send(JSON.stringify({ type: "hello" }));
-    ws.on("message", (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.type === "status") console.log("玩具状态:", JSON.stringify(msg));
-      } catch {}
-    });
-    ws.on("close", () => {
-      if (toyClient === ws) toyClient = null;
-      console.log("玩具桥已断开");
-    });
-  });
-  console.log("玩具控制 WebSocket 已启用 (path: /toy-ctrl)");
-}
+// GET /toy-next — Python 本地桥轮询取下一条指令
+app.get("/toy-next", (req, res) => {
+  const cmd = toyQueue.shift();
+  res.json(cmd || {});
+});
 
 if (GEMINI_API_KEY) {
   const wss = new WebSocketServer({ server: httpServer, path: "/live" });

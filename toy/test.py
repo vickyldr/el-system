@@ -7,8 +7,8 @@
 import asyncio
 from bleak import BleakScanner, BleakClient
 
-WRITE_UUID = "0000ae01-0000-1000-8000-00805f9b34fb"
-NOTIFY_UUID = "0000ae02-0000-1000-8000-00805f9b34fb"
+WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
+NOTIFY_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb"
 H = 0x55
 
 # 每个测试: (编号说明, 字节)

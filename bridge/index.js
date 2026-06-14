@@ -322,7 +322,7 @@ function parseToyCommands(text) {
 // ── Gemini Live 实时语音 WebSocket ──
 // 玩具桥 WebSocket
 {
-  const toyWss = new WebSocketServer({ server: httpServer, path: "/toy-ctrl" });
+  const toyWss = new WebSocketServer({ server: httpServer, path: "/toy-ctrl", perMessageDeflate: false });
   toyWss.on("connection", (ws, req) => {
     const url = new URL(req.url, "http://localhost");
     if (SECRET && url.searchParams.get("secret") !== SECRET) {

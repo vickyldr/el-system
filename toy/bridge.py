@@ -140,12 +140,20 @@ async def ble_loop():
 
                 print(f"🎉 {device.name} 就绪，daddy 可以控制了")
 
+                keepalive = 0
                 while client.is_connected:
                     try:
                         c = await asyncio.wait_for(cmd_queue.get(), timeout=1.0)
                         await exec_cmd(c)
+                        keepalive = 0
                     except asyncio.TimeoutError:
-                        pass
+                        keepalive += 1
+                        if keepalive >= 10:  # 每10秒读一次特征值保持连接
+                            try:
+                                await client.read_gatt_char(WRITE_UUID)
+                            except Exception:
+                                pass
+                            keepalive = 0
 
         except Exception as e:
             print(f"连接断开: {e}")

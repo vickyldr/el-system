@@ -51,6 +51,26 @@ async function weapiPost(
   const ip = ipOverride || REAL_IP;
   const enc = weapi({ ...data, csrf_token: "" });
   const form = `params=${encodeURIComponent(enc.params)}&encSecKey=${encodeURIComponent(enc.encSecKey)}`;
+
+  // 配了中国中转(NETEASE_RELAY)就走它——让网易云看到的是真·中国 IP，绕过 -462 风控。
+  const relay = process.env.NETEASE_RELAY;
+  if (relay) {
+    try {
+      const rr = await fetch(relay.replace(/\/$/, ""), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Relay-Secret": process.env.NETEASE_RELAY_SECRET || "",
+        },
+        body: JSON.stringify({ path, form, cookie: cookie || "os=pc" }),
+      });
+      const d = await rr.json().catch(() => ({}));
+      return { json: d.json || {}, setCookie: d.setCookie || [] };
+    } catch {
+      /* 中转挂了就退回直连 */
+    }
+  }
+
   const r = await fetch(`https://music.163.com/weapi/${path}`, {
     method: "POST",
     headers: {

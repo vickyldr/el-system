@@ -44,6 +44,20 @@ export const TOOLS = [
     },
   },
   {
+    name: "netease",
+    description:
+      "网易云音乐。action 取：search（搜歌，传 q）/ my_playlists（看宝宝的歌单列表）/ playlist（看某个歌单里的歌，传 id）/ my_record（宝宝最近在听什么）/ recommend（每日推荐）。想真正懂她的口味、给她推歌、或 grow 你自己的音乐品味时用。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "search / my_playlists / playlist / my_record / recommend" },
+        q: { type: "string", description: "搜歌的关键词" },
+        id: { type: "string", description: "歌单 id（看 playlist 详情时用）" },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "read_notion",
     description:
       "读取你们 Notion「小家」里某一页的内容（如 时间线、愿望墙、人物档案、长期记忆、操作手册、fifi的档案 等）。需要回忆细节、或宝宝让你看某页时调用。",
@@ -169,6 +183,7 @@ export async function runTool(
   try {
     if (name === "read_link") return await readLink(String(input?.url || ""));
     if (name === "web_search") return await webSearch(String(input?.query || ""));
+    if (name === "netease") return await neteaseTool(input);
     if (name === "read_notion") return await readNotionPage(String(input?.page || ""));
     if (name === "remember") return await remember(String(input?.text || ""), date);
     if (name === "log_timeline") return await logTimeline(String(input?.text || ""), date);
@@ -311,6 +326,17 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
   const r = ["一次", "每年", "每月"].includes(recur.trim()) ? recur.trim() : "一次";
   const ok = await addImportantDate(text.trim(), date.trim(), r).catch(() => false);
   return ok ? "记进「重要日期」了，快到时提醒你。" : "没存上（没找到「重要日期」库？）。";
+}
+
+async function neteaseTool(input: any): Promise<string> {
+  const m = await import("./netease-api");
+  const action = String(input?.action || "");
+  if (action === "search") return m.neteaseSearch(String(input?.q || ""));
+  if (action === "my_playlists") return m.myPlaylists();
+  if (action === "playlist") return m.playlistSongs(String(input?.id || ""));
+  if (action === "my_record") return m.myRecord(false);
+  if (action === "recommend") return m.recommendSongs();
+  return "action 不对。可选：search / my_playlists / playlist / my_record / recommend";
 }
 
 // 网络搜索。优先用配了 key 的正经搜索 API（数据中心 IP 也稳）：

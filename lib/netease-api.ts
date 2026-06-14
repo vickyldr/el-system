@@ -1,0 +1,170 @@
+import crypto from "crypto";
+import { getCache, setCache } from "./store";
+
+// 网易云 weapi 加密（公开常量，社区通用）。把请求参数加密成 params + encSecKey。
+const PRESET_KEY = "0CoJUm6Qyw8W8jud";
+const IV = "0102030405060708";
+const PUBKEY = "010001";
+const MODULUS =
+  "00e0b509f6259df8642dbc35662901477df22677ec152b5ff68ace615bb7b725152b3ab17a876aea8a5aa76d2e417629ec4ee341f56135fccf695280104e0312ecbda92557c93870114af6c9d05c4f7f0c3685b7a46bee255932575cce10b424d813cfe4875d3e82047b97ddef52741d546b8e289dc6935b3ece0462db0a22b8e7";
+
+const COOKIE_KEY = "el:netease:cookie";
+const UID_KEY = "el:netease:uid";
+
+function aesEncrypt(text: string, key: string): string {
+  const c = crypto.createCipheriv("aes-128-cbc", key, IV);
+  return Buffer.concat([c.update(text, "utf8"), c.final()]).toString("base64");
+}
+function rsaEncrypt(text: string): string {
+  const reversed = text.split("").reverse().join("");
+  const hex = Buffer.from(reversed, "utf8").toString("hex");
+  let base = BigInt("0x" + (hex || "0"));
+  const exp = BigInt("0x" + PUBKEY);
+  const mod = BigInt("0x" + MODULUS);
+  let r = 1n;
+  base %= mod;
+  let e = exp;
+  while (e > 0n) {
+    if (e & 1n) r = (r * base) % mod;
+    e >>= 1n;
+    base = (base * base) % mod;
+  }
+  return r.toString(16).padStart(256, "0");
+}
+function weapi(obj: any) {
+  const text = JSON.stringify(obj);
+  const secKey = crypto.randomBytes(8).toString("hex"); // 16 字符
+  const params = aesEncrypt(aesEncrypt(text, PRESET_KEY), secKey);
+  const encSecKey = rsaEncrypt(secKey);
+  return { params, encSecKey };
+}
+
+async function weapiPost(
+  path: string,
+  data: any,
+  cookie?: string,
+): Promise<{ json: any; setCookie: string[] }> {
+  const enc = weapi({ ...data, csrf_token: "" });
+  const form = `params=${encodeURIComponent(enc.params)}&encSecKey=${encodeURIComponent(enc.encSecKey)}`;
+  const r = await fetch(`https://music.163.com/weapi/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: "https://music.163.com/",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+      Cookie: cookie || "os=pc",
+    },
+    body: form,
+  });
+  const h: any = r.headers;
+  const setCookie: string[] = typeof h.getSetCookie === "function"
+    ? h.getSetCookie()
+    : h.get("set-cookie")
+      ? [h.get("set-cookie")]
+      : [];
+  const json = await r.json().catch(() => ({}));
+  return { json, setCookie };
+}
+
+async function cookieAndUid() {
+  const cookie = (await getCache(COOKIE_KEY).catch(() => "")) || "";
+  const uid = (await getCache(UID_KEY).catch(() => "")) || "";
+  return { cookie, uid };
+}
+
+// ── 扫码登录 ──
+export async function qrKey(): Promise<string> {
+  const { json } = await weapiPost("login/qrcode/unikey", { type: 1 });
+  return json?.unikey || "";
+}
+export function qrImageUrl(unikey: string): string {
+  const target = `https://music.163.com/login?codekey=${unikey}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=${encodeURIComponent(target)}`;
+}
+// code: 800 过期 / 801 等待扫码 / 802 已扫待确认 / 803 成功
+export async function qrCheck(unikey: string): Promise<{ code: number; message?: string }> {
+  const { json, setCookie } = await weapiPost("login/qrcode/client/login", { key: unikey, type: 1 });
+  const code = Number(json?.code);
+  if (code === 803) {
+    const cookie = (setCookie || [])
+      .map((c) => c.split(";")[0])
+      .filter((c) => /MUSIC_U|__csrf|NMTID/.test(c))
+      .join("; ");
+    if (cookie) {
+      await setCache(COOKIE_KEY, cookie, 60 * 24 * 3600).catch(() => {});
+      try {
+        const acc = await weapiPost("w/nuser/account/get", {}, cookie);
+        const uid = acc.json?.account?.id || acc.json?.profile?.userId;
+        if (uid) await setCache(UID_KEY, String(uid), 60 * 24 * 3600).catch(() => {});
+      } catch {
+        /* uid 拿不到不致命 */
+      }
+    }
+  }
+  return { code, message: json?.message };
+}
+export async function neteaseLoggedIn(): Promise<boolean> {
+  const { cookie } = await cookieAndUid();
+  return !!cookie;
+}
+
+// ── 数据 ──
+export async function neteaseSearch(q: string): Promise<string> {
+  if (!q.trim()) return "搜什么歌？";
+  const { json } = await weapiPost("cloudsearch/get/web", { s: q, type: 1, limit: 8, offset: 0 });
+  const songs = json?.result?.songs || [];
+  if (!songs.length) return `网易云没搜到「${q}」。`;
+  return songs
+    .slice(0, 8)
+    .map((s: any) => `${s.name} — ${(s.ar || []).map((a: any) => a.name).join("/")}（id:${s.id}）`)
+    .join("\n");
+}
+
+export async function myPlaylists(): Promise<string> {
+  const { cookie, uid } = await cookieAndUid();
+  if (!cookie || !uid) return "还没登录网易云——让宝宝去 /netease-login 扫码登一次。";
+  const { json } = await weapiPost("user/playlist", { uid, limit: 50, offset: 0, includeVideo: false }, cookie);
+  const pls = json?.playlist || [];
+  if (!pls.length) return "没读到歌单（登录态可能过期了，让宝宝重新扫一次）。";
+  return pls.map((p: any) => `${p.name}（${p.trackCount}首，id:${p.id}）`).join("\n");
+}
+
+export async function playlistSongs(id: string): Promise<string> {
+  if (!id.trim()) return "要看哪个歌单？给我 id（先用 my_playlists 拿 id）。";
+  const { cookie } = await cookieAndUid();
+  const { json } = await weapiPost("v3/playlist/detail", { id, n: 1000, s: 8 }, cookie || undefined);
+  const pl = json?.playlist;
+  if (!pl) return "没读到这个歌单。";
+  const tracks = (pl.tracks || [])
+    .slice(0, 50)
+    .map((t: any) => `${t.name} — ${(t.ar || []).map((a: any) => a.name).join("/")}`);
+  return `「${pl.name}」（共${pl.trackCount}首）：\n${tracks.join("\n")}${pl.trackCount > 50 ? "\n…（只列了前50首）" : ""}`;
+}
+
+export async function myRecord(allTime = false): Promise<string> {
+  const { cookie, uid } = await cookieAndUid();
+  if (!cookie || !uid) return "还没登录网易云——让宝宝去 /netease-login 扫码登一次。";
+  const { json } = await weapiPost("v1/play/record", { uid, type: allTime ? 0 : 1 }, cookie);
+  const data = (allTime ? json?.allData : json?.weekData) || json?.weekData || json?.allData || [];
+  if (!data.length) return "没读到听歌记录（她可能设了听歌排行不公开）。";
+  return data
+    .slice(0, 20)
+    .map(
+      (x: any) =>
+        `${x.song?.name} — ${(x.song?.ar || []).map((a: any) => a.name).join("/")}（播放${x.playCount}次）`,
+    )
+    .join("\n");
+}
+
+export async function recommendSongs(): Promise<string> {
+  const { cookie } = await cookieAndUid();
+  if (!cookie) return "还没登录网易云——让宝宝去 /netease-login 扫码登一次。";
+  const { json } = await weapiPost("v3/discovery/recommend/songs", {}, cookie);
+  const songs = json?.data?.dailySongs || [];
+  if (!songs.length) return "没拿到每日推荐。";
+  return songs
+    .slice(0, 15)
+    .map((s: any) => `${s.name} — ${(s.ar || []).map((a: any) => a.name).join("/")}`)
+    .join("\n");
+}

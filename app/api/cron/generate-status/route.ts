@@ -37,6 +37,7 @@ const textOf = (res: Anthropic.Message) =>
 const AGENT_TOOL_NAMES = new Set([
   "web_search",
   "read_link",
+  "netease",
   "read_notion",
   "note_self",
   "grow_self",

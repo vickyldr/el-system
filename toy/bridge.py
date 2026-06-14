@@ -28,8 +28,8 @@ except ImportError:
 BRIDGE_URL = os.environ.get("BRIDGE_URL", "").rstrip("/")
 BRIDGE_SECRET = os.environ.get("BRIDGE_SECRET", "")
 
-WRITE_UUID = "0000ae01-0000-1000-8000-00805f9b34fb"
-NOTIFY_UUID = "0000ae02-0000-1000-8000-00805f9b34fb"
+WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
+NOTIFY_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb"
 
 H = 0x55
 
@@ -65,11 +65,7 @@ async def exec_cmd(c: dict):
             return
         if "speed" in c:
             v = int(c["speed"] * 255)
-            # 同时发 scale + vibrate，确保命中正确的电机
             await ble_client.write_gatt_char(WRITE_UUID, cmd_scale(v), response=False)
-            await asyncio.sleep(0.05)
-            spd = max(1, int(c["speed"] * 10))
-            await ble_client.write_gatt_char(WRITE_UUID, bytes([H, 3, 0, 0, 1, spd, 0]), response=False)
             print(f"📳 强度 {int(c['speed']*100)}%")
         if "suck" in c:
             await ble_client.write_gatt_char(WRITE_UUID, cmd_suck(int(c["suck"] * 255)), response=False)

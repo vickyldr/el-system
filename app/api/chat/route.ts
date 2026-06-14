@@ -388,29 +388,38 @@ export async function POST(req: Request) {
       break;
     }
 
-    // 还是空的（Max 限流/抽风/光调工具）就改用中转站兜底要一次——稳，虽慢但有答案。
-    // 这一下摘掉大图、不带工具，轻量又稳，专治带图带工具那种空返回。
+    // 还是空的（Max 限流/抽风/带图带工具那轮吐空）就多档清爽重试：
+    // ①带图试 Max ②带图试中转站（保住"看图"）③纯文字试 Max（最后保底，至少回话）。
     if (!reply) {
-      try {
-        const res = await getClaude().messages.create({
-          model,
-          max_tokens: maxTok,
-          system,
-          messages: stripImages(loop),
-        });
-        via = "中转站(兜底)";
-        reply = res.content
-          .filter((b): b is Anthropic.TextBlock => b.type === "text")
-          .map((b) => b.text)
-          .join("")
-          .trim();
-      } catch (e) {
-        console.error("聊天兜底(中转站)也失败:", e instanceof Error ? e.message : e);
+      const withImg = toContent(message, image);
+      const attempts: { client: Anthropic; msgs: Anthropic.MessageParam[] }[] = [
+        { client: getClaudeFast(), msgs: [{ role: "user", content: withImg }] },
+        { client: getClaude(), msgs: [{ role: "user", content: withImg }] },
+        { client: getClaudeFast(), msgs: [{ role: "user", content: message || "在吗" }] },
+      ];
+      for (const a of attempts) {
+        try {
+          const res = await a.client.messages.create({
+            model,
+            max_tokens: maxTok,
+            system,
+            messages: a.msgs,
+          });
+          via = (res as any)._via || via;
+          reply = res.content
+            .filter((b): b is Anthropic.TextBlock => b.type === "text")
+            .map((b) => b.text)
+            .join("")
+            .trim();
+          if (reply) break;
+        } catch (e) {
+          console.error("聊天兜底失败:", e instanceof Error ? e.message : e);
+        }
       }
     }
     } // end SDK block
     if (!reply) {
-      console.error("聊天最终空回复：Max 和中转站都没给出文字");
+      console.error("聊天最终空回复：所有兜底都没给出文字");
       reply = "在呢，刚卡了一下，你再说一遍？";
     }
 

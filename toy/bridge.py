@@ -110,16 +110,35 @@ async def bridge_loop():
                 continue
             await asyncio.sleep(0.3)
 
+# 最近一次全量扫描发现的设备：addr -> BLEDevice
+found_devices = {}
+
+async def scanner_loop():
+    """统一用 discover() 全量扫描（已验证 WinRT 下能扫到），结果共享给各设备循环"""
+    while True:
+        # 只在有设备没连上时才扫，省得占用蓝牙
+        need_scan = any(a not in clients for a in (ROD_ADDR, SUCK_ADDR))
+        if need_scan:
+            async with scan_lock:
+                try:
+                    devices = await BleakScanner.discover(timeout=6.0)
+                    for d in devices:
+                        found_devices[d.address] = d
+                except Exception as e:
+                    print(f"扫描出错: {e}")
+        await asyncio.sleep(2)
+
 async def device_loop(addr, label):
     """维护单个设备的连接，断了自动重连"""
     while True:
+        if addr in clients:
+            await asyncio.sleep(2)
+            continue
+        dev = found_devices.get(addr)
+        if not dev:
+            await asyncio.sleep(2)
+            continue
         try:
-            async with scan_lock:
-                dev = await BleakScanner.find_device_by_address(addr, timeout=10.0)
-            if not dev:
-                print(f"⚠️ 没扫到 {label} [{addr}]，3秒后重试...")
-                await asyncio.sleep(3)
-                continue
             print(f"🎮 连接 {label} [{addr}]...")
             async with BleakClient(dev) as client:
                 clients[addr] = client
@@ -134,6 +153,7 @@ async def device_loop(addr, label):
             print(f"{label} 连接断开: {e}")
         finally:
             clients.pop(addr, None)
+            found_devices.pop(addr, None)  # 强制下轮重新扫描
         print(f"🔄 {label} 重连中...")
         await asyncio.sleep(3)
 
@@ -143,8 +163,10 @@ async def command_loop():
         await exec_cmd(c)
 
 async def main():
+    print(f"目标设备：\n  震动棒 {ROD_ADDR}\n  吮吸款 {SUCK_ADDR}")
     await asyncio.gather(
         bridge_loop(),
+        scanner_loop(),
         device_loop(ROD_ADDR, "震动棒"),
         device_loop(SUCK_ADDR, "吮吸款"),
         command_loop(),

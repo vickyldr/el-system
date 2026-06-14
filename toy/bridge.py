@@ -45,6 +45,18 @@ def cmd_scale(v):
 def cmd_scale_stop():
     return bytes([H, 4, 0, 0, 0, 0, 0xAA])
 
+def cmd_vibrate(mode, level):
+    # 振动花样：[0x55, 3, 0, 0, 模式1-8, 强度1-5, 0]
+    mode = max(1, min(8, int(mode)))
+    level = max(1, min(5, int(level)))
+    return bytes([H, 3, 0, 0, mode, level, 0])
+
+def cmd_suck_mode(mode, level):
+    # 吮吸花样：[0x55, 9, 0, 0, 模式1-8, 强度1-5, 0]
+    mode = max(1, min(8, int(mode)))
+    level = max(1, min(5, int(level)))
+    return bytes([H, 9, 0, 0, mode, level, 0])
+
 cmd_queue = asyncio.Queue()
 ble_client = None
 
@@ -62,7 +74,22 @@ async def exec_cmd(c: dict):
         await write(cmd_scale_stop())
         print("⏹ 停止")
         return
-    # speed / suck 都映射到强度（同一个设备，两个都开时会联动）
+
+    # 花样模式：pattern=1~8 选节奏，level=0~1 强度（默认中等）
+    if "pattern" in c:
+        mode = int(c["pattern"])
+        level = max(1, round(c.get("level", 0.6) * 5))
+        ok = await write(cmd_vibrate(mode, level))
+        print(f"🌀 震动花样 {mode} 档 强度{level}/5 {'✓' if ok else '(未连接)'}")
+        return
+    if "suck_pattern" in c:
+        mode = int(c["suck_pattern"])
+        level = max(1, round(c.get("level", 0.6) * 5))
+        ok = await write(cmd_suck_mode(mode, level))
+        print(f"🌊 吮吸花样 {mode} 档 强度{level}/5 {'✓' if ok else '(未连接)'}")
+        return
+
+    # 持续强度：speed / suck / intensity 都映射到 scale（稳定强弱）
     val = None
     label = ""
     if "speed" in c:

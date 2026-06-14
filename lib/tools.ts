@@ -319,12 +319,41 @@ async function webSearch(query: string): Promise<string> {
   const q = query.trim();
   if (!q) return "搜什么？给我个关键词。";
   try {
-    if (process.env.TAVILY_API_KEY) return await tavilySearch(q);
+    // 配了哪个 key 就用哪个（多配时按这个优先级）。
     if (process.env.SERPER_API_KEY) return await serperSearch(q);
+    if (process.env.TAVILY_API_KEY) return await tavilySearch(q);
+    if (process.env.BRAVE_API_KEY) return await braveSearch(q);
+    if (process.env.JINA_API_KEY) return await jinaSearch(q);
     return await ddgSearch(q);
   } catch (e) {
     return `搜索失败：${e instanceof Error ? e.message : ""}`;
   }
+}
+
+async function braveSearch(q: string): Promise<string> {
+  const d = await fetchJsonT(
+    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=5`,
+    { headers: { "X-Subscription-Token": process.env.BRAVE_API_KEY!, Accept: "application/json" } },
+  );
+  const list = (d?.web?.results || [])
+    .slice(0, 5)
+    .map((x: any) => `${x.title}\n${x.url}\n${x.description || ""}`);
+  return list.length ? `搜「${q}」：\n\n${list.join("\n\n")}` : `没搜到「${q}」。`;
+}
+
+async function jinaSearch(q: string): Promise<string> {
+  const d = await fetchJsonT(`https://s.jina.ai/?q=${encodeURIComponent(q)}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+      Accept: "application/json",
+      "X-Respond-With": "no-content",
+    },
+  });
+  const arr = Array.isArray(d?.data) ? d.data : [];
+  const list = arr
+    .slice(0, 5)
+    .map((x: any) => `${x.title || ""}\n${x.url || ""}\n${String(x.description || x.content || "").slice(0, 200)}`);
+  return list.length ? `搜「${q}」：\n\n${list.join("\n\n")}` : `没搜到「${q}」。`;
 }
 
 async function fetchJsonT(url: string, init: any, ms = 12000): Promise<any> {

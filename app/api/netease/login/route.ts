@@ -11,7 +11,11 @@ export async function GET(req: Request) {
     const r = await qrCheck(key).catch(() => ({ code: 0 }));
     return NextResponse.json(r);
   }
-  const k = await qrKey().catch(() => "");
-  if (!k) return NextResponse.json({ error: "拿不到二维码，等下再试" }, { status: 502 });
-  return NextResponse.json({ key: k, qr: qrImageUrl(k) });
+  const k = await qrKey().catch((e) => ({ unikey: "", message: String(e?.message || e) }) as any);
+  if (!k.unikey)
+    return NextResponse.json(
+      { error: "拿不到二维码", detail: `code=${k.code ?? "?"} ${k.message ?? ""}` },
+      { status: 502 },
+    );
+  return NextResponse.json({ key: k.unikey, qr: qrImageUrl(k.unikey) });
 }

@@ -11,6 +11,9 @@ const MODULUS =
 const COOKIE_KEY = "el:netease:cookie";
 const UID_KEY = "el:netease:uid";
 
+// 网易云会拦截非中国 IP（机房 IP）的请求（"460 网络繁忙"）。伪装一个中国 IP 放行。可用 NETEASE_REALIP 改。
+const REAL_IP = process.env.NETEASE_REALIP || "116.25.146.177";
+
 function aesEncrypt(text: string, key: string): string {
   const c = crypto.createCipheriv("aes-128-cbc", key, IV);
   return Buffer.concat([c.update(text, "utf8"), c.final()]).toString("base64");
@@ -53,6 +56,8 @@ async function weapiPost(
       Referer: "https://music.163.com/",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+      "X-Real-IP": REAL_IP,
+      "X-Forwarded-For": REAL_IP,
       Cookie: cookie || "os=pc",
     },
     body: form,
@@ -74,9 +79,9 @@ async function cookieAndUid() {
 }
 
 // ── 扫码登录 ──
-export async function qrKey(): Promise<string> {
+export async function qrKey(): Promise<{ unikey: string; code?: number; message?: string }> {
   const { json } = await weapiPost("login/qrcode/unikey", { type: 1 });
-  return json?.unikey || "";
+  return { unikey: json?.unikey || "", code: json?.code, message: json?.message };
 }
 export function qrImageUrl(unikey: string): string {
   const target = `https://music.163.com/login?codekey=${unikey}`;

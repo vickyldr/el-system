@@ -13,7 +13,7 @@ export default function NeteaseLogin() {
       try {
         const r = await fetch("/api/netease/login").then((x) => x.json());
         if (!r.key) {
-          setStatus("生成二维码失败，刷新页面再试");
+          setStatus(`生成二维码失败：${r.detail || "刷新再试"}`);
           return;
         }
         keyRef.current = r.key;

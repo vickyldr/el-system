@@ -114,7 +114,7 @@ async def ble_loop():
 
     while True:
         print("🔍 扫描 SVAKOM 设备...")
-        devices = await BleakScanner.discover(timeout=5.0)
+        devices = await BleakScanner.discover(timeout=3.0)
         device = next(
             (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
             None

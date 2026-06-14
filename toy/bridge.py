@@ -49,6 +49,7 @@ def cmd_scale_stop():
 
 cmd_queue = asyncio.Queue()
 clients = {}  # addr -> BleakClient
+scan_lock = asyncio.Lock()  # WinRT 不允许并发扫描，串行化
 
 async def write_to(addr, buf):
     client = clients.get(addr)
@@ -113,7 +114,8 @@ async def device_loop(addr, label):
     """维护单个设备的连接，断了自动重连"""
     while True:
         try:
-            dev = await BleakScanner.find_device_by_address(addr, timeout=10.0)
+            async with scan_lock:
+                dev = await BleakScanner.find_device_by_address(addr, timeout=10.0)
             if not dev:
                 print(f"⚠️ 没扫到 {label} [{addr}]，3秒后重试...")
                 await asyncio.sleep(3)

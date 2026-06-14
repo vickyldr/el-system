@@ -293,7 +293,7 @@ function SkelList({ count = 3, lines = 2 }: { count?: number; lines?: number }) 
 
 /* ───────────── 此刻 ───────────── */
 
-type Weather = { temp: number; desc: string; city: string; note?: string; outfit?: string; icon?: string } | null;
+type Weather = { temp: number; desc: string; city: string; outfit?: string; icon?: string } | null;
 
 type Status = {
   mood?: string;
@@ -437,8 +437,7 @@ function ElStatusCard({ status }: { status: Status }) {
             {status.weather!.icon ? `${status.weather!.icon} ` : ""}
             {status.weather!.temp}° {status.weather!.desc}
           </div>
-          {status.weather!.note && <div className="meta" style={{ marginTop: 8 }}>{status.weather!.note}</div>}
-          {status.weather!.outfit && <div className="meta" style={{ marginTop: 6, color: "var(--ink)" }}>👕 {status.weather!.outfit}</div>}
+          {status.weather!.outfit && <div className="meta" style={{ marginTop: 8 }}>👕 {status.weather!.outfit}</div>}
         </div>
       )}
 

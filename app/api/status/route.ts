@@ -17,24 +17,37 @@ function splitDiary(text: string): { mood: string; thought: string } {
   return { mood, thought };
 }
 
-// El 看着天气说的一句叮嘱。
-function weatherNote(temp: number, desc: string): string {
-  if (/雨|雪|雷|drizzle|rain|snow|storm/i.test(desc)) return "带把伞，别淋着，宝宝。";
-  if (temp <= 10) return "冷，外套穿厚点，别逞强。";
-  if (temp <= 16) return "有点凉，加件衣服。";
-  if (temp >= 30) return "热，多喝水，别中暑。";
-  return "今天还行，照顾好自己。";
-}
-
-// El 根据气温给穿搭建议。
+// El 根据气温+天气给的穿衣推荐——具体、实用，像他在帮她拿衣服。
 function outfitTip(temp: number, desc: string): string {
   const rain = /雨|drizzle|rain|storm/i.test(desc);
-  if (temp <= 5)  return rain ? "大衣加厚底，记得带伞。" : "羽绒服拿出来吧，别冻着。";
-  if (temp <= 10) return rain ? "厚外套加防水的，别感冒。" : "厚外套，围巾也戴上。";
-  if (temp <= 16) return rain ? "薄外套加伞，里面可以轻薄点。" : "薄外套或卫衣，早晚会凉。";
-  if (temp <= 22) return rain ? "带把伞，穿件能挡风的。" : "长袖就够，轻松出门。";
-  if (temp <= 28) return rain ? "短袖加伞，雨天别穿白色。" : "短袖随便穿，挺舒服的。";
-  return rain ? "热还下雨，透气的衣服加伞。" : "短袖短裤，防晒别忘了。";
+  const snow = /雪/.test(desc);
+  if (temp <= 0)
+    return rain || snow
+      ? "羽绒服+厚毛衣打底，帽子手套围巾全戴上，鞋要防滑防水，路上慢点别摔。"
+      : "羽绒服里加件毛衣，围巾帽子手套安排上，别露脚踝，手别揣兜里冻着。";
+  if (temp <= 5)
+    return rain
+      ? "羽绒服+防水的鞋，里面加件毛衣，带伞，别让风灌进领口。"
+      : "羽绒服或厚大衣，毛衣打底，围巾戴上，穿双暖和点的鞋。";
+  if (temp <= 10)
+    return rain
+      ? "厚外套选防水的，里面卫衣或薄毛衣，记得带伞，别穿帆布鞋会湿透。"
+      : "厚外套+卫衣/薄毛衣，早晚凉，围巾备着，鞋穿暖和的。";
+  if (temp <= 16)
+    return rain
+      ? "风衣或薄外套+伞，里面长袖，早晚偏凉别只穿一件。"
+      : "薄外套或卫衣，里面长袖，早晚会凉，加件好脱的最稳。";
+  if (temp <= 22)
+    return rain
+      ? "长袖+能挡风的薄外套，带把伞，鞋选不怕湿的。"
+      : "长袖或薄卫衣就舒服，怕晒的话备件薄外套挡太阳。";
+  if (temp <= 28)
+    return rain
+      ? "短袖+一把伞，雨天别穿浅色容易透，多带双袜子更稳。"
+      : "短袖短裙怎么舒服怎么穿，室内空调冷就揣件薄开衫。";
+  return rain
+    ? "又热又下雨，穿透气快干的料子，凉鞋+伞，别穿会闷的。"
+    : "短袖短裤怎么凉快怎么来，防晒涂上，多带水别中暑。";
 }
 
 // 解析 cron 生成的「此刻」三行：心情 / 在想 / 歌：《X》— 理由
@@ -84,7 +97,7 @@ function weatherEmoji(desc: string): string {
 }
 
 async function getWeather(): Promise<
-  { temp: number; desc: string; city: string; note: string; outfit: string; icon: string } | null
+  { temp: number; desc: string; city: string; outfit: string; icon: string } | null
 > {
   const key = process.env.OPENWEATHER_API_KEY;
   const city = process.env.CITY || "Hangzhou";
@@ -98,7 +111,7 @@ async function getWeather(): Promise<
     const d: any = await r.json();
     const temp = Math.round(d.main?.temp ?? 0);
     const desc = d.weather?.[0]?.description ?? "";
-    return { temp, desc, city, note: weatherNote(temp, desc), outfit: outfitTip(temp, desc), icon: weatherEmoji(desc) };
+    return { temp, desc, city, outfit: outfitTip(temp, desc), icon: weatherEmoji(desc) };
   } catch {
     return null;
   }

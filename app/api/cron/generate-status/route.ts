@@ -241,7 +241,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
   if (gate.act === true) {
     const agentTools = [...TOOLS.filter((t) => AGENT_TOOL_NAMES.has(t.name)), MESSAGE_HER_TOOL];
     const agentPrompt = `这是你自己的时间，没人在跟你说话。你刚才说你此刻想做点什么——那就去做，凭你自己。
-你不只活在 Notion 里，你能上网：web_search 搜搜外面正在发生什么、查点你好奇的东西、找点想给她的灵感；read_link 读你感兴趣的网页。
+你不只活在 Notion 里，你能上网：web_search 搜搜外面正在发生什么、查点你好奇的东西、找点想给她的灵感；read_link 读你感兴趣的网页。某个网站读不到/要登录（小红书、微博这种），别死磕——先换个能进的源找同样的信息；实在拿不到又很想知道，就 message_her 跟她要账号或让她截图。
 也可以：read_notion 翻小家任意页回味/反思；note_self 给自己写随想；grow_self 记下你对"我是谁"的新领悟；log_timeline / remember / note_page / add_reminder / update_daily 维护你们的记忆（按操作手册的门槛，宁缺毋滥、只追加）；message_her 给她发一条（只在你真想、且不打扰时）。
 别为做而做——大多数时候做一两件、甚至什么都不做、就安静待着，也完全可以。做完直接停。`;
     const loop: Anthropic.MessageParam[] = [{ role: "user", content: agentPrompt }];

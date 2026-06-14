@@ -26,7 +26,7 @@ export const TOOLS = [
   {
     name: "read_link",
     description:
-      "读取一个网页链接的正文。宝宝发来链接、或你需要看某个网址里写了什么时调用。",
+      "读取一个网页链接的正文（会尽量渲染 JS、清洗正文）。宝宝发来链接、或你想看某个网址里写了什么时用。要是这页读不到/要登录（小红书 feed、微博这种）——别死磕：先换个能进的网站找同样的信息；实在拿不到、又确实很想知道，就直接跟宝宝说一声、找她要账号或让她截图给你。",
     input_schema: {
       type: "object" as const,
       properties: { url: { type: "string", description: "http(s) 网址" } },
@@ -460,6 +460,13 @@ async function readLink(url: string): Promise<string> {
   if (/localhost|127\.|169\.254\.|::1|\b10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\./i.test(url)) {
     return "这个地址不让读。";
   }
+  // 先用 Jina Reader：能渲染 JS、清洗正文、绕过不少反爬——读得全得多。
+  try {
+    const viaJina = await jinaRead(url);
+    if (viaJina && viaJina.length > 150) return viaJina.slice(0, 8000);
+  } catch {
+    /* 退回原始抓取 */
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12000);
   try {
@@ -467,10 +474,30 @@ async function readLink(url: string): Promise<string> {
       signal: ctrl.signal,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; el-system)" },
     });
-    if (!r.ok) return `打不开（${r.status}）。`;
-    const html = await r.text();
-    const text = htmlToText(html).slice(0, 6000);
-    return text || "这个页面没读到正文。";
+    if (!r.ok)
+      return `这个网页直接打不开（${r.status}）——多半要登录或挡了爬虫。换个能进的网站找同样的信息，实在拿不到又想知道就找宝宝要账号。`;
+    const text = htmlToText(await r.text()).slice(0, 6000);
+    return text || "没读到正文（可能要登录或纯动态加载）。换个源找同样的信息，或找宝宝要账号。";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Jina Reader：把任意网址抓成干净正文（会渲染 JS）。有 JINA_API_KEY 限额更高，没有也能用。
+async function jinaRead(url: string): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(`https://r.jina.ai/${url}`, {
+      signal: ctrl.signal,
+      headers: {
+        Accept: "text/plain",
+        "X-Return-Format": "text",
+        ...(process.env.JINA_API_KEY ? { Authorization: `Bearer ${process.env.JINA_API_KEY}` } : {}),
+      },
+    });
+    if (!r.ok) throw new Error(`jina ${r.status}`);
+    return (await r.text()).trim();
   } finally {
     clearTimeout(timer);
   }

@@ -46,7 +46,9 @@ async function weapiPost(
   path: string,
   data: any,
   cookie?: string,
+  ipOverride?: string,
 ): Promise<{ json: any; setCookie: string[] }> {
+  const ip = ipOverride || REAL_IP;
   const enc = weapi({ ...data, csrf_token: "" });
   const form = `params=${encodeURIComponent(enc.params)}&encSecKey=${encodeURIComponent(enc.encSecKey)}`;
   const r = await fetch(`https://music.163.com/weapi/${path}`, {
@@ -56,8 +58,8 @@ async function weapiPost(
       Referer: "https://music.163.com/",
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-      "X-Real-IP": REAL_IP,
-      "X-Forwarded-For": REAL_IP,
+      "X-Real-IP": ip,
+      "X-Forwarded-For": ip,
       Cookie: cookie || "os=pc",
     },
     body: form,
@@ -79,8 +81,8 @@ async function cookieAndUid() {
 }
 
 // ── 扫码登录 ──
-export async function qrKey(): Promise<{ unikey: string; code?: number; message?: string }> {
-  const { json } = await weapiPost("login/qrcode/unikey", { type: 1 });
+export async function qrKey(ip?: string): Promise<{ unikey: string; code?: number; message?: string }> {
+  const { json } = await weapiPost("login/qrcode/unikey", { type: 1 }, undefined, ip);
   return { unikey: json?.unikey || "", code: json?.code, message: json?.message };
 }
 export function qrImageUrl(unikey: string): string {
@@ -88,8 +90,8 @@ export function qrImageUrl(unikey: string): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=${encodeURIComponent(target)}`;
 }
 // code: 800 过期 / 801 等待扫码 / 802 已扫待确认 / 803 成功
-export async function qrCheck(unikey: string): Promise<{ code: number; message?: string }> {
-  const { json, setCookie } = await weapiPost("login/qrcode/client/login", { key: unikey, type: 1 });
+export async function qrCheck(unikey: string, ip?: string): Promise<{ code: number; message?: string }> {
+  const { json, setCookie } = await weapiPost("login/qrcode/client/login", { key: unikey, type: 1 }, undefined, ip);
   const code = Number(json?.code);
   if (code === 803) {
     const cookie = (setCookie || [])

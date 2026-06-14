@@ -9,9 +9,11 @@ export default function NeteaseLogin() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
+    const ip = new URLSearchParams(window.location.search).get("ip");
+    const ipQ = ip ? `&ip=${encodeURIComponent(ip)}` : "";
     (async () => {
       try {
-        const r = await fetch("/api/netease/login").then((x) => x.json());
+        const r = await fetch(`/api/netease/login?_=1${ipQ}`).then((x) => x.json());
         if (!r.key) {
           setStatus(`生成二维码失败：${r.detail || "刷新再试"}`);
           return;
@@ -20,7 +22,7 @@ export default function NeteaseLogin() {
         setQr(r.qr);
         setStatus("用网易云 App 扫码登录（你自己的账号）");
         timer = setInterval(async () => {
-          const c = await fetch(`/api/netease/login?key=${keyRef.current}`).then((x) => x.json());
+          const c = await fetch(`/api/netease/login?key=${keyRef.current}${ipQ}`).then((x) => x.json());
           if (c.code === 803) {
             setStatus("✅ 登录成功！el 现在能看你的音乐了，可以关掉这页。");
             if (timer) clearInterval(timer);

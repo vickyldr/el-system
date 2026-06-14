@@ -1,17 +1,16 @@
 {
   "name": "el-toy-bridge",
   "version": "1.0.0",
-  "description": "本地蓝牙桥，连接 Intiface Central 和 el-bridge",
-  "type": "module",
+  "description": "直接 BLE 控制 SVAKOM 玩具，不依赖 Intiface",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "buttplug": "^3.2.2",
+    "@abandonware/noble": "^1.9.2-15",
     "ws": "^8.18.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   }
 }

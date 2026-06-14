@@ -1014,9 +1014,25 @@ function NotifyButton() {
   if (state === "hidden") return <span />;
   if (state === "on")
     return (
-      <span className="icon-btn on" title="通知已开" aria-label="通知已开">
+      <button
+        className="icon-btn on"
+        title="通知已开（点一下发测试推送）"
+        aria-label="测试推送"
+        onClick={async () => {
+          try {
+            await subscribePush(false); // 先确保这台设备的订阅在服务端是最新的
+            const r = await fetch("/api/push/test", { method: "POST" });
+            const d = await r.json();
+            if (d.sent > 0) alert("测试推送发出去了，看一眼通知栏～");
+            else if (d.reason === "no-vapid") alert("服务端没配推送密钥（VAPID）");
+            else alert("没推出去：这台设备好像没订阅成功，关掉通知重开一次试试");
+          } catch {
+            alert("测试失败，等下再试");
+          }
+        }}
+      >
         <Icon name="bell" size={19} />
-      </span>
+      </button>
     );
   return (
     <button className="icon-btn" onClick={enable} aria-label="开启通知">

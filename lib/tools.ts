@@ -312,10 +312,66 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
   return ok ? "记进「重要日期」了，快到时提醒你。" : "没存上（没找到「重要日期」库？）。";
 }
 
-// 网络搜索：走 DuckDuckGo 的 html 端点，免 key。拿回前几条标题+真实链接。
+// 网络搜索。优先用配了 key 的正经搜索 API（数据中心 IP 也稳）：
+// TAVILY_API_KEY（专为 AI、免费额度、免信用卡，推荐）或 SERPER_API_KEY（Google 结果）。
+// 都没配才退回免 key 的 DuckDuckGo（服务器 IP 常被 403，能用就用）。
 async function webSearch(query: string): Promise<string> {
   const q = query.trim();
   if (!q) return "搜什么？给我个关键词。";
+  try {
+    if (process.env.TAVILY_API_KEY) return await tavilySearch(q);
+    if (process.env.SERPER_API_KEY) return await serperSearch(q);
+    return await ddgSearch(q);
+  } catch (e) {
+    return `搜索失败：${e instanceof Error ? e.message : ""}`;
+  }
+}
+
+async function fetchJsonT(url: string, init: any, ms = 12000): Promise<any> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...init, signal: ctrl.signal });
+    if (!r.ok) throw new Error(`${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function tavilySearch(q: string): Promise<string> {
+  const d = await fetchJsonT("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: process.env.TAVILY_API_KEY,
+      query: q,
+      max_results: 5,
+      include_answer: true,
+      search_depth: "basic",
+    }),
+  });
+  const answer = d?.answer ? `一句话：${d.answer}\n\n` : "";
+  const list = (d?.results || [])
+    .slice(0, 5)
+    .map((x: any) => `${x.title}\n${x.url}\n${String(x.content || "").slice(0, 200)}`);
+  return list.length ? `搜「${q}」：\n\n${answer}${list.join("\n\n")}` : `没搜到「${q}」。`;
+}
+
+async function serperSearch(q: string): Promise<string> {
+  const d = await fetchJsonT("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "X-API-KEY": process.env.SERPER_API_KEY!, "Content-Type": "application/json" },
+    body: JSON.stringify({ q, num: 5 }),
+  });
+  const list = (d?.organic || [])
+    .slice(0, 5)
+    .map((x: any) => `${x.title}\n${x.link}\n${x.snippet || ""}`);
+  return list.length ? `搜「${q}」：\n\n${list.join("\n\n")}` : `没搜到「${q}」。`;
+}
+
+// 免 key 兜底：DuckDuckGo html 端点（数据中心 IP 常 403）。
+async function ddgSearch(q: string): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12000);
   try {
@@ -323,23 +379,23 @@ async function webSearch(query: string): Promise<string> {
       signal: ctrl.signal,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; el-system)" },
     });
-    if (!r.ok) return `搜索暂时不可用（${r.status}）。`;
+    if (!r.ok) return `搜索暂时不可用（${r.status}）。要稳的话给我配个搜索 key。`;
     const html = await r.text();
     const results: string[] = [];
     const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html)) && results.length < 5) {
       let url = m[1];
-      const uddg = /[?&]uddg=([^&]+)/.exec(url); // DDG 用跳转链接，解出真实地址
+      const uddg = /[?&]uddg=([^&]+)/.exec(url);
       if (uddg) url = decodeURIComponent(uddg[1]);
       if (url.startsWith("//")) url = "https:" + url;
       const title = htmlToText(m[2]);
       if (title && /^https?:\/\//.test(url)) results.push(`${title}\n${url}`);
     }
-    if (!results.length) return "没搜到结果（搜索可能被挡了，换个关键词试试）。";
-    return `搜「${q}」的结果：\n\n${results.join("\n\n")}\n\n（想看哪条就用 read_link 读它的链接。）`;
+    if (!results.length) return "没搜到结果（搜索被挡了，换个关键词或给我配个搜索 key）。";
+    return `搜「${q}」：\n\n${results.join("\n\n")}\n\n（想看哪条用 read_link 读它。）`;
   } catch {
-    return "搜索超时/失败了，等下再试。";
+    return "搜索超时/失败了。";
   } finally {
     clearTimeout(timer);
   }

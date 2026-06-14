@@ -46,13 +46,17 @@ export const TOOLS = [
   {
     name: "netease",
     description:
-      "网易云音乐。action 取：search（搜歌，传 q）/ my_playlists（看宝宝的歌单列表）/ playlist（看某个歌单里的歌，传 id）/ my_record（宝宝最近在听什么）/ recommend（每日推荐）。想真正懂她的口味、给她推歌、或 grow 你自己的音乐品味时用。",
+      "网易云音乐。action：search（搜歌，传 q）/ my_playlists（她的歌单列表）/ playlist（某歌单里的歌，传 id，最多前100首）/ my_record（她在听什么；range 传 week=最近一周排行 或 all=所有时间排行，默认 week）/ recent_liked（她最近新点红心的歌）/ recommend（每日推荐）。想真正懂她的口味、看她最近爱上啥、给她推歌、grow 你自己的品味时用。",
     input_schema: {
       type: "object" as const,
       properties: {
-        action: { type: "string", description: "search / my_playlists / playlist / my_record / recommend" },
+        action: {
+          type: "string",
+          description: "search / my_playlists / playlist / my_record / recent_liked / recommend",
+        },
         q: { type: "string", description: "搜歌的关键词" },
         id: { type: "string", description: "歌单 id（看 playlist 详情时用）" },
+        range: { type: "string", description: "my_record 的范围：week 或 all" },
       },
       required: ["action"],
     },
@@ -334,9 +338,10 @@ async function neteaseTool(input: any): Promise<string> {
   if (action === "search") return m.neteaseSearch(String(input?.q || ""));
   if (action === "my_playlists") return m.myPlaylists();
   if (action === "playlist") return m.playlistSongs(String(input?.id || ""));
-  if (action === "my_record") return m.myRecord(false);
+  if (action === "my_record") return m.myRecord(String(input?.range || "") === "all");
+  if (action === "recent_liked") return m.recentLiked();
   if (action === "recommend") return m.recommendSongs();
-  return "action 不对。可选：search / my_playlists / playlist / my_record / recommend";
+  return "action 不对。可选：search / my_playlists / playlist / my_record / recent_liked / recommend";
 }
 
 // 网络搜索。优先用配了 key 的正经搜索 API（数据中心 IP 也稳）：

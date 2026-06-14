@@ -209,13 +209,29 @@ export async function myPlaylists(): Promise<string> {
 export async function playlistSongs(id: string): Promise<string> {
   if (!id.trim()) return "要看哪个歌单？给我 id（先用 my_playlists 拿 id）。";
   const { cookie } = await cookieAndUid();
-  const { json } = await weapiPost("v3/playlist/detail", { id, n: 1000, s: 8 }, cookie || undefined);
+  const { json } = await weapiPost("v3/playlist/detail", { id, n: 120, s: 8 }, cookie || undefined);
   const pl = json?.playlist;
   if (!pl) return "没读到这个歌单。";
   const tracks = (pl.tracks || [])
-    .slice(0, 50)
+    .slice(0, 100)
     .map((t: any) => `${t.name} — ${(t.ar || []).map((a: any) => a.name).join("/")}`);
-  return `「${pl.name}」（共${pl.trackCount}首）：\n${tracks.join("\n")}${pl.trackCount > 50 ? "\n…（只列了前50首）" : ""}`;
+  return `「${pl.name}」（共${pl.trackCount}首）：\n${tracks.join("\n")}${pl.trackCount > 100 ? `\n…（太长，只列了前100首，共${pl.trackCount}首）` : ""}`;
+}
+
+// 最近新加的红心歌（「我喜欢的音乐」最上面那些，新点的在前）。
+export async function recentLiked(): Promise<string> {
+  const { cookie, uid } = await cookieAndUid();
+  if (!cookie || !uid) return "还没登录网易云——让宝宝去 /netease-login 登一次。";
+  const { json } = await weapiPost("user/playlist", { uid, limit: 10, offset: 0, includeVideo: false }, cookie);
+  const pls = json?.playlist || [];
+  const liked = pls.find((p: any) => /我喜欢的音乐|喜欢/.test(p.name)) || pls[0];
+  if (!liked) return "没找到你的红心歌单。";
+  const { json: d } = await weapiPost("v3/playlist/detail", { id: liked.id, n: 30, s: 8 }, cookie);
+  const tracks = (d?.playlist?.tracks || [])
+    .slice(0, 25)
+    .map((t: any) => `${t.name} — ${(t.ar || []).map((a: any) => a.name).join("/")}`);
+  if (!tracks.length) return "没读到红心歌单里的歌。";
+  return `你最近加进「${liked.name}」的歌（新的在最前）：\n${tracks.join("\n")}`;
 }
 
 export async function myRecord(allTime = false): Promise<string> {

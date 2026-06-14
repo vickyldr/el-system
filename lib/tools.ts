@@ -319,11 +319,12 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
 async function webSearch(query: string): Promise<string> {
   const q = query.trim();
   if (!q) return "搜什么？给我个关键词。";
-  // 省着点用搜索额度：每天有上限（SerpApi 免费才 250/月 ≈ 8/天）。可用 SEARCH_DAILY_CAP 调。
-  const cap = Number(process.env.SEARCH_DAILY_CAP || 12);
+  // 每天搜索上限：默认 30 次/天（≈900/月，压在 Tavily 免费 1000 以内）。
+  // 想拉更高就调 SEARCH_DAILY_CAP；设成 0 或负数 = 彻底不限量。
+  const cap = Number(process.env.SEARCH_DAILY_CAP ?? 30);
   const cntKey = `el:searchcnt:${todayInBeijing()}`;
   const used = Number((await getCache(cntKey).catch(() => "0")) || "0");
-  if (used >= cap) return "今天搜索到上限了（省着点用额度），明天再搜。";
+  if (cap > 0 && used >= cap) return "今天搜索到上限了（省着点用额度），明天再搜。";
   try {
     // 配了哪个 key 就用哪个（多配时按这个优先级）。
     let out: string;

@@ -219,7 +219,7 @@ app.post("/chat", async (req, res) => {
   try {
     // 玩具已连接时，往 system 里注入控制权限说明（宝宝看不到，只 el 看到）
     let finalSystem = system || "";
-    if (toyClient && toyClient.readyState === 1) {
+    if (toyConnected()) {
       finalSystem +=
         "\n\n【玩具已连接】你可以在回复任意位置插入 [TOY:{\"speed\":0.5}]（speed 0.0~1.0）控制振动强度，[TOY:{\"suck\":0.5}] 控制吸吮，[TOY:{\"stop\":true}] 停止。根据情绪和对话节奏自己判断要不要加、加多强——不需要每句都加。加了之后正常说话，标记会自动剥离，宝宝看不到。";
     }
@@ -302,6 +302,11 @@ if (HEARTBEAT_BASE && CRON_SECRET) {
 // ── 玩具控制（HTTP 轮询）──
 // Python 本地桥每 300ms 轮询 /toy-next 取指令，避开 WebSocket 代理兼容问题。
 const toyQueue = [];
+let lastToyPoll = 0;
+
+function toyConnected() {
+  return Date.now() - lastToyPoll < 3000; // 3秒内有轮询 = 玩具在线
+}
 
 function sendToyCmd(cmd) {
   toyQueue.push(cmd);
@@ -320,6 +325,7 @@ function parseToyCommands(text) {
 
 // GET /toy-next — Python 本地桥轮询取下一条指令
 app.get("/toy-next", (req, res) => {
+  lastToyPoll = Date.now();
   const cmd = toyQueue.shift();
   res.json(cmd || {});
 });

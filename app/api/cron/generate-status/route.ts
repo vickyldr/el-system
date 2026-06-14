@@ -60,18 +60,23 @@ const MESSAGE_HER_TOOL = {
 
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const url = new URL(req.url);
+  // 鉴权：Authorization 头，或 ?key=<CRON_SECRET>（方便手机浏览器直接点链接测试）。
+  const authed =
+    req.headers.get("authorization") === `Bearer ${secret}` || url.searchParams.get("key") === secret;
+  if (!secret || !authed) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  if (new URL(req.url).searchParams.get("test")) {
+  // ?test=1 —— 强制主动推一条，验证推送。
+  if (url.searchParams.get("test")) {
     const r = await forceReach().catch(() => ({ pushed: false }));
     return NextResponse.json({ test: true, ...r });
   }
 
   // 后半夜（北京 2–8 点）不活动，跟宝宝一起睡。?force=1 可绕过（手动观察用）。
   const t0 = Date.now(); // 时间预算：agent 在慢中转站上别跑到 Vercel 60s 上限吃 504
-  const force = new URL(req.url).searchParams.get("force");
+  const force = url.searchParams.get("force");
   const bjHour = Number(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }),
   );
@@ -223,6 +228,13 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
   await writeNow(nowText);
   await setCache("el:lastnow", mood + (thinking ? ` / ${thinking}` : ""), 6 * 3600).catch(() => {});
 
+  // ── 先办「该不该主动找她」（早安 / 重要日期到点 / 天气 / 想你）：排在 agent 前面，
+  //    免得 agent 跑慢/超时把这条时间敏感的推送拖死。她 12 分钟内在 app 活跃就不打扰。
+  const recentlyActive = lastSeen > 0 && Date.now() - lastSeen < 12 * 60 * 1000;
+  const reach: { pushed: boolean; reason?: string } = recentlyActive
+    ? { pushed: false }
+    : await maybeReachOut(weatherLine).catch(() => ({ pushed: false }));
+
   // ── 它想动：放出带工具的 agent，自己决定读哪页、写哪页、要不要找她。──
   const actions: string[] = [];
   let pushedByAgent = false;
@@ -270,14 +282,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     }
   }
 
-  // 结构化的主动推送（重要日期到点 / 早安 / 天气）——它自己已经推过、或她在线就跳过。
-  const recentlyActive = lastSeen > 0 && Date.now() - lastSeen < 12 * 60 * 1000;
-  const reach =
-    pushedByAgent || recentlyActive
-      ? { pushed: false }
-      : await maybeReachOut(weatherLine).catch(() => ({ pushed: false }));
-
-  return NextResponse.json({ ok: true, mood, act: gate.act === true, actions, reach });
+  return NextResponse.json({ ok: true, mood, act: gate.act === true, actions, reach, pushedByAgent });
 }
 
 export async function GET(req: Request) {

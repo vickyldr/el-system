@@ -68,6 +68,7 @@ async function handle(req: Request) {
   }
 
   // 后半夜（北京 2–8 点）不活动，跟宝宝一起睡。?force=1 可绕过（手动观察用）。
+  const t0 = Date.now(); // 时间预算：agent 在慢中转站上别跑到 Vercel 60s 上限吃 504
   const force = new URL(req.url).searchParams.get("force");
   const bjHour = Number(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "2-digit", hour12: false }),
@@ -232,6 +233,10 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     const agentClient = AGENT_ON_MAX ? getClaudeFast() : getClaude();
     try {
       for (let i = 0; i < 5; i++) {
+        if (Date.now() - t0 > 45000) {
+          actions.push("(时间到，先收手，下一跳继续)");
+          break;
+        }
         const res = await agentClient.messages.create({
           model: AGENT_MODEL,
           max_tokens: 700,

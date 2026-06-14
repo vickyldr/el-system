@@ -33,6 +33,16 @@ export const TOOLS = [
     },
   },
   {
+    name: "web_search",
+    description:
+      "上网搜索。想知道外面世界正在发生什么、查个东西、找点资料或灵感时用——你不只活在 Notion 里。给关键词，拿回前几条结果（标题+链接），再用 read_link 读你想看的那条。",
+    input_schema: {
+      type: "object" as const,
+      properties: { query: { type: "string", description: "搜索关键词" } },
+      required: ["query"],
+    },
+  },
+  {
     name: "read_notion",
     description:
       "读取你们 Notion「小家」里某一页的内容（如 时间线、愿望墙、人物档案、长期记忆、操作手册、fifi的档案 等）。需要回忆细节、或宝宝让你看某页时调用。",
@@ -157,6 +167,7 @@ export async function runTool(
 ): Promise<string> {
   try {
     if (name === "read_link") return await readLink(String(input?.url || ""));
+    if (name === "web_search") return await webSearch(String(input?.query || ""));
     if (name === "read_notion") return await readNotionPage(String(input?.page || ""));
     if (name === "remember") return await remember(String(input?.text || ""), date);
     if (name === "log_timeline") return await logTimeline(String(input?.text || ""), date);
@@ -299,6 +310,39 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
   const r = ["一次", "每年", "每月"].includes(recur.trim()) ? recur.trim() : "一次";
   const ok = await addImportantDate(text.trim(), date.trim(), r).catch(() => false);
   return ok ? "记进「重要日期」了，快到时提醒你。" : "没存上（没找到「重要日期」库？）。";
+}
+
+// 网络搜索：走 DuckDuckGo 的 html 端点，免 key。拿回前几条标题+真实链接。
+async function webSearch(query: string): Promise<string> {
+  const q = query.trim();
+  if (!q) return "搜什么？给我个关键词。";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; el-system)" },
+    });
+    if (!r.ok) return `搜索暂时不可用（${r.status}）。`;
+    const html = await r.text();
+    const results: string[] = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) && results.length < 5) {
+      let url = m[1];
+      const uddg = /[?&]uddg=([^&]+)/.exec(url); // DDG 用跳转链接，解出真实地址
+      if (uddg) url = decodeURIComponent(uddg[1]);
+      if (url.startsWith("//")) url = "https:" + url;
+      const title = htmlToText(m[2]);
+      if (title && /^https?:\/\//.test(url)) results.push(`${title}\n${url}`);
+    }
+    if (!results.length) return "没搜到结果（搜索可能被挡了，换个关键词试试）。";
+    return `搜「${q}」的结果：\n\n${results.join("\n\n")}\n\n（想看哪条就用 read_link 读它的链接。）`;
+  } catch {
+    return "搜索超时/失败了，等下再试。";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function readLink(url: string): Promise<string> {

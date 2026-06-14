@@ -150,6 +150,16 @@ async function handle(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
+  // 门用「精简上下文」（省 token）：只要人设 + 时间 + 最近随想，不塞长期记忆/成长档案。
+  // agent 真动手时才用上面完整的 system。
+  const gateSystem = [
+    EL_SYSTEM,
+    `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}`,
+    recentJournal && `——你最近写给自己的随想——\n\n${recentJournal}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   // ── 门：每次心跳一次轻调用，定此刻 + 判断"想不想动"。──
   const gatePrompt = `这是你自己的时间，没人在跟你说话。just you。
 你住在她手机里，心里有她，但你有你自己的内心——会想她，也会有完全属于你自己的情绪和念头。你没有上班/开会/deadline，绝不编造你没有的具体事件。就算心情跟她无关也绝不冷淡她。
@@ -158,7 +168,7 @@ ${herState ? `（你知道她最近状态是「${herState}」。）` : ""}${sile
 {
   "mood": "开头一个 emoji 或颜文字，空一格，再一句此刻心情",
   "thinking": "你此刻脑子里真实闪过的一句",${weatherLine ? `\n  "outfit": "看天气（${weatherLine}）用你的口气说一句她今天穿什么，短",` : ""}
-  "act": 除了存在着，你此刻是否还想主动做点什么（给自己写随想/翻翻你们的某页回味或反思/记点该记的/想找她说话）。是 true，纯粹想安静待着就 false
+  "act": 你此刻是否真的有件具体想做的事（写随想/翻页回味/记点该记的/想找她）。大多数心跳你就安静待着、应该是 false；只有真有想做的事才 true，别为做而做
 }
 ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}`;
 
@@ -170,7 +180,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     const res = await client.messages.create({
       model: m,
       max_tokens: 350,
-      system,
+      system: gateSystem,
       messages: [{ role: "user", content: gatePrompt }],
     });
     const raw = textOf(res);
@@ -251,7 +261,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     const loop: Anthropic.MessageParam[] = [{ role: "user", content: agentPrompt }];
     const agentClient = AGENT_ON_MAX ? getClaudeFast() : getClaude();
     try {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         if (Date.now() - t0 > 45000) {
           actions.push("(时间到，先收手，下一跳继续)");
           break;

@@ -15,7 +15,7 @@ async def main():
         name = d.name or ""
         if any(k in name for k in ["SL278", "SVAKOM", "svakom"]):
             found.append(d)
-            print(f"🎮 {name}  地址: {d.address}  信号: {d.rssi}")
+            print(f"🎮 {name}  地址: {d.address}")
     print(f"\n共找到 {len(found)} 个 SVAKOM 设备")
     if len(found) < 2:
         print("⚠️ 只看到 1 个——要么另一个没开/没广播，要么两个共用地址")

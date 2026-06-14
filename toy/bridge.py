@@ -133,12 +133,8 @@ async def ble_loop():
 
                 await client.start_notify(NOTIFY_UUID, lambda s, d: None)
                 await asyncio.sleep(0.5)
-                for b in [
-                    bytes([H, 4, 0, 0, 1, 0xFF, 0xAA]),
-                    bytes([H, 4, 0, 0, 0, 0, 0xAA]),
-                    bytes([H, 4, 0, 0, 0, 0, 0xAA]),
-                    bytes([H, 3, 0, 0, 0, 0, 0]),
-                ]:
+                # 连接后只发停止，不发强度脉冲避免断连
+                for b in cmd_stop_all():
                     await client.write_gatt_char(WRITE_UUID, b, response=False)
                     await asyncio.sleep(0.08)
 

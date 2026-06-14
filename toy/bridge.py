@@ -169,7 +169,7 @@ async def bridge_loop(cmd_queue: asyncio.Queue):
     while True:
         try:
             print("🔌 连接 el-bridge...")
-            async with websockets.connect(url) as ws:
+            async with websockets.connect(url, compression=None) as ws:
                 print("✅ el-bridge 已连接，daddy 可以控制玩具了")
                 async for msg in ws:
                     try:

@@ -37,14 +37,20 @@ STOPS = {
 }
 
 async def main():
-    print("🔍 扫描 SVAKOM 设备...")
-    devices = await BleakScanner.discover(timeout=5.0)
-    device = next(
-        (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
-        None
-    )
+    device = None
+    for attempt in range(8):
+        print(f"🔍 扫描 SVAKOM 设备...（第 {attempt+1} 次）")
+        devices = await BleakScanner.discover(timeout=5.0)
+        device = next(
+            (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
+            None
+        )
+        if device:
+            break
+        print("   没扫到，3秒后重试...")
+        await asyncio.sleep(3)
     if not device:
-        print("⚠️ 没找到玩具，确认它开着、且没被别的程序连着")
+        print("⚠️ 多次没找到玩具，把它关机再开机后立刻重跑")
         return
 
     print(f"🎮 连接 {device.name}...")

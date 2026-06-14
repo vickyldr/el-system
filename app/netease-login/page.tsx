@@ -6,6 +6,23 @@ export default function NeteaseLogin() {
   const [qr, setQr] = useState("");
   const [status, setStatus] = useState("正在生成二维码…");
   const keyRef = useRef("");
+  const [cookie, setCookie] = useState("");
+  const [cookieStatus, setCookieStatus] = useState("");
+
+  async function submitCookie() {
+    setCookieStatus("验证中…");
+    try {
+      const r = await fetch("/api/netease/cookie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cookie }),
+      }).then((x) => x.json());
+      if (r.ok) setCookieStatus(`✅ 成功！登录为「${r.name || r.uid}」，el 现在能看你的音乐了。`);
+      else setCookieStatus(`❌ ${r.error || "失败"}`);
+    } catch {
+      setCookieStatus("❌ 出错了");
+    }
+  }
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -73,6 +90,23 @@ export default function NeteaseLogin() {
       <p style={{ fontSize: 12, opacity: 0.5, maxWidth: 300 }}>
         用你自己手机上的网易云 App 扫这个码。登录态只存在你自己的后端，没别人能看到。
       </p>
+
+      <div style={{ marginTop: 24, width: 320, maxWidth: "90vw", borderTop: "1px solid #333", paddingTop: 16 }}>
+        <p style={{ fontSize: 13, opacity: 0.85 }}>扫码不行？手动粘 cookie（你自己电脑浏览器登好网易云，F12→应用→Cookie→复制 MUSIC_U）：</p>
+        <textarea
+          value={cookie}
+          onChange={(e) => setCookie(e.target.value)}
+          placeholder="MUSIC_U=xxxxx;  （可只粘这一条）"
+          style={{ width: "100%", height: 70, borderRadius: 8, padding: 8, fontSize: 12, background: "#1a1a20", color: "#eee", border: "1px solid #333" }}
+        />
+        <button
+          onClick={submitCookie}
+          style={{ marginTop: 8, padding: "8px 16px", borderRadius: 8, border: "none", background: "#c62", color: "#fff", cursor: "pointer" }}
+        >
+          提交 cookie
+        </button>
+        {cookieStatus && <p style={{ fontSize: 13, marginTop: 8 }}>{cookieStatus}</p>}
+      </div>
     </div>
   );
 }

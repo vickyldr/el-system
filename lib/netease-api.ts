@@ -136,6 +136,25 @@ export async function neteaseLoggedIn(): Promise<boolean> {
   return !!cookie;
 }
 
+// 手动粘 cookie（你在自己浏览器登好，把 MUSIC_U 复制进来）。存下并验证能不能读到账号。
+export async function setNeteaseCookie(
+  cookie: string,
+): Promise<{ ok: boolean; uid?: string; name?: string; error?: string }> {
+  await setCache(COOKIE_KEY, cookie, 60 * 24 * 3600).catch(() => {});
+  try {
+    const { json } = await weapiPost("w/nuser/account/get", {}, cookie);
+    const uid = json?.account?.id || json?.profile?.userId;
+    const name = json?.profile?.nickname;
+    if (uid) {
+      await setCache(UID_KEY, String(uid), 60 * 24 * 3600).catch(() => {});
+      return { ok: true, uid: String(uid), name };
+    }
+    return { ok: false, error: `没读到账号信息（code=${json?.code ?? "?"} ${json?.message ?? ""}）` };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 // ── 数据 ──
 export async function neteaseSearch(q: string): Promise<string> {
   if (!q.trim()) return "搜什么歌？";

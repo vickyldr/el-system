@@ -9,6 +9,36 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key");
   const ip = url.searchParams.get("ip") || undefined; // 临时换 IP 测试用
+
+  // 诊断：看 Vercel 有没有读到中转、能不能连上中转、中转转发网易云回了啥。
+  if (url.searchParams.get("debug")) {
+    const relay = process.env.NETEASE_RELAY;
+    let relayStatus: any = null;
+    let relayBody: any = null;
+    if (relay) {
+      try {
+        const rr = await fetch(relay.replace(/\/$/, ""), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Relay-Secret": process.env.NETEASE_RELAY_SECRET || "",
+          },
+          body: JSON.stringify({ path: "login/qrcode/unikey", form: "type=1", cookie: "os=pc" }),
+        });
+        relayStatus = rr.status;
+        relayBody = JSON.stringify(await rr.json().catch(() => ({}))).slice(0, 300);
+      } catch (e: any) {
+        relayBody = `连不上中转：${e?.message || e}`;
+      }
+    }
+    return NextResponse.json({
+      relaySet: !!relay,
+      relay: relay || null,
+      relayStatus,
+      relayBody,
+    });
+  }
+
   if (key) {
     const r = await qrCheck(key, ip).catch(() => ({ code: 0 }));
     return NextResponse.json(r);

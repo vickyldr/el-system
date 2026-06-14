@@ -121,7 +121,11 @@ async def scanner_loop():
         if need_scan:
             async with scan_lock:
                 try:
+                    print("🔍 扫描中...")
                     devices = await BleakScanner.discover(timeout=6.0)
+                    sva = [d for d in devices if d.name and "SL278" in (d.name or "")]
+                    print(f"   扫到 SVAKOM 设备 {len(sva)} 个: " +
+                          ", ".join(f"{d.name}[{d.address}]" for d in sva))
                     for d in devices:
                         found_devices[d.address] = d
                 except Exception as e:

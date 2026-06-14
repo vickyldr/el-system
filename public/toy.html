@@ -48,19 +48,19 @@
 
   <div id="log"></div>
 
-  <p class="hint">⚠️ 网页蓝牙只支持安卓 Chrome / Edge，iPhone 不支持。<br>⚠️ 别锁屏（已自动申请屏幕常亮）。退出网页就等于断开。</p>
+  <p class="hint">⚠️ 网页蓝牙只支持安卓 Chrome / Edge，iPhone 不支持。<br>
+  ⚠️ 防息屏：手机插上充电器，开「开发者选项 → 充电时保持唤醒状态」，屏幕就不会灭。本页也会自动申请屏幕常亮。<br>
+  ⚠️ 别切到别的 App、别锁屏，否则蓝牙断开。</p>
 
 <script>
 const SERVICE = 0xffe0;
 const WRITE   = 0x0000ffe1;
-const WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
-const SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
 const H = 0x55;
 
 let writeChar = null;
 let polling = false;
-let currentCmd = null;      // 要持续保持的字节数组（Uint8Array）
-let currentUntil = 0;       // 到这个时间戳(ms)自动停；0=一直保持
+let currentCmd = null;      // 要持续保持的字节（Uint8Array）
+let currentUntil = 0;       // 到此时间戳(ms)自动停；0=一直保持
 let wakeLock = null;
 
 const $ = id => document.getElementById(id);
@@ -102,7 +102,7 @@ async function exec(c){
   }
 }
 
-// 续命：每1.5秒重发当前命令，到时长则停
+// 续命：每1.5秒重发当前命令，到时长则停（玩具不被持续喂命令会自己停）
 setInterval(async ()=>{
   if(currentUntil && Date.now()>=currentUntil){
     currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏱ 到时自动停");
@@ -127,8 +127,10 @@ async function pollLoop(){
 }
 
 async function keepAwake(){
-  try { wakeLock = await navigator.wakeLock.request("screen"); }
-  catch(e){ log("屏幕常亮申请失败（手动调长息屏时间）"); }
+  try {
+    if(navigator.wakeLock){ wakeLock = await navigator.wakeLock.request("screen"); log("✅ 屏幕常亮已开"); }
+    else log("⚠️ 浏览器不支持屏幕常亮，请用『充电时保持唤醒』");
+  } catch(e){ log("⚠️ 屏幕常亮申请失败，请用『充电时保持唤醒』"); }
 }
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && !wakeLock) keepAwake(); });
 

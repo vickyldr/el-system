@@ -330,6 +330,18 @@ app.get("/toy-next", (req, res) => {
   res.json(cmd || {});
 });
 
+// GET /toy-status — Vercel chat route 查询玩具是否在线
+app.get("/toy-status", (req, res) => {
+  res.json({ connected: toyConnected() });
+});
+
+// POST /toy-cmd — Vercel chat route 发送玩具指令
+app.post("/toy-cmd", express.json(), (req, res) => {
+  const cmd = req.body;
+  if (cmd && typeof cmd === "object") sendToyCmd(cmd);
+  res.json({ ok: true });
+});
+
 if (GEMINI_API_KEY) {
   const wss = new WebSocketServer({ server: httpServer, path: "/live" });
 

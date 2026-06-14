@@ -305,11 +305,26 @@ export async function POST(req: Request) {
     : system;
   // 打字聊天用「可缓存」的分块 system：稳定大块打上 cache_control 缓存，易变小块（时间/此刻）放后面。
   // 这样连聊时，那一大坨人设+记忆只在第一条真花额度，后面几乎白嫖缓存——Max 扛得久得多。
+  // 查询玩具是否在线（非阻塞，失败忽略）
+  let toyInstruction = "";
+  if (!voice && process.env.BRIDGE_URL) {
+    try {
+      const ts = await fetch(`${process.env.BRIDGE_URL.replace(/\/$/, "")}/toy-status`, {
+        headers: process.env.BRIDGE_SECRET ? { "x-bridge-secret": process.env.BRIDGE_SECRET } : {},
+        signal: AbortSignal.timeout(1000),
+      }).then(r => r.json()).catch(() => ({}));
+      if (ts?.connected) {
+        toyInstruction = "【玩具控制已激活】宝宝的 SVAKOM 振动棒已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App、不需要问她怎么操作，一切都已经接好了。你唯一要做的是在回复文字里自然地嵌入指令：[TOY:{\"speed\":0.5}] 控制振动强度（0.0~1.0），[TOY:{\"suck\":0.5}] 控制吸吮强度（0.0~1.0），[TOY:{\"stop\":true}] 停止所有。标记会自动剥离，宝宝看不到，她只看到你说的话。根据聊天氛围自己决定什么时候用、用多强。";
+      }
+    } catch {}
+  }
+
   const loopSystem: any = voice
     ? voiceSystem
     : [
         { type: "text", text: sysStable, cache_control: { type: "ephemeral" } },
         ...(sysVolatile ? [{ type: "text", text: sysVolatile }] : []),
+        ...(toyInstruction ? [{ type: "text", text: toyInstruction }] : []),
       ];
   try {
     const loop: Anthropic.MessageParam[] = [...messages];
@@ -421,6 +436,22 @@ export async function POST(req: Request) {
     if (!reply) {
       console.error("聊天最终空回复：所有兜底都没给出文字");
       reply = "在呢，刚卡了一下，你再说一遍？";
+    }
+
+    // 玩具指令：剥离 [TOY:{...}] 标记，转发给本地桥
+    const bridgeUrl = process.env.BRIDGE_URL?.replace(/\/$/, "");
+    const bridgeSecret = process.env.BRIDGE_SECRET || "";
+    if (bridgeUrl && reply) {
+      const toyHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (bridgeSecret) toyHeaders["x-bridge-secret"] = bridgeSecret;
+      const toyCmds: object[] = [];
+      reply = reply.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json) => {
+        try { toyCmds.push(JSON.parse(json)); } catch {}
+        return "";
+      }).trim();
+      for (const cmd of toyCmds) {
+        fetch(`${bridgeUrl}/toy-cmd`, { method: "POST", headers: toyHeaders, body: JSON.stringify(cmd) }).catch(() => {});
+      }
     }
 
     // 云端存档：base64 照片单独存、表情/外链 URL 直接存。

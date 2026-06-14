@@ -162,25 +162,28 @@ ${herState ? `（你知道她最近状态是「${herState}」。）` : ""}${sile
 }
 ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}`;
 
-  // 门：先试 Haiku；不行就用 Sonnet 重试，并记下这条心跳用哪个模型（歌+agent 都用它）。
+  // 门：先用中转站(省)；中转站抽风/吐空就改用 Max——别让心跳因为中转站趴下。
   let model = PRIMARY;
+  let gateClient = getClaude();
   let gate: any = {};
-  const runGate = async (m: string) => {
-    const res = await getClaude().messages.create({
+  const runGate = async (client: any, m: string) => {
+    const res = await client.messages.create({
       model: m,
       max_tokens: 350,
       system,
       messages: [{ role: "user", content: gatePrompt }],
     });
     const raw = textOf(res);
+    if (!raw) throw new Error("门吐空");
     return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
   };
   try {
-    gate = await runGate(PRIMARY);
+    gate = await runGate(getClaude(), PRIMARY);
   } catch {
     try {
+      gateClient = getClaudeFast(); // 中转站不行 → 改走 Max
       model = FALLBACK;
-      gate = await runGate(FALLBACK);
+      gate = await runGate(gateClient, FALLBACK);
     } catch (err) {
       const message = err instanceof Error ? err.message : "失败";
       return NextResponse.json({ error: "心跳生成失败", detail: message }, { status: 502 });
@@ -197,7 +200,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
   let songLine = await getDailySong(date);
   if (!songLine) {
     try {
-      const songRes = await getClaude().messages.create({
+      const songRes = await gateClient.messages.create({
         model,
         max_tokens: 200,
         system,

@@ -1446,6 +1446,40 @@ function FindTab() {
     };
   }, []);
 
+  // 回到前台 / 每 30 秒：拉一次存档，把 el 主动推来的消息接进聊天界面（之前推送不显示就因为没这步）。
+  useEffect(() => {
+    let alive = true;
+    const pull = async () => {
+      if (document.hidden) return;
+      try {
+        const d = await fetch("/api/messages").then((r) => r.json());
+        if (!alive || !d.cloud || !Array.isArray(d.messages)) return;
+        setMsgs((cur) => {
+          const lastTs = cur.length ? cur[cur.length - 1].ts || 0 : 0;
+          const fresh = (d.messages as Msg[]).filter(
+            (m) =>
+              (m.ts || 0) > lastTs &&
+              m.role === "assistant" &&
+              !cur.some((c) => c.content === m.content && Math.abs((c.ts || 0) - (m.ts || 0)) < 5000),
+          );
+          return fresh.length ? [...cur, ...fresh] : cur;
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    const onVis = () => {
+      if (!document.hidden) pull();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const timer = setInterval(pull, 30000);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(timer);
+    };
+  }, []);
+
   // 对话变化时存回本地（截断到上限，避免无限增长）。
   useEffect(() => {
     try {

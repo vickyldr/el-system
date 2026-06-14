@@ -334,7 +334,9 @@ export async function POST(req: Request) {
     ).replace(/haiku[^"]*/i, "claude-sonnet-4-6");
 
     // 工具循环：El 需要时读链接 / 读 Notion / 写记忆 / 贴表情，最多几轮。
+    const tChat = Date.now();
     for (let i = 0; i < 6; i++) {
+      if (i > 0 && Date.now() - tChat > 45000) break; // 时间预算：别拖到 Vercel 超时吃 504
       const res = await claude.messages.create({
         model,
         max_tokens: maxTok,

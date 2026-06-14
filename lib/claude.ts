@@ -39,29 +39,29 @@ async function oauthCreate(token: string, params: any): Promise<any> {
     messages: params.messages,
     ...(params.tools ? { tools: params.tools } : {}),
   };
-  let lastErr = "";
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (r.status === 429 && attempt < 2) {
-      await new Promise((s) => setTimeout(s, 600 * (attempt + 1)));
-      continue;
-    }
-    if (!r.ok) {
-      lastErr = `Anthropic ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`;
-      throw new Error(lastErr);
-    }
-    return await r.json();
+  // 单次请求，失败（含 429 限流）直接抛——让上层秒切中转站，别傻等重试拖到超时。
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "oauth-2025-04-20",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    throw new Error(`Anthropic ${r.status}: ${(await r.text().catch(() => "")).slice(0, 160)}`);
   }
-  throw new Error(lastErr || "oauth create failed");
+  return await r.json();
+}
+
+// 中转站可能不认分块 system 里的 cache_control，回落时拍平成纯字符串最稳。
+function flattenSystem(system: unknown): unknown {
+  if (Array.isArray(system)) {
+    return system.map((b: any) => b?.text || "").filter(Boolean).join("\n\n");
+  }
+  return system;
 }
 
 // 优先用 Max 订阅；没配 OAuth token 就回落到中转站，至少还能用。
@@ -76,9 +76,12 @@ export function getClaudeFast(): Anthropic {
             (r as any)._via = "max";
             return r;
           } catch (e) {
-            // Max 抽风/超额就回落中转站，绝不让聊天失败（聊天/电话的成功率最要紧）。
+            // Max 抽风/限流就回落中转站，绝不让聊天失败（聊天/电话的成功率最要紧）。
             console.error("Max 调用失败，回落中转站:", e instanceof Error ? e.message : e);
-            const r: any = await getClaude().messages.create(params);
+            const r: any = await getClaude().messages.create({
+              ...params,
+              system: flattenSystem(params.system),
+            });
             r._via = "中转站(Max回落)";
             return r;
           }

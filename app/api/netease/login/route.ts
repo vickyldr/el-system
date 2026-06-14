@@ -31,11 +31,14 @@ export async function GET(req: Request) {
         relayBody = `连不上中转：${e?.message || e}`;
       }
     }
+    // 真·加密请求（走 weapiPost，配了中转就经中转）——这才是登录真实走的路。
+    const real = await qrKey(ip).catch((e: any) => ({ unikey: "", message: String(e?.message || e) }));
     return NextResponse.json({
       relaySet: !!relay,
       relay: relay || null,
       relayStatus,
       relayBody,
+      real,
     });
   }
 

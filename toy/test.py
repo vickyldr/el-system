@@ -1,7 +1,9 @@
 """
-玩具命令测试 — 连上后挨个发各种命令，看哪个让玩具动
+玩具全功能测试 — 挨个发各种动作命令，看每个触发什么
 用法: python test.py
-看到玩具动了，记住屏幕上对应的编号告诉 daddy
+记下哪个编号触发了什么动作（伸缩/旋转/吮吸/加温/振动）告诉 daddy
+
+⚠️ 只写 FFE1 控制通道，绝不碰 AE01（OTA刷机口，变砖）
 """
 
 import asyncio
@@ -11,66 +13,56 @@ WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
 NOTIFY_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb"
 H = 0x55
 
-# 每个测试: (编号说明, 字节)
+# 命令格式: [0x55, CMD, 0, 0, 模式, 强度, 尾]
+# (编号说明, CMD, 模式, 强度, 尾字节)
 TESTS = [
-    ("1. 振动 CMD_VIBRATE mode=1 强度=5", bytes([H, 3, 0, 0, 1, 5, 0])),
-    ("2. 振动 CMD_VIBRATE mode=5 强度=5", bytes([H, 3, 0, 0, 5, 5, 0])),
-    ("3. 振动 强度直填 i=128", bytes([H, 3, 0, 0, 128, 0, 0])),
-    ("4. 强度 CMD_SCALE=4 满", bytes([H, 4, 0, 0, 1, 200, 0xAA])),
-    ("5. 吸吮 CMD_SUCK=9 强", bytes([H, 9, 0, 0, 1, 200, 0xAA])),
-    ("6. 吸吮 CMD_SUCK mode=3", bytes([H, 9, 0, 0, 3, 5, 0])),
-    ("7. 抽插 CMD_STRETCH=8 mode=1", bytes([H, 8, 0, 0, 1, 5, 0])),
-    ("8. 舔 CMD_LICKING=20 mode=1", bytes([H, 20, 0, 0, 1, 5, 0])),
-    ("9. 吮 CMD_OCCLUSION=21 mode=1", bytes([H, 21, 0, 0, 1, 5, 0])),
-    ("10. 拍打 CMD_FLAP=7 mode=1", bytes([H, 7, 0, 0, 1, 5, 0])),
+    ("1. 振动 VIBRATE",   3,  1, 3, 0),
+    ("2. 强度 SCALE",     4,  1, 200, 0xAA),
+    ("3. 加温 HOT",       5,  1, 3, 0),
+    ("4. 电击 ELECTRIC",  6,  1, 3, 0),
+    ("5. 拍打 FLAP",      7,  1, 3, 0),
+    ("6. 伸缩 STRETCH",   8,  1, 3, 0),
+    ("7. 吮吸 SUCK",      9,  1, 3, 0),
+    ("8. 旋转 ROTATE",    13, 1, 3, 0),
+    ("9. 摆动 SWAY",      14, 1, 3, 0),
+    ("10. 舔 LICKING",    20, 1, 3, 0),
+    ("11. 咬合 OCCLUSION",21, 1, 3, 0),
 ]
-
-# 各命令对应的停止
-STOPS = {
-    3: bytes([H, 3, 0, 0, 0, 0, 0]),
-    4: bytes([H, 4, 0, 0, 0, 0, 0xAA]),
-    9: bytes([H, 9, 0, 0, 0, 0, 0xAA]),
-    8: bytes([H, 8, 0, 0, 0, 0, 0]),
-    20: bytes([H, 20, 0, 0, 0, 0, 0]),
-    21: bytes([H, 21, 0, 0, 0, 0, 0]),
-    7: bytes([H, 7, 0, 0, 0, 0, 0]),
-}
 
 async def main():
     device = None
     for attempt in range(8):
         print(f"🔍 扫描 SVAKOM 设备...（第 {attempt+1} 次）")
         devices = await BleakScanner.discover(timeout=5.0)
-        device = next(
-            (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
-            None
-        )
+        device = next((d for d in devices if d.name and "SL278" in d.name), None)
         if device:
             break
         print("   没扫到，3秒后重试...")
         await asyncio.sleep(3)
     if not device:
-        print("⚠️ 多次没找到玩具，把它关机再开机后立刻重跑")
+        print("⚠️ 没找到玩具，关机再开机后立刻重跑")
         return
 
     print(f"🎮 连接 {device.name}...")
-    async with BleakClient(device.address) as client:
-        print("✅ 已连接，开始测试\n")
-        await client.start_notify(NOTIFY_UUID, lambda s, d: print(f"   📨 回包: {d.hex()}"))
+    async with BleakClient(device) as client:
+        print("✅ 已连接，开始全功能测试\n")
+        try:
+            await client.start_notify(NOTIFY_UUID, lambda s, d: print(f"   📨 回包: {d.hex()}"))
+        except Exception:
+            pass
         await asyncio.sleep(0.5)
 
-        for desc, cmd in TESTS:
-            print(f"\n▶ 测试 {desc}")
-            print(f"   发送: {cmd.hex()}")
-            await client.write_gatt_char(WRITE_UUID, cmd, response=False)
-            print("   ⏳ 观察玩具 4 秒...")
+        for desc, cmd, mode, level, tail in TESTS:
+            data = bytes([H, cmd, 0, 0, mode, level, tail])
+            print(f"\n▶ {desc}  →  {data.hex()}")
+            print("   ⏳ 观察玩具 4 秒，记下有没有动、是什么动作...")
+            await client.write_gatt_char(WRITE_UUID, data, response=False)
             await asyncio.sleep(4)
-            # 停止
-            stop = STOPS.get(cmd[1], bytes([H, cmd[1], 0, 0, 0, 0, 0]))
-            await client.write_gatt_char(WRITE_UUID, stop, response=False)
+            # 对应停止
+            await client.write_gatt_char(WRITE_UUID, bytes([H, cmd, 0, 0, 0, 0, tail]), response=False)
             await asyncio.sleep(1)
 
-        print("\n\n✅ 测试完毕！哪几个编号让玩具动了，告诉 daddy")
+        print("\n\n✅ 测试完毕！哪个编号触发了什么动作，告诉 daddy")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,5 +1,5 @@
 """
-el-toy-bridge — Python BLE 控制 SVAKOM 玩具（双设备）
+el-toy-bridge — Python BLE 控制 SVAKOM 玩具（双设备，按地址前缀匹配）
 依赖: pip install bleak aiohttp
 
 用法:
@@ -8,6 +8,7 @@ el-toy-bridge — Python BLE 控制 SVAKOM 玩具（双设备）
   python bridge.py
 
 ⚠️ 控制通道是 FFE0/FFE1。绝对不要写 AE00/AE01——那是 OTA 固件升级通道，写错会变砖！
+⚠️ 玩具用随机轮换蓝牙地址，每次开机后缀都变，所以按"前缀"匹配，不写死完整地址。
 """
 
 import asyncio
@@ -34,9 +35,9 @@ BRIDGE_SECRET = os.environ.get("BRIDGE_SECRET", "")
 WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
 NOTIFY_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb"
 
-# 两个设备的地址与角色。如果发现控反了，把这两行的地址对调即可。
-ROD_ADDR = "FF:25:12:A8:6F:F0"    # 震动棒（speed 控它）
-SUCK_ADDR = "E2:6F:5E:7A:99:43"   # 吮吸款（suck 控它）
+# 按地址前缀区分两个玩具（地址后缀会随机轮换）。控反了就把这两行前缀对调。
+ROD_PREFIX = "FF:25:12"    # 震动棒（speed 控它）
+SUCK_PREFIX = "E2:6F:5E"   # 吮吸款（suck 控它）
 
 H = 0x55
 
@@ -48,32 +49,39 @@ def cmd_scale_stop():
     return bytes([H, 4, 0, 0, 0, 0, 0xAA])
 
 cmd_queue = asyncio.Queue()
-clients = {}  # addr -> BleakClient
-scan_lock = asyncio.Lock()  # WinRT 不允许并发扫描，串行化
+clients = {}        # role("rod"/"suck") -> BleakClient
+found = {}          # role -> BLEDevice
+scan_lock = asyncio.Lock()
 
-async def write_to(addr, buf):
-    client = clients.get(addr)
+def role_of(addr):
+    a = (addr or "").upper()
+    if a.startswith(ROD_PREFIX.upper()):
+        return "rod"
+    if a.startswith(SUCK_PREFIX.upper()):
+        return "suck"
+    return None
+
+async def write_role(role, buf):
+    client = clients.get(role)
     if client and client.is_connected:
         try:
             await client.write_gatt_char(WRITE_UUID, buf, response=False)
             return True
         except Exception as e:
-            print(f"写入失败 [{addr}]: {e}")
+            print(f"写入失败 [{role}]: {e}")
     return False
 
 async def exec_cmd(c: dict):
     if c.get("stop"):
-        await write_to(ROD_ADDR, cmd_scale_stop())
-        await write_to(SUCK_ADDR, cmd_scale_stop())
+        await write_role("rod", cmd_scale_stop())
+        await write_role("suck", cmd_scale_stop())
         print("⏹ 全部停止")
         return
     if "speed" in c:
-        v = int(c["speed"] * 255)
-        ok = await write_to(ROD_ADDR, cmd_scale(v))
+        ok = await write_role("rod", cmd_scale(int(c["speed"] * 255)))
         print(f"📳 震动棒 {int(c['speed']*100)}% {'✓' if ok else '(未连接)'}")
     if "suck" in c:
-        v = int(c["suck"] * 255)
-        ok = await write_to(SUCK_ADDR, cmd_scale(v))
+        ok = await write_role("suck", cmd_scale(int(c["suck"] * 255)))
         print(f"💨 吮吸 {int(c['suck']*100)}% {'✓' if ok else '(未连接)'}")
 
 async def bridge_loop():
@@ -92,7 +100,7 @@ async def bridge_loop():
                 async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     if resp.status == 200:
                         if not connected_printed:
-                            print("✅ el-bridge 已连接，daddy 可以控制玩具了")
+                            print("✅ el-bridge 已连接")
                             connected_printed = True
                         data = await resp.json()
                         if data:
@@ -110,42 +118,39 @@ async def bridge_loop():
                 continue
             await asyncio.sleep(0.3)
 
-# 最近一次全量扫描发现的设备：addr -> BLEDevice
-found_devices = {}
-
 async def scanner_loop():
-    """统一用 discover() 全量扫描（已验证 WinRT 下能扫到），结果共享给各设备循环"""
+    """全量扫描，按前缀认出两个玩具，存进 found"""
     while True:
-        # 只在有设备没连上时才扫，省得占用蓝牙
-        need_scan = any(a not in clients for a in (ROD_ADDR, SUCK_ADDR))
-        if need_scan:
+        need = [r for r in ("rod", "suck") if r not in clients]
+        if need:
             async with scan_lock:
                 try:
-                    print("🔍 扫描中...")
+                    print(f"🔍 扫描中...（还需连：{need}）")
                     devices = await BleakScanner.discover(timeout=6.0)
-                    sva = [d for d in devices if d.name and "SL278" in (d.name or "")]
-                    print(f"   扫到 SVAKOM 设备 {len(sva)} 个: " +
-                          ", ".join(f"{d.name}[{d.address}]" for d in sva))
-                    for d in devices:
-                        found_devices[d.address] = d
+                    sva = [d for d in devices if d.name and "SL278" in d.name]
+                    for d in sva:
+                        r = role_of(d.address)
+                        tag = {"rod": "震动棒", "suck": "吮吸款"}.get(r, "未知")
+                        print(f"   {d.name}[{d.address}] → {tag}")
+                        if r and r not in clients:
+                            found[r] = d
                 except Exception as e:
                     print(f"扫描出错: {e}")
         await asyncio.sleep(2)
 
-async def device_loop(addr, label):
-    """维护单个设备的连接，断了自动重连"""
+async def device_loop(role, label):
     while True:
-        if addr in clients:
+        if role in clients:
             await asyncio.sleep(2)
             continue
-        dev = found_devices.get(addr)
+        dev = found.get(role)
         if not dev:
             await asyncio.sleep(2)
             continue
         try:
-            print(f"🎮 连接 {label} [{addr}]...")
+            print(f"🎮 连接 {label} [{dev.address}]...")
             async with BleakClient(dev) as client:
-                clients[addr] = client
+                clients[role] = client
                 try:
                     await client.start_notify(NOTIFY_UUID, lambda s, d: None)
                 except Exception:
@@ -156,8 +161,8 @@ async def device_loop(addr, label):
         except Exception as e:
             print(f"{label} 连接断开: {e}")
         finally:
-            clients.pop(addr, None)
-            found_devices.pop(addr, None)  # 强制下轮重新扫描
+            clients.pop(role, None)
+            found.pop(role, None)
         print(f"🔄 {label} 重连中...")
         await asyncio.sleep(3)
 
@@ -167,12 +172,12 @@ async def command_loop():
         await exec_cmd(c)
 
 async def main():
-    print(f"目标设备：\n  震动棒 {ROD_ADDR}\n  吮吸款 {SUCK_ADDR}")
+    print(f"目标设备（按前缀匹配）：\n  震动棒 {ROD_PREFIX}:xx:xx:xx\n  吮吸款 {SUCK_PREFIX}:xx:xx:xx")
     await asyncio.gather(
         bridge_loop(),
         scanner_loop(),
-        device_loop(ROD_ADDR, "震动棒"),
-        device_loop(SUCK_ADDR, "吮吸款"),
+        device_loop("rod", "震动棒"),
+        device_loop("suck", "吮吸款"),
         command_loop(),
     )
 

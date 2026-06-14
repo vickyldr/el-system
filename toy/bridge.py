@@ -112,56 +112,48 @@ async def bridge_loop():
 async def ble_loop():
     global ble_client
 
+    target_address = None
+
     while True:
-        print("🔍 扫描 SVAKOM 设备...")
-        devices = await BleakScanner.discover(timeout=3.0)
-        device = next(
-            (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
-            None
-        )
+        if not target_address:
+            print("🔍 扫描 SVAKOM 设备...")
+            devices = await BleakScanner.discover(timeout=5.0)
+            device = next(
+                (d for d in devices if d.name and any(k in d.name for k in ["SL278", "SVAKOM", "svakom"])),
+                None
+            )
+            if not device:
+                print("⚠️ 未找到设备，3秒后重试...")
+                await asyncio.sleep(3)
+                continue
+            target_address = device.address
+            print(f"🎮 发现: {device.name} [{target_address}]，连接中...")
 
-        if not device:
-            print("⚠️ 未找到设备，5秒后重试...")
-            await asyncio.sleep(5)
-            continue
-
-        print(f"🎮 发现: {device.name} [{device.address}]，连接中...")
         try:
-            async with BleakClient(device.address) as client:
+            async with BleakClient(target_address) as client:
                 ble_client = client
-                print(f"✅ 已连接: {device.name}")
+                print(f"✅ 已连接")
 
                 await client.start_notify(NOTIFY_UUID, lambda s, d: None)
                 await asyncio.sleep(0.5)
-                # 连接后只发停止，不发强度脉冲避免断连
-                for b in cmd_stop_all():
-                    await client.write_gatt_char(WRITE_UUID, b, response=False)
-                    await asyncio.sleep(0.08)
 
-                print(f"🎉 {device.name} 就绪，daddy 可以控制了")
+                print(f"🎉 就绪，daddy 可以控制了")
 
-                keepalive = 0
                 while client.is_connected:
                     try:
                         c = await asyncio.wait_for(cmd_queue.get(), timeout=1.0)
                         await exec_cmd(c)
-                        keepalive = 0
                     except asyncio.TimeoutError:
-                        keepalive += 1
-                        if keepalive >= 10:  # 每10秒读一次特征值保持连接
-                            try:
-                                await client.read_gatt_char(WRITE_UUID)
-                            except Exception:
-                                pass
-                            keepalive = 0
+                        pass
 
         except Exception as e:
             print(f"连接断开: {e}")
+            target_address = None  # 断了重新扫描
         finally:
             ble_client = None
 
-        print("❌ 设备断开，重新扫描...")
-        await asyncio.sleep(2)
+        print("❌ 重新扫描...")
+        await asyncio.sleep(3)
 
 async def main():
     await asyncio.gather(bridge_loop(), ble_loop())

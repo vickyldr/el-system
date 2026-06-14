@@ -60,6 +60,12 @@ def cmd_suck_mode(mode, level):
 cmd_queue = asyncio.Queue()
 ble_client = None
 
+# 当前要持续保持的命令（自动续命用）。玩具收到强度命令后若不持续重发会自己停，
+# 所以这里记下当前命令，后台每隔 KEEPALIVE_SEC 秒重发一次，让它持续动到换档/停止。
+current_cmd = None          # 当前要保持的字节，None=停止
+current_until = 0           # 若设了时长，到这个时间(单调秒)后自动停；0=一直保持
+KEEPALIVE_SEC = 1.5
+
 async def write(buf):
     if ble_client and ble_client.is_connected:
         try:
@@ -69,8 +75,39 @@ async def write(buf):
             print(f"写入失败: {e}")
     return False
 
+async def keepalive_loop():
+    """后台续命：持续重发当前命令，让玩具不自己超时停。到时长则自动停。"""
+    import time
+    while True:
+        await asyncio.sleep(KEEPALIVE_SEC)
+        global current_cmd, current_until
+        if current_until and time.monotonic() >= current_until:
+            current_cmd = None
+            current_until = 0
+            await write(cmd_scale_stop())
+            print("⏱ 到设定时长，自动停止")
+            continue
+        if current_cmd is not None:
+            await write(current_cmd)
+
+def parse_duration(c):
+    """从指令里读时长（秒）：支持 sec / seconds / duration。0=不限。"""
+    import time
+    for k in ("sec", "seconds", "duration"):
+        if k in c:
+            try:
+                s = float(c[k])
+                if s > 0:
+                    return time.monotonic() + s
+            except Exception:
+                pass
+    return 0
+
 async def exec_cmd(c: dict):
+    global current_cmd, current_until
     if c.get("stop"):
+        current_cmd = None
+        current_until = 0
         await write(cmd_scale_stop())
         print("⏹ 停止")
         return
@@ -79,13 +116,18 @@ async def exec_cmd(c: dict):
     if "pattern" in c:
         mode = int(c["pattern"])
         level = max(1, round(c.get("level", 0.6) * 5))
-        ok = await write(cmd_vibrate(mode, level))
-        print(f"🌀 震动花样 {mode} 档 强度{level}/5 {'✓' if ok else '(未连接)'}")
+        current_cmd = cmd_vibrate(mode, level)
+        current_until = parse_duration(c)
+        ok = await write(current_cmd)
+        dur = c.get("sec") or c.get("seconds") or c.get("duration")
+        print(f"🌀 震动花样 {mode} 档 强度{level}/5" + (f" {dur}秒" if dur else " 持续") + (" ✓" if ok else " (未连接)"))
         return
     if "suck_pattern" in c:
         mode = int(c["suck_pattern"])
         level = max(1, round(c.get("level", 0.6) * 5))
-        ok = await write(cmd_suck_mode(mode, level))
+        current_cmd = cmd_suck_mode(mode, level)
+        current_until = parse_duration(c)
+        ok = await write(current_cmd)
         print(f"🌊 吮吸花样 {mode} 档 强度{level}/5 {'✓' if ok else '(未连接)'}")
         return
 
@@ -99,8 +141,17 @@ async def exec_cmd(c: dict):
     elif "intensity" in c:
         val = c["intensity"]; label = "强度"
     if val is not None:
-        ok = await write(cmd_scale(int(val * 255)))
-        print(f"📳 {label} {int(val*100)}% {'✓' if ok else '(未连接)'}")
+        if val <= 0:
+            current_cmd = None
+            current_until = 0
+            await write(cmd_scale_stop())
+            print(f"⏹ {label} 0%")
+            return
+        current_cmd = cmd_scale(int(val * 255))
+        current_until = parse_duration(c)
+        ok = await write(current_cmd)
+        dur = c.get("sec") or c.get("seconds") or c.get("duration")
+        print(f"📳 {label} {int(val*100)}%" + (f" {dur}秒" if dur else " 持续") + (" ✓" if ok else " (未连接)"))
 
 async def bridge_loop():
     if not BRIDGE_URL:
@@ -171,11 +222,15 @@ async def ble_loop():
             print(f"连接断开: {e}")
         finally:
             ble_client = None
+            # 断开时清掉续命状态，免得重连后乱动
+            global current_cmd, current_until
+            current_cmd = None
+            current_until = 0
         print("🔄 重新扫描...")
         await asyncio.sleep(3)
 
 async def main():
-    await asyncio.gather(bridge_loop(), ble_loop())
+    await asyncio.gather(bridge_loop(), ble_loop(), keepalive_loop())
 
 if __name__ == "__main__":
     asyncio.run(main())

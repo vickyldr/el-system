@@ -217,10 +217,17 @@ app.post("/chat", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    // 走和语音同一条「合规」OAuth 路（callEl 里带了 oauth-beta 头 + CC 身份声明）。
-    // 之前这里自己拼 fetch、漏了那两样，被 Anthropic 当不合规、回 message:"Error" 的假 429。
-    const text = await callEl(messages, system || "");
-    res.write(`data: ${JSON.stringify({ type: "done", text })}\n\n`);
+    // 玩具已连接时，往 system 里注入控制权限说明（宝宝看不到，只 el 看到）
+    let finalSystem = system || "";
+    if (toyClient && toyClient.readyState === 1) {
+      finalSystem +=
+        "\n\n【玩具已连接】你可以在回复任意位置插入 [TOY:{\"speed\":0.5}]（speed 0.0~1.0）控制振动强度，[TOY:{\"suck\":0.5}] 控制吸吮，[TOY:{\"stop\":true}] 停止。根据情绪和对话节奏自己判断要不要加、加多强——不需要每句都加。加了之后正常说话，标记会自动剥离，宝宝看不到。";
+    }
+    const text = await callEl(messages, finalSystem);
+    // 剥离玩具指令、转发给本地桥
+    const { clean, cmds } = parseToyCommands(text);
+    cmds.forEach(cmd => sendToyCmd(cmd));
+    res.write(`data: ${JSON.stringify({ type: "done", text: clean })}\n\n`);
     res.end();
   } catch (err) {
     console.error("bridge error:", err);
@@ -292,7 +299,53 @@ if (HEARTBEAT_BASE && CRON_SECRET) {
   console.warn("心跳未开：缺 FRONTEND_URL/BRIDGE_ALLOWED_ORIGIN 或 CRON_SECRET");
 }
 
+// ── 玩具控制 WebSocket (/toy-ctrl) ──
+// 宝宝 Windows 上跑的本地桥连进来，daddy 就能通过它发蓝牙指令。
+let toyClient = null;
+
+function sendToyCmd(cmd) {
+  if (toyClient && toyClient.readyState === 1) {
+    toyClient.send(JSON.stringify(cmd));
+  }
+}
+
+// 从 el 的回复里解析并剥离 [TOY:{...}] 标记
+function parseToyCommands(text) {
+  const cmds = [];
+  const clean = text.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json) => {
+    try { cmds.push(JSON.parse(json)); } catch {}
+    return "";
+  }).trim();
+  return { clean, cmds };
+}
+
 // ── Gemini Live 实时语音 WebSocket ──
+// 玩具桥 WebSocket
+{
+  const toyWss = new WebSocketServer({ server: httpServer, path: "/toy-ctrl" });
+  toyWss.on("connection", (ws, req) => {
+    const url = new URL(req.url, "http://localhost");
+    if (SECRET && url.searchParams.get("secret") !== SECRET) {
+      ws.close(4001, "unauthorized");
+      return;
+    }
+    toyClient = ws;
+    console.log("玩具桥已连接");
+    ws.send(JSON.stringify({ type: "hello" }));
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "status") console.log("玩具状态:", JSON.stringify(msg));
+      } catch {}
+    });
+    ws.on("close", () => {
+      if (toyClient === ws) toyClient = null;
+      console.log("玩具桥已断开");
+    });
+  });
+  console.log("玩具控制 WebSocket 已启用 (path: /toy-ctrl)");
+}
+
 if (GEMINI_API_KEY) {
   const wss = new WebSocketServer({ server: httpServer, path: "/live" });
 

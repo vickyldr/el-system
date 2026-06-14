@@ -42,7 +42,26 @@ function weapi(obj: any) {
   return { params, encSecKey };
 }
 
+// 带 cookie 的认证请求偶发 -462（风控时灵时不灵），自动重试几次大多能过。
 async function weapiPost(
+  path: string,
+  data: any,
+  cookie?: string,
+  ipOverride?: string,
+): Promise<{ json: any; setCookie: string[] }> {
+  let last = { json: {} as any, setCookie: [] as string[] };
+  for (let attempt = 0; attempt < 4; attempt++) {
+    last = await weapiPostOnce(path, data, cookie, ipOverride);
+    if (last.json?.code === -462 && attempt < 3) {
+      await new Promise((s) => setTimeout(s, 500 * (attempt + 1)));
+      continue;
+    }
+    return last;
+  }
+  return last;
+}
+
+async function weapiPostOnce(
   path: string,
   data: any,
   cookie?: string,
@@ -94,9 +113,25 @@ async function weapiPost(
   return { json, setCookie };
 }
 
+// 用 cookie 取账号（uid + 昵称），并存下 uid。account/get 走 weapiPost（已带 -462 重试）。
+async function fetchAccount(cookie: string): Promise<{ uid: string; name?: string }> {
+  const { json } = await weapiPost("w/nuser/account/get", {}, cookie);
+  const uid = json?.account?.id || json?.profile?.userId;
+  const name = json?.profile?.nickname;
+  if (uid) {
+    await setCache(UID_KEY, String(uid), 60 * 24 * 3600).catch(() => {});
+    return { uid: String(uid), name };
+  }
+  return { uid: "" };
+}
+
 async function cookieAndUid() {
   const cookie = (await getCache(COOKIE_KEY).catch(() => "")) || "";
-  const uid = (await getCache(UID_KEY).catch(() => "")) || "";
+  let uid = String((await getCache(UID_KEY).catch(() => "")) || "");
+  // cookie 在但 uid 丢了：现取一次（自愈），别误报"没登录"。
+  if (cookie && !uid) {
+    uid = (await fetchAccount(cookie).catch(() => ({ uid: "" }))).uid;
+  }
   return { cookie, uid };
 }
 
@@ -142,14 +177,9 @@ export async function setNeteaseCookie(
 ): Promise<{ ok: boolean; uid?: string; name?: string; error?: string }> {
   await setCache(COOKIE_KEY, cookie, 60 * 24 * 3600).catch(() => {});
   try {
-    const { json } = await weapiPost("w/nuser/account/get", {}, cookie);
-    const uid = json?.account?.id || json?.profile?.userId;
-    const name = json?.profile?.nickname;
-    if (uid) {
-      await setCache(UID_KEY, String(uid), 60 * 24 * 3600).catch(() => {});
-      return { ok: true, uid: String(uid), name };
-    }
-    return { ok: false, error: `没读到账号信息（code=${json?.code ?? "?"} ${json?.message ?? ""}）` };
+    const acc = await fetchAccount(cookie);
+    if (acc.uid) return { ok: true, uid: acc.uid, name: acc.name };
+    return { ok: false, error: "没读到账号信息（风控了，多试一两次）" };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e) };
   }

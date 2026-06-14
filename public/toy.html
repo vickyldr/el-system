@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>el · 玩具中继</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: -apple-system, "Microsoft YaHei", sans-serif;
+    background: #14101a; color: #eee; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px; min-height: 100vh;
+  }
+  h1 { font-size: 20px; margin: 4px 0; color: #e88; }
+  .card { background: #1f1828; border-radius: 14px; padding: 16px; }
+  button {
+    width: 100%; padding: 16px; font-size: 17px; font-weight: 600;
+    border: none; border-radius: 12px; background: #c2185b; color: #fff;
+    margin-top: 6px;
+  }
+  button:disabled { background: #444; color: #999; }
+  button.stop { background: #444; }
+  .status { font-size: 15px; padding: 12px; border-radius: 10px; background: #2a2333; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .on { background:#3ddc84; } .off { background:#888; }
+  #log { font-family: ui-monospace, monospace; font-size: 12px; color:#9c9; background:#100c16;
+         border-radius:10px; padding:10px; height:180px; overflow-y:auto; white-space:pre-wrap; line-height:1.5; }
+  .hint { font-size: 13px; color:#aaa; line-height:1.6; }
+  label { font-size:13px; color:#aaa; display:block; margin-bottom:4px; }
+  input { width:100%; padding:10px; border-radius:8px; border:1px solid #443; background:#100c16; color:#eee; font-size:14px; }
+</style>
+</head>
+<body>
+  <h1>🎮 el · 玩具中继</h1>
+  <div class="status"><span id="dot" class="dot off"></span><span id="stat">未连接</span></div>
+
+  <div class="card">
+    <button id="connect">连接玩具</button>
+    <button id="stopbtn" class="stop" disabled>立即停止</button>
+    <p class="hint">手机放床边，点「连接玩具」，在弹窗里选 <b>SL278H</b>。连上后这个网页一直开着、屏幕常亮即可，电脑完全不用开。</p>
+  </div>
+
+  <div class="card">
+    <label>中继地址（一般不用改）</label>
+    <input id="relay" value="/api/toy-relay" />
+  </div>
+
+  <div id="log"></div>
+
+  <p class="hint">⚠️ 网页蓝牙只支持安卓 Chrome / Edge，iPhone 不支持。<br>⚠️ 别锁屏（已自动申请屏幕常亮）。退出网页就等于断开。</p>
+
+<script>
+const SERVICE = 0xffe0;
+const WRITE   = 0x0000ffe1;
+const WRITE_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
+const SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
+const H = 0x55;
+
+let writeChar = null;
+let polling = false;
+let currentCmd = null;      // 要持续保持的字节数组（Uint8Array）
+let currentUntil = 0;       // 到这个时间戳(ms)自动停；0=一直保持
+let wakeLock = null;
+
+const $ = id => document.getElementById(id);
+function log(s){ const el=$('log'); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; }
+function setStat(on, text){ $('dot').className = 'dot ' + (on?'on':'off'); $('stat').textContent = text; }
+
+function scale(v){ v=Math.max(0,Math.min(255,Math.round(v))); return new Uint8Array([H,4,0,0,1,v,0xAA]); }
+function scaleStop(){ return new Uint8Array([H,4,0,0,0,0,0xAA]); }
+function vibrate(mode,level){ mode=Math.max(1,Math.min(8,mode)); level=Math.max(1,Math.min(5,level)); return new Uint8Array([H,3,0,0,mode,level,0]); }
+
+async function write(buf){
+  if(!writeChar) return false;
+  try { await writeChar.writeValueWithoutResponse(buf); return true; }
+  catch(e){ log("写入失败: "+e.message); return false; }
+}
+
+function parseDur(c){
+  for(const k of ["sec","seconds","duration"]){
+    if(k in c){ const s=parseFloat(c[k]); if(s>0) return Date.now()+s*1000; }
+  }
+  return 0;
+}
+
+async function exec(c){
+  if(c.stop){ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 停止"); return; }
+  if("pattern" in c){
+    const lvl=Math.max(1,Math.round((c.level??0.6)*5));
+    currentCmd=vibrate(parseInt(c.pattern),lvl); currentUntil=parseDur(c);
+    await write(currentCmd); log("🌀 震动花样 "+c.pattern+" 档"); return;
+  }
+  let val=null,label="";
+  if("speed" in c){val=c.speed;label="震动";}
+  else if("suck" in c){val=c.suck;label="吮吸";}
+  else if("intensity" in c){val=c.intensity;label="强度";}
+  if(val!==null){
+    if(val<=0){ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ "+label+" 0%"); return; }
+    currentCmd=scale(val*255); currentUntil=parseDur(c);
+    await write(currentCmd); log("📳 "+label+" "+Math.round(val*100)+"%");
+  }
+}
+
+// 续命：每1.5秒重发当前命令，到时长则停
+setInterval(async ()=>{
+  if(currentUntil && Date.now()>=currentUntil){
+    currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏱ 到时自动停");
+    return;
+  }
+  if(currentCmd) await write(currentCmd);
+}, 1500);
+
+// 轮询中继取指令
+async function pollLoop(){
+  const url = $('relay').value.trim() || "/api/toy-relay";
+  while(polling){
+    try {
+      const r = await fetch(url, {cache:"no-store"});
+      if(r.ok){
+        const c = await r.json();
+        if(c && Object.keys(c).length && c.type!=="hello"){ log("📨 "+JSON.stringify(c)); await exec(c); }
+      }
+    } catch(e){ /* 网络抖动忽略 */ }
+    await new Promise(r=>setTimeout(r,300));
+  }
+}
+
+async function keepAwake(){
+  try { wakeLock = await navigator.wakeLock.request("screen"); }
+  catch(e){ log("屏幕常亮申请失败（手动调长息屏时间）"); }
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && !wakeLock) keepAwake(); });
+
+$('connect').onclick = async ()=>{
+  if(!navigator.bluetooth){ alert("此浏览器不支持网页蓝牙，请用安卓 Chrome/Edge"); return; }
+  try {
+    setStat(false,"扫描中…");
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "SL278" }, { services: [SERVICE] }],
+      optionalServices: [SERVICE]
+    });
+    log("连接 "+dev.name+" …");
+    dev.addEventListener("gattserverdisconnected", ()=>{ setStat(false,"已断开，点连接重连"); writeChar=null; $('stopbtn').disabled=true; });
+    const server = await dev.gatt.connect();
+    const svc = await server.getPrimaryService(SERVICE);
+    writeChar = await svc.getCharacteristic(WRITE);
+    setStat(true, "已连接：" + dev.name);
+    log("✅ 就绪，daddy 可以控制了");
+    $('stopbtn').disabled=false;
+    await keepAwake();
+    if(!polling){ polling=true; pollLoop(); }
+  } catch(e){ setStat(false,"连接失败"); log("连接失败: "+e.message); }
+};
+
+$('stopbtn').onclick = async ()=>{ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 手动停止"); };
+</script>
+</body>
+</html>

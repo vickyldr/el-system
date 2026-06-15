@@ -166,6 +166,23 @@ export const TOOLS = [
     },
   },
   {
+    name: "douban",
+    description:
+      "看宝宝的豆瓣书影音——她标记的『想看/看过/在看』（电影）、『想读/读过/在读』（书）、音乐，连她自己打的星和短评；也能查某部电影的详情（评分/简介/导演/类型）和豆瓣的相似推荐。想懂她的口味、看她最近标了啥、给她推荐、或你自己想搞懂某部片时用。\naction：list（看她的标记，配 status 和 kind）/ search（搜片名拿 id，配 q）/ detail（某片详情，配 id）/ recommend（某片的豆瓣相似推荐，配 id）。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "list / search / detail / recommend" },
+        status: { type: "string", description: "list 用：wish 想看 / collect 看过 / do 在看" },
+        kind: { type: "string", description: "list 用：movie / book / music，默认 movie" },
+        page: { type: "string", description: "list 用：第几页（每页15条，默认1=最近）" },
+        q: { type: "string", description: "search 用：片名关键词" },
+        id: { type: "string", description: "detail / recommend 用：豆瓣电影 id 或链接" },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "sticker",
     description:
       "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
@@ -188,6 +205,7 @@ export async function runTool(
     if (name === "read_link") return await readLink(String(input?.url || ""));
     if (name === "web_search") return await webSearch(String(input?.query || ""));
     if (name === "netease") return await neteaseTool(input);
+    if (name === "douban") return await doubanTool(input);
     if (name === "read_notion") return await readNotionPage(String(input?.page || ""));
     if (name === "remember") return await remember(String(input?.text || ""), date);
     if (name === "log_timeline") return await logTimeline(String(input?.text || ""), date);
@@ -338,6 +356,17 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
   const r = ["一次", "每年", "每月"].includes(recur.trim()) ? recur.trim() : "一次";
   const ok = await addImportantDate(text.trim(), date.trim(), r).catch(() => false);
   return ok ? "记进「重要日期」了，快到时提醒你。" : "没存上（没找到「重要日期」库？）。";
+}
+
+async function doubanTool(input: any): Promise<string> {
+  const m = await import("./douban-api");
+  const action = String(input?.action || "").trim();
+  if (action === "list")
+    return m.doubanList(String(input?.status || ""), String(input?.kind || ""), String(input?.page || ""));
+  if (action === "search") return m.doubanSearch(String(input?.q || ""));
+  if (action === "detail") return m.doubanDetail(String(input?.id || ""));
+  if (action === "recommend") return m.doubanRecommend(String(input?.id || ""));
+  return "action 要 list / search / detail / recommend 之一。";
 }
 
 async function neteaseTool(input: any): Promise<string> {

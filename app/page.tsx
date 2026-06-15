@@ -43,6 +43,9 @@ function base64ToPCMFloat32(b64: string): Float32Array {
 
 type Tab = "now" | "find" | "us";
 
+// 从「此刻」引用一条去聊天里回复 el（他会知道自己被回复了什么）。
+type Quote = { label: string; text: string };
+
 // 统一的线性图标（描边跟随当前文字色，跟玻璃质感更配，告别杂乱 emoji）。
 function Icon({ name, size = 22 }: { name: string; size?: number }) {
   const p = {
@@ -175,6 +178,7 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("now");
+  const [quote, setQuote] = useState<Quote | null>(null); // 从此刻引用来回复 el 的内容
   const [refreshKey, setRefreshKey] = useState(0);
   const [pull, setPull] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -238,7 +242,7 @@ export default function Home() {
         </div>
       )}
       {tab === "find" ? (
-        <FindTab />
+        <FindTab quote={quote} clearQuote={() => setQuote(null)} />
       ) : (
         <div
           className="content"
@@ -248,7 +252,17 @@ export default function Home() {
             transition: dragging.current ? "none" : "transform 0.25s ease",
           }}
         >
-          {tab === "now" ? <NowTab key={refreshKey} /> : <UsTab key={refreshKey} />}
+          {tab === "now" ? (
+            <NowTab
+              key={refreshKey}
+              onQuote={(q) => {
+                setQuote(q);
+                setTab("find");
+              }}
+            />
+          ) : (
+            <UsTab key={refreshKey} />
+          )}
         </div>
       )}
 
@@ -325,7 +339,7 @@ function greeting(): string {
   return "这个点还醒着，陪陪我";
 }
 
-function NowTab() {
+function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(0); // 客户端算，避免 hydration 不一致
@@ -377,7 +391,7 @@ function NowTab() {
 
       {loading && <SkelList count={2} lines={2} />}
 
-      {!loading && hasAny && <ElStatusCard status={status!} />}
+      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
 
       <CountRow days={days} milestone={milestone} />
 
@@ -389,7 +403,7 @@ function NowTab() {
 /* ───────────── El 状态（心情/天气/推歌 tab 切换） ───────────── */
 type StatusTab = "mood" | "weather" | "song";
 
-function ElStatusCard({ status }: { status: Status }) {
+function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
   const hasMood = !!(status.mood || status.thought || status.el_note);
   const hasWeather = !!status.weather;
   const hasSong = !!status.song_recommendation;
@@ -427,6 +441,17 @@ function ElStatusCard({ status }: { status: Status }) {
           <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
           {status.thought && <div className="meta" style={{ marginTop: 8 }}>{status.thought}</div>}
           {status.el_note && <div className="meta" style={{ marginTop: 8, color: "var(--ink)" }}>{status.el_note}</div>}
+          {(status.mood || status.thought) && (
+            <button
+              type="button"
+              className="status-reply"
+              onClick={() =>
+                onQuote({ label: "心情", text: [status.mood, status.thought].filter(Boolean).join(" / ") })
+              }
+            >
+              ↩ 回复这条
+            </button>
+          )}
         </div>
       )}
 
@@ -438,6 +463,18 @@ function ElStatusCard({ status }: { status: Status }) {
             {status.weather!.temp}° {status.weather!.desc}
           </div>
           {status.weather!.outfit && <div className="meta" style={{ marginTop: 8 }}>👕 {status.weather!.outfit}</div>}
+          <button
+            type="button"
+            className="status-reply"
+            onClick={() =>
+              onQuote({
+                label: "天气",
+                text: `${status.weather!.temp}° ${status.weather!.desc}${status.weather!.outfit ? " · " + status.weather!.outfit : ""}`,
+              })
+            }
+          >
+            ↩ 回复这条
+          </button>
         </div>
       )}
 
@@ -456,6 +493,18 @@ function ElStatusCard({ status }: { status: Status }) {
               {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
             </>
           )}
+          <button
+            type="button"
+            className="status-reply"
+            onClick={() =>
+              onQuote({
+                label: "推歌",
+                text: `${status.song_recommendation}${status.song_reason ? " — " + status.song_reason : ""}`,
+              })
+            }
+          >
+            ↩ 回复这条
+          </button>
         </div>
       )}
 
@@ -832,6 +881,7 @@ type Msg = {
   image?: string;
   call?: boolean;
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
+  quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
 };
 
 // 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
@@ -1040,7 +1090,7 @@ function NotifyButton() {
   );
 }
 
-function FindTab() {
+function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -1508,18 +1558,25 @@ function FindTab() {
     if (near && !touching.current) stickBottom.current = true;
   }
 
-  async function post(text: string, image?: string, hint?: string) {
+  async function post(text: string, image?: string, hint?: string, q?: Quote) {
     stickBottom.current = true; // 发消息就回到底部跟着走
-    if ((!text && !image) || sending) return;
+    if ((!text && !image && !q) || sending) return;
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
-    setMsgs((m) => [...m, { role: "user", content: text, image: image || undefined, ts: Date.now() }]);
+    // 带「此刻」引用时，给 el 的消息里挑明：她在回复你写的哪条（心情/天气/推歌）+ 内容。
+    const apiMessage = q
+      ? `（我在回复你「此刻」写的${q.label}：「${q.text}」）${text ? "\n" + text : ""}`
+      : text;
+    setMsgs((m) => [
+      ...m,
+      { role: "user", content: text, image: image || undefined, quote: q, ts: Date.now() },
+    ]);
     setSending(true);
     try {
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, image, hint, history }),
+        body: JSON.stringify({ message: apiMessage, image, hint, history }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -1544,14 +1601,16 @@ function FindTab() {
     const text = input.trim();
     const image = pendingImage;
     const hint = pendingHint;
-    if (!text && !image) return;
+    const q = quote;
+    if (!text && !image && !q) return;
     setInput("");
     setPendingImage(null);
     setPendingHint(undefined);
+    clearQuote();
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
-    void post(text, image || undefined, hint);
+    void post(text, image || undefined, hint, q || undefined);
   }
 
   // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。
@@ -1662,6 +1721,12 @@ function FindTab() {
                     alt=""
                     onLoad={() => stickBottom.current && scrollToBottom(false)}
                   />
+                )}
+                {g.m.quote && (
+                  <div className="bubble-quote">
+                    <span className="bubble-quote-label">{g.m.quote.label}</span>
+                    {g.m.quote.text}
+                  </div>
                 )}
                 {g.m.content && <div className="bubble">{g.m.content}</div>}
                 <div className="msg-foot">
@@ -1814,6 +1879,18 @@ function FindTab() {
         </div>
       )}
 
+      {quote && (
+        <div className="quote-bar">
+          <div className="quote-bar-body">
+            <span className="quote-bar-label">回复 El 的{quote.label}</span>
+            <span className="quote-bar-text">{quote.text}</span>
+          </div>
+          <button type="button" className="quote-bar-x" onClick={clearQuote} aria-label="取消引用">
+            ✕
+          </button>
+        </div>
+      )}
+
       <form className="composer" onSubmit={send}>
         <input
           ref={fileRef}
@@ -1868,7 +1945,7 @@ function FindTab() {
         <button
           type="submit"
           aria-label="发送"
-          disabled={sending || (!input.trim() && !pendingImage)}
+          disabled={sending || (!input.trim() && !pendingImage && !quote)}
         >
           <Icon name="send" size={20} />
         </button>

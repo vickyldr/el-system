@@ -24,6 +24,7 @@ async function relayFetch(
   url: string,
   headers: Record<string, string> = {},
   method = "GET",
+  body?: string,
 ): Promise<RelayResp> {
   if (!RELAY_URL) throw new Error("没配 relay（RELAY_URL / NETEASE_RELAY）");
   const r = await fetch(RELAY_URL.replace(/\/$/, ""), {
@@ -32,7 +33,7 @@ async function relayFetch(
       "Content-Type": "application/json",
       ...(RELAY_SECRET ? { "X-Relay-Secret": RELAY_SECRET } : {}),
     },
-    body: JSON.stringify({ url, method, headers }),
+    body: JSON.stringify({ url, method, headers, ...(body != null ? { body } : {}) }),
     signal: AbortSignal.timeout(15000),
   });
   if (!r.ok) throw new Error(`relay ${r.status}`);
@@ -314,4 +315,38 @@ export async function doubanMovieInfo(id: string): Promise<
     genres: j.genres || [],
     url: `https://movie.douban.com/subject/${id}/`,
   };
+}
+
+// ── 写她真豆瓣「想看」（要主账户 cookie，DOUBAN_USER_COOKIE）──
+// frodo 写接口要 POST 签名（POST&path&ts）+ 登录态 cookie。端点未必一次猜对，先 best-effort，
+// 配了 cookie 才会真写；没配只在 app 里记。具体能不能写，先用 VPS 测试验证再依赖。
+const USER_COOKIE = () => process.env.DOUBAN_USER_COOKIE || "";
+
+export async function doubanMarkWish(idRaw: string): Promise<{ ok: boolean; detail: string }> {
+  const mid = idOf(idRaw);
+  if (!mid) return { ok: false, detail: "no-id" };
+  if (!USER_COOKIE()) return { ok: false, detail: "no-cookie" }; // 没配主账户 cookie 就不写
+  try {
+    const fullPath = `/api/v2/movie/${mid}/interest`;
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = crypto
+      .createHmac("sha1", FRODO_SECRET)
+      .update(`POST&${encodeURIComponent(fullPath)}&${ts}`)
+      .digest("base64");
+    const qs = `apikey=${DOUBAN_APIKEY}&_ts=${ts}&_sig=${encodeURIComponent(sig)}`;
+    const resp = await relayFetch(
+      `https://frodo.douban.com${fullPath}?${qs}`,
+      {
+        "User-Agent": FRODO_UA,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: USER_COOKIE(),
+      },
+      "POST",
+      "interest=mark",
+    );
+    const ok = resp.status === 200;
+    return { ok, detail: ok ? "ok" : `${resp.status} ${(resp.body || "").slice(0, 100)}` };
+  } catch (e) {
+    return { ok: false, detail: e instanceof Error ? e.message : "err" };
+  }
 }

@@ -5,6 +5,7 @@ import {
   doubanWatchedIds,
   doubanSimilar,
   doubanMovieInfo,
+  doubanMarkWish,
   type DBCand,
 } from "@/lib/douban-api";
 
@@ -99,19 +100,22 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}) as any);
-  const action = String(body?.action || ""); // want | skip | seen
+  const action = String(body?.action || ""); // want | skip
   const state = await loadState();
   const cur = state.current;
-  if (cur && ["want", "skip", "seen"].includes(action)) {
+  let wrote: boolean | undefined;
+  if (cur && (action === "want" || action === "skip")) {
     if (!state.seenIds.includes(cur.id)) state.seenIds.push(cur.id);
     if (action === "want" && !state.want.some((w) => w.id === cur.id)) {
       state.want.push({ id: cur.id, title: cur.title });
-      // TODO Phase 2：写进她真豆瓣「想看」（要主账户 cookie + 先验证写接口）。
+      // 写进她真豆瓣「想看」（配了主账户 cookie 才会真写；best-effort，不阻塞推下一部）
+      const r = await doubanMarkWish(cur.id).catch(() => ({ ok: false, detail: "err" }));
+      wrote = r.ok;
     }
     state.current = null;
   }
   const movie = await generate(state).catch(() => null);
   state.current = movie;
   await saveState(state);
-  return NextResponse.json({ movie: movie || null });
+  return NextResponse.json({ movie: movie || null, wrote });
 }

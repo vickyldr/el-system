@@ -542,7 +542,7 @@ function MoviePane() {
     };
   }, []);
 
-  async function react(action: "want" | "skip" | "seen") {
+  async function react(action: "want" | "skip") {
     if (busy) return;
     setBusy(true);
     setMovie(undefined);
@@ -606,14 +606,11 @@ function MoviePane() {
         </div>
       </div>
       <div className="status-actions">
-        <button type="button" className="status-reply" disabled={busy} onClick={() => react("want")}>
-          想看
+        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+          ＋ 想看
         </button>
         <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
           不想看
-        </button>
-        <button type="button" className="status-reply" disabled={busy} onClick={() => react("seen")}>
-          看过了
         </button>
       </div>
     </div>

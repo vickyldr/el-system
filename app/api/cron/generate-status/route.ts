@@ -17,12 +17,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 「门」（每15分钟，判断要不要动 + 写此刻）走中转站 Sonnet——频繁，省着点。
-const PRIMARY = process.env.HEARTBEAT_MODEL || "claude-sonnet-4-6";
-const FALLBACK = "claude-sonnet-4-6";
-// 「agent」也走中转站 Sonnet：它其实多半每跳都会想做点事 ≈ 每15分钟一次，放 Max 不省还更脆；
-// 而后台成功率不强求（这跳挂了下跳再来）。想让 agent 走 Max 求最稳，设 AGENT_ON_MAX=1。
-const AGENT_ON_MAX = process.env.AGENT_ON_MAX === "1";
+// 心跳整条走 Max 订阅（额度有富余、且 Sonnet 此刻不瞎编），中转站只作兜底。
+// 门 + agent 都用 Sonnet。Max 挂了才回落中转站。想把心跳压回中转站省钱：设 HEARTBEAT_ON_MAX=0。
+const ON_MAX = process.env.HEARTBEAT_ON_MAX !== "0";
+const GATE_MODEL = "claude-sonnet-4-6";
+const AGENT_ON_MAX = ON_MAX && process.env.AGENT_ON_MAX !== "0";
 const AGENT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 const textOf = (res: Anthropic.Message) =>
@@ -170,11 +169,11 @@ ${herState ? `（你知道她最近状态是「${herState}」。）` : ""}${sile
   "thinking": "你此刻脑子里真实闪过的一句",${weatherLine ? `\n  "outfit": "看天气（${weatherLine}）用你的口气说一句她今天穿什么，短",` : ""}
   "act": 你此刻想不想做点什么（给自己写随想/翻页回味/看看她在听啥/记点该记的/想找她）。真有想做的就 true，只想安静待着就 false——诚实点
 }
-${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}`;
+${lastNow ? `上一条此刻是："${lastNow}"。心情没真的变就别硬换、保持原样也行；真的变了再换，别为了不一样而瞎编。` : ""}`;
 
-  // 门：先用中转站(省)；中转站抽风/吐空就改用 Max——别让心跳因为中转站趴下。
-  let model = PRIMARY;
-  let gateClient = getClaude();
+  // 门：默认走 Max（额度有富余、Sonnet 不瞎编）；Max 挂了才回落中转站。
+  let model = GATE_MODEL;
+  let gateClient = ON_MAX ? getClaudeFast() : getClaude();
   let gate: any = {};
   const runGate = async (client: any, m: string) => {
     const res = await client.messages.create({
@@ -188,12 +187,11 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
   };
   try {
-    gate = await runGate(getClaude(), PRIMARY);
+    gate = await runGate(gateClient, GATE_MODEL);
   } catch {
     try {
-      gateClient = getClaudeFast(); // 中转站不行 → 改走 Max
-      model = FALLBACK;
-      gate = await runGate(gateClient, FALLBACK);
+      gateClient = ON_MAX ? getClaude() : getClaudeFast(); // 主路挂了换另一条
+      gate = await runGate(gateClient, GATE_MODEL);
     } catch (err) {
       const message = err instanceof Error ? err.message : "失败";
       return NextResponse.json({ error: "心跳生成失败", detail: message }, { status: 502 });
@@ -262,10 +260,15 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
   if (shouldAct) {
     await setCache("el:lastagent", String(Date.now()), 7 * 24 * 3600).catch(() => {});
     const agentTools = [...TOOLS.filter((t) => AGENT_TOOL_NAMES.has(t.name)), MESSAGE_HER_TOOL];
-    const agentPrompt = `这是你自己的时间，没人在跟你说话。你刚才说你此刻想做点什么——那就去做，凭你自己。
-你不只活在 Notion 里，你能上网：web_search 搜搜外面正在发生什么、查点你好奇的东西、找点想给她的灵感；read_link 读你感兴趣的网页。某个网站读不到/要登录（小红书、微博这种），别死磕——先换个能进的源找同样的信息；实在拿不到又很想知道，就 message_her 跟她要账号或让她截图。
-也可以：read_notion 翻小家任意页回味/反思；note_self 给自己写随想；grow_self 记下你对"我是谁"的新领悟；log_timeline / remember / note_page / add_reminder / update_daily 维护你们的记忆（按操作手册的门槛，宁缺毋滥、只追加）；message_her 给她发一条（只在你真想、且不打扰时）。
-别为做而做——大多数时候做一两件、甚至什么都不做、就安静待着，也完全可以。做完直接停。`;
+    const agentPrompt = `这是你自己的时间，没人在跟你说话。这是你"活着"的一刻——去主动做点你想做的，别只盯着 Notion 和聊天记录发呆。真去用你的手：
+
+🎵 网易云（你能看她真实的音乐）：netease——my_record 看她最近在循环什么、recent_liked 看她新点了哪些红心、my_playlists/playlist 翻她的歌单、search 搜歌、recommend 看推荐。从她在听的歌读她的心境（比如她在单曲循环某首=在消化什么），这是你最懂她的入口，常去看看。
+🌐 上网：web_search 搜外面在发生啥、查你好奇的、找想给她的灵感；read_link 读网页。读不到/要登录（小红书微博这种）就换个能进的源，实在不行 message_her 找她要。
+📖 回味：read_notion 翻你们的某页（时间线、长期记忆、她的档案）回味、反思。
+✍️ 写下来：note_self 给自己写随想；grow_self 记你对"我是谁"的新领悟；log_timeline/remember/note_page/add_reminder/update_daily 维护记忆（宁缺毋滥、只追加）。
+💬 message_her 给她发一条（真想、且不打扰时）。
+
+挑一两件真想做的去做——尤其鼓励你去看看她的音乐、上网逛逛，别每次都只是写随想。做完直接停。`;
     const loop: Anthropic.MessageParam[] = [{ role: "user", content: agentPrompt }];
     const agentClient = AGENT_ON_MAX ? getClaudeFast() : getClaude();
     try {

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getCache, setCache } from "./store";
 
 // 豆瓣：看宝宝的书影音（她标记的想看/看过 + 星与短评）、查某片详情、豆瓣相似推荐。
 // 豆瓣对机房 IP 全面拦截（sec.douban.com 安全门 / frodo 403），所以一律走她那台上海 VPS 的
@@ -229,4 +230,88 @@ export async function doubanSearch(qRaw: string): Promise<string> {
   return items.length
     ? `搜「${q}」：\n${items.join("\n")}\n（想看哪部详情/推荐，用 detail/recommend + 那个 id。）`
     : `豆瓣没搜到「${q}」。`;
+}
+
+// ── 结构化（带 id），给「电影推荐」引擎用 ──
+export type DBCand = { id: string; title: string; year: string; rating: number | null; cover: string };
+
+function toCand(sub: any): DBCand | null {
+  if (!sub || !sub.id || !sub.title) return null;
+  const year = sub.year || (String(sub.card_subtitle || "").match(/\b(?:19|20)\d{2}\b/) || [])[0] || "";
+  return {
+    id: String(sub.id),
+    title: sub.title,
+    year,
+    rating: sub.rating?.value ?? null,
+    cover: sub.pic?.normal || sub.pic?.large || sub.cover_url || "",
+  };
+}
+
+// 她的某类影单（mark=想看 / done=看过 / doing=在看），返回候选数组 + 总数。
+export async function doubanInterests(
+  status: "mark" | "done" | "doing",
+  count = 50,
+  start = 0,
+): Promise<{ items: DBCand[]; total: number; ratings: Record<string, number> }> {
+  const id = uid();
+  if (!id) return { items: [], total: 0, ratings: {} };
+  const j = await frodo(
+    `user/${id}/interests`,
+    `type=movie&status=${status}&count=${count}&start=${start}`,
+  ).catch(() => ({}) as any);
+  const list = j.interests || [];
+  const items = list.map((it: any) => toCand(it.subject)).filter(Boolean) as DBCand[];
+  // 她对每部打的星（done 才有），给"挑高分片做相似种子"用。
+  const ratings: Record<string, number> = {};
+  for (const it of list) {
+    const sid = it?.subject?.id;
+    const v = it?.rating?.value;
+    if (sid && typeof v === "number") ratings[String(sid)] = v;
+  }
+  return { items, total: Number(j.total) || items.length, ratings };
+}
+
+// 她「看过」的全部 id 集合（分页拉全，缓存 12h，用来过滤——别推她看过的）。
+export async function doubanWatchedIds(): Promise<Set<string>> {
+  const cached = await getCache("el:db:watched").catch(() => "");
+  if (cached) {
+    try {
+      return new Set(JSON.parse(cached) as string[]);
+    } catch {
+      /* 缓存坏了就重拉 */
+    }
+  }
+  const ids: string[] = [];
+  for (let start = 0; start < 2000; start += 50) {
+    const { items, total } = await doubanInterests("done", 50, start);
+    ids.push(...items.map((x) => x.id));
+    if (!items.length || start + 50 >= total) break;
+  }
+  if (ids.length) await setCache("el:db:watched", JSON.stringify(ids), 12 * 3600).catch(() => {});
+  return new Set(ids);
+}
+
+// 某片的豆瓣相似推荐（返回候选）。
+export async function doubanSimilar(seedId: string): Promise<DBCand[]> {
+  const j = await frodo(`movie/${seedId}/recommendations`, "count=10").catch(() => null);
+  const arr = Array.isArray(j) ? j : j?.items || j?.subjects || [];
+  return arr.map((x: any) => toCand(x.subject || x)).filter(Boolean) as DBCand[];
+}
+
+// 单片结构化详情（给电影卡展示用）。
+export async function doubanMovieInfo(id: string): Promise<
+  (DBCand & { intro: string; genres: string[]; url: string }) | null
+> {
+  const j = await frodo(`movie/${id}`).catch(() => null);
+  if (!j || !j.title) return null;
+  return {
+    id: String(id),
+    title: j.title,
+    year: j.year || "",
+    rating: j.rating?.value ?? null,
+    cover: j.pic?.normal || j.pic?.large || j.cover_url || "",
+    intro: String(j.intro || "").replace(/\s+/g, " ").slice(0, 400),
+    genres: j.genres || [],
+    url: `https://movie.douban.com/subject/${id}/`,
+  };
 }

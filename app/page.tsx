@@ -1292,14 +1292,14 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
   }
 
   // Gemini 给文字 → MiniMax（她捏的音色）念出来，走已解锁的 AudioContext 播放。
-  async function speakReply(ac: AudioContext, text: string) {
+  async function speakReply(ac: AudioContext, text: string, emotion?: string) {
     botSpeaking.current = true;
     setCallState("speaking");
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, fast: true }),
+        body: JSON.stringify({ text, fast: true, emotion }),
       });
       if (!r.ok) throw new Error("tts");
       const buf = await ac.decodeAudioData(await r.arrayBuffer());
@@ -1359,7 +1359,7 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
             addCallMsg("user", msg.text); // 你在电话里说的话
           } else if (msg.type === "text" && msg.text) {
             addCallMsg("assistant", msg.text); // el 的回复
-            void speakReply(ac, msg.text);
+            void speakReply(ac, msg.text, msg.emotion); // 带上大脑挑的情绪，让海螺按语气念
           }
         } catch {}
       };

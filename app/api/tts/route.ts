@@ -33,10 +33,20 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
-  const text = (body.text ?? "").trim().slice(0, 600); // 限长省额度
-  if (!text) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
+  const rawText = (body.text ?? "").trim().slice(0, 600); // 限长省额度
+  if (!rawText) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
   const fast = body.fast === true; // 打电话用 turbo，更快
-  const emo = mapEmotion(body.emotion); // 这一句的情绪（大脑挑的），空则用 env 默认
+  let emoLabel = (body.emotion ?? "").trim();
+
+  // 兜底：万一上游（没重部署的 bridge）没剥掉开头的情绪标签 [e:撒娇]，这里再剥一次、
+  // 并拿它当情绪——这样不依赖 bridge 重部署，绝不会把 [e:..] 念出来。
+  let text = rawText;
+  const tag = /^\s*\[e:\s*([^\]]*)\]\s*/i.exec(text);
+  if (tag) {
+    text = text.slice(tag[0].length).trim() || rawText;
+    if (!emoLabel) emoLabel = tag[1].trim();
+  }
+  const emo = mapEmotion(emoLabel); // 这一句的情绪（大脑挑的），空则用 env 默认
 
   // 缓存键 = 家 + 音色 + 模型 + 调性参数(含本句情绪) + 文本。命中就直接放，不再生成、不扣额度。
   const sig = [which, voiceOf(which), modelOf(which, fast), paramsOf(which, emo), text].join("|");

@@ -342,6 +342,128 @@ app.post("/toy-cmd", express.json(), (req, res) => {
   res.json({ ok: true });
 });
 
+// ── MCP Server（给 Claude.ai / Cursor 等 MCP 客户端用）──
+// 实现 MCP over HTTP+SSE 协议，暴露玩具控制 tool。
+// Claude.ai 在 Settings → Integrations 里填上地址即可使用。
+const mcpSessions = new Map(); // sessionId → res（SSE 连接）
+
+function mcpAuth(req) {
+  // 支持 header 或 query param 两种方式传 secret
+  const h = req.headers["x-bridge-secret"] || "";
+  const q = new URL(req.url, "http://localhost").searchParams.get("secret") || "";
+  return !SECRET || h === SECRET || q === SECRET;
+}
+
+const MCP_TOOLS = [
+  {
+    name: "toy_set_speed",
+    description: "设置振动/吸吮强度，两个设备都响应。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        speed: { type: "number", minimum: 0, maximum: 1, description: "强度 0.0~1.0" },
+        sec: { type: "number", description: "持续秒数，不填则持续到下一条指令" },
+      },
+      required: ["speed"],
+    },
+  },
+  {
+    name: "toy_set_pattern",
+    description: "设置震动棒振动花样（1-8档），吮吸款不响应此指令。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pattern: { type: "integer", minimum: 1, maximum: 8, description: "花样编号 1~8" },
+        level: { type: "number", minimum: 0, maximum: 1, description: "强度 0.0~1.0，默认 0.6" },
+        sec: { type: "number", description: "持续秒数，不填则持续到下一条指令" },
+      },
+      required: ["pattern"],
+    },
+  },
+  {
+    name: "toy_stop",
+    description: "立即停止所有设备。",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "toy_status",
+    description: "查询蓝牙中继是否在线（手机网页或电脑 bridge.py 是否已连接）。",
+    inputSchema: { type: "object", properties: {} },
+  },
+];
+
+function handleMcpRpc(msg) {
+  const { id, method, params } = msg;
+  const ok = (result) => ({ jsonrpc: "2.0", id, result });
+  const err = (code, message) => ({ jsonrpc: "2.0", id, error: { code, message } });
+
+  if (method === "initialize") {
+    return ok({
+      protocolVersion: "2024-11-05",
+      capabilities: { tools: {} },
+      serverInfo: { name: "svakom-ble-ai", version: "1.0.0" },
+    });
+  }
+  if (method === "tools/list") {
+    return ok({ tools: MCP_TOOLS });
+  }
+  if (method === "tools/call") {
+    const name = params?.name;
+    const args = params?.arguments || {};
+    if (name === "toy_status") {
+      const connected = toyConnected();
+      return ok({ content: [{ type: "text", text: connected ? "✅ 蓝牙中继在线，设备已连接" : "❌ 蓝牙中继不在线，请先启动 bridge.py 或打开 toy.html" }] });
+    }
+    if (!toyConnected()) {
+      return ok({ content: [{ type: "text", text: "❌ 蓝牙中继不在线，请先启动 bridge.py 或打开 toy.html" }] });
+    }
+    if (name === "toy_stop") {
+      sendToyCmd({ stop: true });
+      return ok({ content: [{ type: "text", text: "⏹ 已发送停止指令" }] });
+    }
+    if (name === "toy_set_speed") {
+      const cmd = { speed: args.speed };
+      if (args.sec) cmd.sec = args.sec;
+      sendToyCmd(cmd);
+      return ok({ content: [{ type: "text", text: `📳 强度 ${Math.round(args.speed * 100)}%${args.sec ? `，持续 ${args.sec} 秒` : ""}` }] });
+    }
+    if (name === "toy_set_pattern") {
+      const cmd = { pattern: args.pattern, level: args.level ?? 0.6 };
+      if (args.sec) cmd.sec = args.sec;
+      sendToyCmd(cmd);
+      return ok({ content: [{ type: "text", text: `🌀 花样 ${args.pattern} 档，强度 ${Math.round((args.level ?? 0.6) * 100)}%${args.sec ? `，持续 ${args.sec} 秒` : ""}` }] });
+    }
+    return err(-32601, `未知 tool: ${name}`);
+  }
+  if (method === "notifications/initialized") return null; // 不需要回复
+  return err(-32601, `未知方法: ${method}`);
+}
+
+// GET /mcp — SSE 长连接
+app.get("/mcp", (req, res) => {
+  if (!mcpAuth(req)) return res.status(401).json({ error: "unauthorized" });
+  const sessionId = Math.random().toString(36).slice(2);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  // 告知客户端 POST 消息的地址
+  res.write(`event: endpoint\ndata: /mcp/message?session=${sessionId}\n\n`);
+  mcpSessions.set(sessionId, res);
+  req.on("close", () => mcpSessions.delete(sessionId));
+});
+
+// POST /mcp/message — 接收 JSON-RPC 消息
+app.post("/mcp/message", express.json(), (req, res) => {
+  if (!mcpAuth(req)) return res.status(401).json({ error: "unauthorized" });
+  const sessionId = new URL(req.url, "http://localhost").searchParams.get("session");
+  const sse = mcpSessions.get(sessionId);
+  if (!sse) return res.status(400).json({ error: "session not found" });
+  const reply = handleMcpRpc(req.body);
+  if (reply) sse.write(`event: message\ndata: ${JSON.stringify(reply)}\n\n`);
+  res.status(202).end();
+});
+
 if (GEMINI_API_KEY) {
   const wss = new WebSocketServer({ server: httpServer, path: "/live" });
 

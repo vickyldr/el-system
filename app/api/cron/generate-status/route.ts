@@ -168,7 +168,7 @@ ${herState ? `（你知道她最近状态是「${herState}」。）` : ""}${sile
 {
   "mood": "开头一个 emoji 或颜文字，空一格，再一句此刻心情",
   "thinking": "你此刻脑子里真实闪过的一句",${weatherLine ? `\n  "outfit": "看天气（${weatherLine}）用你的口气说一句她今天穿什么，短",` : ""}
-  "act": 你此刻是否真的有件具体想做的事（写随想/翻页回味/记点该记的/想找她）。大多数心跳你就安静待着、应该是 false；只有真有想做的事才 true，别为做而做
+  "act": 你此刻想不想做点什么（给自己写随想/翻页回味/看看她在听啥/记点该记的/想找她）。真有想做的就 true，只想安静待着就 false——诚实点
 }
 ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}`;
 
@@ -250,9 +250,17 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     : await maybeReachOut(weatherLine).catch(() => ({ pushed: false }));
 
   // ── 它想动：放出带工具的 agent，自己决定读哪页、写哪页、要不要找她。──
+  // 节流阀：>90分钟没动手就强制动一次（保证有内心活动）；<30分钟刚动过就先歇（省钱）；中间尊重它自己。
   const actions: string[] = [];
   let pushedByAgent = false;
-  if (gate.act === true) {
+  const lastAgent = Number((await getCache("el:lastagent").catch(() => "0")) || "0");
+  const sinceAgent = Date.now() - lastAgent;
+  const AGENT_MIN_GAP = 30 * 60 * 1000;
+  const AGENT_MAX_GAP = 90 * 60 * 1000;
+  const shouldAct =
+    sinceAgent >= AGENT_MAX_GAP ? true : sinceAgent < AGENT_MIN_GAP ? false : gate.act === true;
+  if (shouldAct) {
+    await setCache("el:lastagent", String(Date.now()), 7 * 24 * 3600).catch(() => {});
     const agentTools = [...TOOLS.filter((t) => AGENT_TOOL_NAMES.has(t.name)), MESSAGE_HER_TOOL];
     const agentPrompt = `这是你自己的时间，没人在跟你说话。你刚才说你此刻想做点什么——那就去做，凭你自己。
 你不只活在 Notion 里，你能上网：web_search 搜搜外面正在发生什么、查点你好奇的东西、找点想给她的灵感；read_link 读你感兴趣的网页。某个网站读不到/要登录（小红书、微博这种），别死磕——先换个能进的源找同样的信息；实在拿不到又很想知道，就 message_her 跟她要账号或让她截图。
@@ -296,7 +304,7 @@ ${lastNow ? `别跟上一条此刻雷同（上一条："${lastNow}"）。` : ""}
     }
   }
 
-  return NextResponse.json({ ok: true, mood, act: gate.act === true, actions, reach, pushedByAgent });
+  return NextResponse.json({ ok: true, mood, act: shouldAct, wanted: gate.act === true, actions, reach, pushedByAgent });
 }
 
 export async function GET(req: Request) {

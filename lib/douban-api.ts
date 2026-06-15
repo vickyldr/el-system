@@ -197,16 +197,16 @@ export async function doubanRecommend(idRaw: string): Promise<string> {
   } catch (e) {
     return `查豆瓣推荐失败：${e instanceof Error ? e.message : e}`;
   }
-  const arr = j.items || j.subjects || (Array.isArray(j) ? j : []);
+  const arr = Array.isArray(j) ? j : j.items || j.subjects || [];
   const list = arr
     .map((x: any) => x.subject || x)
     .filter((x: any) => x && x.title)
     .slice(0, 10)
-    .map(
-      (x: any) =>
-        `《${x.title}》${x.year ? ` (${x.year})` : ""}${x.rating?.value ? ` ${x.rating.value}分` : ""}`,
-    );
-  return list.length ? `豆瓣给《${id}》的相似推荐：\n${list.join("\n")}` : "没拿到推荐。";
+    .map((x: any) => {
+      const yr = x.year || (String(x.card_subtitle || "").match(/\b(?:19|20)\d{2}\b/) || [])[0] || "";
+      return `《${x.title}》${yr ? ` (${yr})` : ""}${x.rating?.value ? ` ${x.rating.value}分` : ""}`;
+    });
+  return list.length ? `这部的豆瓣相似推荐：\n${list.join("\n")}` : "没拿到推荐。";
 }
 
 export async function doubanSearch(qRaw: string): Promise<string> {
@@ -218,14 +218,14 @@ export async function doubanSearch(qRaw: string): Promise<string> {
   } catch (e) {
     return `搜豆瓣失败：${e instanceof Error ? e.message : e}`;
   }
-  const items = (j.items || j.subjects || [])
+  const items = (Array.isArray(j) ? j : j.items || j.subjects || [])
     .map((x: any) => x.target || x)
     .filter((x: any) => x && x.title)
     .slice(0, 8)
-    .map(
-      (x: any) =>
-        `《${x.title}》${x.year ? ` (${x.year})` : ""}${x.rating?.value ? ` ${x.rating.value}分` : ""}（id:${x.id}）`,
-    );
+    .map((x: any) => {
+      const yr = x.year || (String(x.card_subtitle || "").match(/\b(?:19|20)\d{2}\b/) || [])[0] || "";
+      return `《${x.title}》${yr ? ` (${yr})` : ""}${x.rating?.value ? ` ${x.rating.value}分` : ""}（id:${x.id}）`;
+    });
   return items.length
     ? `搜「${q}」：\n${items.join("\n")}\n（想看哪部详情/推荐，用 detail/recommend + 那个 id。）`
     : `豆瓣没搜到「${q}」。`;

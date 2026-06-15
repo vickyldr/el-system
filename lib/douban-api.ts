@@ -11,7 +11,7 @@ const cookie = () => process.env.DOUBAN_COOKIE || "";
 const uid = () => process.env.DOUBAN_USER_ID || "";
 
 const WEB_UA =
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const FRODO_UA = "api-client/1 com.douban.frodo/7.22.0 Rexxar/1.2.151";
 
 type RelayResp = { status: number; setCookie?: string[]; body?: string };

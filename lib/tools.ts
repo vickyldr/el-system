@@ -205,7 +205,8 @@ export async function runTool(
     if (name === "note_page")
       return await notePage(String(input?.page || ""), String(input?.text || ""), date);
     if (name === "grow_self")
-      return await appendToTitledPage("关于el", String(input?.text || ""), date);
+      // 关于el = 身份成长，去重（同一条领悟别重复写）；note_self = 当下随想，允许重复（情绪本就会复现）。
+      return await appendToTitledPage("关于el", String(input?.text || ""), date, true);
     if (name === "note_self")
       return await appendToTitledPage("el自己的", String(input?.text || ""), date);
     return "未知工具。";
@@ -309,7 +310,12 @@ async function notePage(pageName: string, text: string, date: string): Promise<s
 }
 
 // 给 el 往自己的页（关于el / el自己的）追加用：按标题模糊找页，去空格比对。
-async function appendToTitledPage(titleQuery: string, text: string, date: string): Promise<string> {
+async function appendToTitledPage(
+  titleQuery: string,
+  text: string,
+  date: string,
+  dedup = false,
+): Promise<string> {
   if (!text.trim()) return "空的，没写。";
   const children = await homeChildren();
   const q = titleQuery.trim().replace(/\s/g, "");
@@ -319,6 +325,8 @@ async function appendToTitledPage(titleQuery: string, text: string, date: string
   if (!match || match.type !== "page") return `没找到「${titleQuery}」页。`;
   const clean = stripLeadingDate(text);
   if (!clean) return "空的，没写。";
+  if (dedup && (await alreadyOnPage(match.id, clean)))
+    return `这条已经在「${match.title}」里了，没重复写。`;
   await appendToPage(match.id, [`**${cnDate(date)}** — ${clean}`]);
   return `写进「${match.title}」了。`;
 }

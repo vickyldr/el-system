@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { getClaude } from "@/lib/claude";
+import { getClaudeFast } from "@/lib/claude";
 import { pageText, recentSummaries } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
 import { getStoredMessages } from "@/lib/store";
@@ -67,12 +67,17 @@ ${transcript || "（这天没怎么聊）"}
 做完用一句话说你写了什么。`;
 
   try {
-    const claude = getClaude();
+    // 每日总结一天就一次、又是重要的记忆固化（无人监督写 Notion）——走 Max 最稳，
+    // 一天一次在 Max 窗口里几乎不花额度；Max 挂了 getClaudeFast 自动回落中转站。
+    const claude = getClaudeFast();
     const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
     const loop: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
     let summary = "";
 
-    for (let i = 0; i < 8; i++) {
+    // 时间预算：别在慢渠道上把 8 轮跑到 Vercel 60s 上限被掐断（那样写一半就没了）。
+    const t0 = Date.now();
+    for (let i = 0; i < 5; i++) {
+      if (i > 0 && Date.now() - t0 > 45000) break;
       const res = await claude.messages.create({
         model,
         max_tokens: 1500,

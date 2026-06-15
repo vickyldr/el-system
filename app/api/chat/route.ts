@@ -33,7 +33,7 @@ async function callBridge(
     ? (system as any[]).filter((b) => b.type === "text").map((b: any) => b.text).join("")
     : String(system || "");
   if (voice) {
-    systemText += "\n\n【语音通话模式。规则：①只说一句话，最多二十个字；②该停顿用逗号、欲言又止用省略号（换气和节奏），别用其它符号、别用 markdown；③口语，自然说话；④不提「通话」。】";
+    systemText += "\n\n【语音通话模式。规则：①只说一句话，最多二十个字；②该停顿用逗号、欲言又止用省略号（换气和节奏），别用其它符号、别用 markdown；③口语，自然说话，句尾自然带语气词（呀／呢／啦／嘛）或省略号拖一下、别干脆一刀切收住；④不提「通话」。】";
   }
   try {
     const ctrl = new AbortController();
@@ -383,7 +383,7 @@ export async function POST(req: Request) {
   const maxTok = voice ? 60 : 1024;
   // 语音模式用轻量 system prompt：去掉大段记忆/档案，只保留核心人设 + 硬性字数规则
   const voiceSystem = voice
-    ? `${EL_SYSTEM}\n\n【语音通话，硬性规则：只说一句话，绝对不超过15个字，口语，不提通话二字；该停顿用逗号、欲言又止用省略号（换气和节奏），别用其它符号。】`
+    ? `${EL_SYSTEM}\n\n【语音通话，硬性规则：只说一句话，绝对不超过15个字，口语，不提通话二字；该停顿用逗号、欲言又止用省略号（换气和节奏）；句尾别干脆收住，自然带语气词（呀／呢／啦／嘛）或省略号拖一下；别用其它符号。】`
     : system;
   // 打字聊天用「可缓存」的分块 system：稳定大块打上 cache_control 缓存，易变小块（时间/此刻）放后面。
   // 这样连聊时，那一大坨人设+记忆只在第一条真花额度，后面几乎白嫖缓存——Max 扛得久得多。

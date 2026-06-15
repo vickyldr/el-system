@@ -481,30 +481,28 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
       {active === "song" && hasSong && (
         <div className="status-pane">
           <div className="card-label">今天想让你听</div>
-          {status.song_url ? (
-            <a href={status.song_url} style={{ textDecoration: "none", color: "inherit" }}>
-              <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation} ♫</div>
-              {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
-              <div className="meta" style={{ marginTop: 6 }}>点开去网易云听</div>
-            </a>
-          ) : (
-            <>
-              <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation}</div>
-              {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
-            </>
-          )}
-          <button
-            type="button"
-            className="status-reply"
-            onClick={() =>
-              onQuote({
-                label: "推歌",
-                text: `${status.song_recommendation}${status.song_reason ? " — " + status.song_reason : ""}`,
-              })
-            }
-          >
-            ↩ 回复这条
-          </button>
+          <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation}</div>
+          {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
+          {/* 两个明确的动作：点歌名不再误触，去网易云 / 回复 各一个按钮 */}
+          <div className="status-actions">
+            {status.song_url && (
+              <a className="status-reply play" href={status.song_url}>
+                ▶ 去网易云听
+              </a>
+            )}
+            <button
+              type="button"
+              className="status-reply"
+              onClick={() =>
+                onQuote({
+                  label: "推歌",
+                  text: `${status.song_recommendation}${status.song_reason ? " — " + status.song_reason : ""}`,
+                })
+              }
+            >
+              ↩ 回复这条
+            </button>
+          </div>
         </div>
       )}
 

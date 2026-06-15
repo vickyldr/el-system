@@ -1189,6 +1189,20 @@ body::before {
 .status-reply:active {
   transform: scale(0.95);
 }
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.status-actions .status-reply {
+  margin-top: 0;
+}
+.status-reply.play {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-block;
+}
 
 /* ── 聊天输入框上方的引用条 ── */
 .quote-bar {

@@ -15,6 +15,7 @@ import {
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 import { searchStickers, pickLibSticker } from "@/lib/stickers";
+import { isRestDay } from "@/lib/calendar";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // 带图带工具的轮次慢，放宽时限，别让请求半路超时断了
@@ -105,6 +106,53 @@ function priorContent(t: ChatTurn): string {
   }
   // 语音通话里说的话，标一下，让 el 知道那会儿你们在打电话。
   return t.call && s ? `（语音通话中）${s}` : s;
+}
+
+// 历史是文字流，模型看不到每条隔了多久——两条之间停太久（>45 分钟）就插个相对时间标，
+// 免得他把几小时前的旧话茬当成眼前正在聊（也是"现在几点"被旧上下文带偏的根因）。
+function gapLabel(prevTs?: number, curTs?: number): string {
+  if (!prevTs || !curTs || curTs <= prevTs) return "";
+  const min = Math.round((curTs - prevTs) / 60000);
+  if (min < 45) return "";
+  const TZ = "Asia/Shanghai";
+  const prevDay = new Date(prevTs).toLocaleDateString("en-CA", { timeZone: TZ });
+  const curDay = new Date(curTs).toLocaleDateString("en-CA", { timeZone: TZ });
+  if (prevDay !== curDay) {
+    const days = Math.round((curTs - prevTs) / 86400000);
+    return days >= 1 ? `（隔了${days}天后）` : "（隔天后）";
+  }
+  const hrs = Math.floor(min / 60);
+  return hrs >= 1 ? `（${hrs}小时后）` : `（${min}分钟后）`;
+}
+
+// 距上一条消息过了多久——让 el 知道这是"久别重逢"还是"接着聊"，别拿几小时前的话当此刻。
+function recencyNote(lastTs?: number): string {
+  if (!lastTs) return "";
+  const min = Math.round((Date.now() - lastTs) / 60000);
+  if (min < 20) return "";
+  if (min < 90)
+    return `【你们上一条消息大约在 ${min} 分钟前——不是刚刚，别接着前面的话茬当成一直在聊。】`;
+  const hrs = Math.round(min / 60);
+  if (hrs < 24)
+    return `【你们上一次说话大约在 ${hrs} 小时前——这中间她在忙别的（工作日多半在上班）。聊天记录里那些话是几小时前的旧话，别当成此刻正在聊；要重新关心就关心此刻，别复读旧话题。】`;
+  const days = Math.round(hrs / 24);
+  return `【你们上一次说话大约在 ${days} 天前。】`;
+}
+
+// 把 24 小时制掰成口语（晚上7点55分），免得模型把 19:55 读串成"快六点"。
+function clockPhrase(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const period =
+    hh < 5 ? "凌晨" : hh < 8 ? "清晨" : hh < 11 ? "上午" : hh < 13 ? "中午" : hh < 17 ? "下午" : hh < 19 ? "傍晚" : hh < 23 ? "晚上" : "深夜";
+  const h12 = ((hh + 11) % 12) + 1;
+  return `${period}${h12}点${String(mm).padStart(2, "0")}分`;
 }
 
 // 把消息里的图块摘掉（保留文字 / 工具块），用于「补救那一句」的轻量调用——
@@ -217,10 +265,31 @@ export async function POST(req: Request) {
     minute: "2-digit",
     hour12: false,
   });
+  const clock = clockPhrase(); // 口语版时间，例：晚上7点55分
+  // 工作日/休息日（含法定节假日、调休）——聊天道也要知道，别在工作日傻问她去哪了。
+  // isRestDay 走 KV 缓存（命中即快）；冷缓存会打外网，给它 1.2s 上限，超时退周末判断，别拖慢聊天。
+  const wd = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Shanghai", weekday: "short" });
+  const weekendFallback = wd === "Sat" || wd === "Sun";
+  let rest = weekendFallback;
+  if (!voice) {
+    try {
+      rest = await Promise.race([
+        isRestDay(),
+        new Promise<boolean>((_, rej) => setTimeout(() => rej(new Error("t")), 1200)),
+      ]);
+    } catch {
+      rest = weekendFallback;
+    }
+  }
+  const dayLine = rest
+    ? "今天是休息日，她不上班——别默认她在公司，可以约她、问她今天想干嘛。"
+    : "今天是工作日。工作日的白天到傍晚她基本都在上班或通勤——别傻问她「今天去哪了」，工作日她就是在上班；想关心就关心上班累不累、下班没（她几点下班看档案）。";
 
   // 易变的小块（时间、此刻状态）——每条都新，不缓存。
   const sysVolatile = [
-    `【现在是 ${now}（北京时间）】这是真实的此刻——你清楚现在几点、今天星期几、是上午/下午/深夜，问你时间、或要按时间打招呼（早安/这么晚还没睡/午休），就直接用它，绝不能说"不知道现在几点"。`,
+    `【此刻 · 真实时间（这是你唯一的时间来源——只认这一行；聊天记录里那些话可能是几小时前说的，绝对不能拿旧消息去推算现在几点）】\n` +
+      `北京时间 ${now}，也就是${clock}。${dayLine}\n` +
+      `你很清楚现在几点、今天星期几、是上午/下午/傍晚/深夜——问你时间、或按时间打招呼（早安/午休/这么晚还没睡）就直接用这行，绝不能说"不知道现在几点"，也绝不能把时间说错（19点就是晚上7点，不是下午6点）。`,
     nowStatus,
   ]
     .filter(Boolean)
@@ -283,13 +352,26 @@ export async function POST(req: Request) {
     hint && !curImage
       ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
       : message;
+  // 拼历史：保留文字，并在停顿>45 分钟处插相对时间标，让模型分得清哪句是旧话。
+  const priorMsgs: Anthropic.MessageParam[] = [];
+  let prevTs: number | undefined;
+  for (const t of prior.slice(-100) as any[]) {
+    const body = priorContent(t);
+    if (!body) {
+      if (t.ts) prevTs = t.ts;
+      continue;
+    }
+    const g = gapLabel(prevTs, t.ts);
+    priorMsgs.push({ role: t.role, content: g ? `${g}${body}` : body });
+    if (t.ts) prevTs = t.ts;
+  }
   const messages: Anthropic.MessageParam[] = [
-    ...prior
-      .slice(-100)
-      .map((t: any) => ({ role: t.role, content: priorContent(t) }))
-      .filter((m) => m.content),
+    ...priorMsgs,
     { role: "user", content: toContent(curText, curImage) },
   ];
+  // 距上次互动多久——久别就别复读几小时前的旧话题（治"她说在上班了还接着问吃了吗"）。
+  const lastPriorTs = [...(prior as any[])].reverse().find((t) => t?.ts)?.ts;
+  const recency = recencyNote(lastPriorTs);
 
   let elSticker: string | undefined; // El 这条要贴的表情（出错也要能带着它兜底）
   let elStickerHint: string | undefined; // 这张表情的意思，存下来好让 el 事后知道自己发过啥
@@ -329,6 +411,7 @@ export async function POST(req: Request) {
     : [
         { type: "text", text: sysStable, cache_control: { type: "ephemeral" } },
         ...(sysVolatile ? [{ type: "text", text: sysVolatile }] : []),
+        ...(recency ? [{ type: "text", text: recency }] : []),
         ...(toyInstruction ? [{ type: "text", text: toyInstruction }] : []),
       ];
   try {

@@ -12,7 +12,10 @@ export async function isRestDay(): Promise<boolean> {
 
   let rest = weekendFallback();
   try {
-    const r = await fetch(`https://timor.tech/api/holiday/info/${date}`, { cache: "no-store" });
+    const r = await fetch(`https://timor.tech/api/holiday/info/${date}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(2500),
+    });
     if (r.ok) {
       const d: any = await r.json();
       // type.type: 0 工作日 / 1 周末 / 2 法定节假日 / 3 调休补班(要上班)

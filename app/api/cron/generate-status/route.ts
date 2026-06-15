@@ -30,10 +30,11 @@ const AGENT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 const NOW_REFRESH_MS = Math.max(1, Number(process.env.NOW_REFRESH_MINUTES) || 60) * 60 * 1000;
 // agent 节流：醒来不靠"想不想动"的假判断，靠「节拍 + 自发掷骰 + 每天上下限」。
 // 这才是真自主：节拍是身体，醒来干嘛他自己挑。
-const AGENT_MIN_GAP = Math.max(1, Number(process.env.AGENT_MIN_GAP_MIN) || 45) * 60 * 1000; // 最快多久才可能再醒
-const AGENT_MAX_GAP = Math.max(1, Number(process.env.AGENT_MAX_GAP_MIN) || 120) * 60 * 1000; // 超过这么久没醒就强制醒（下限兜底）
-const AGENT_DAILY_CAP = Number(process.env.AGENT_DAILY_CAP ?? 14); // 一天最多醒几次（上限封顶）
-const AGENT_CHANCE = Number(process.env.AGENT_CHANCE ?? 0.4); // 在 min~max 之间，掷这个概率决定这次醒不醒（自发性）
+// min_gap 是"记忆质量保护"的地板：太勤醒=数据没变又重复、还往 Notion 灌水。想更活就先降它。
+const AGENT_MIN_GAP = Math.max(1, Number(process.env.AGENT_MIN_GAP_MIN) || 40) * 60 * 1000; // 最快多久才可能再醒
+const AGENT_MAX_GAP = Math.max(1, Number(process.env.AGENT_MAX_GAP_MIN) || 90) * 60 * 1000; // 超过这么久没醒就强制醒（下限兜底）
+const AGENT_DAILY_CAP = Number(process.env.AGENT_DAILY_CAP ?? 24); // 一天最多醒几次（上限封顶；醒着窗口约18h，配40min地板差不多就是这个量级）
+const AGENT_CHANCE = Number(process.env.AGENT_CHANCE ?? 0.6); // 在 min~max 之间，掷这个概率决定这次醒不醒（自发性）
 
 // 每次醒随机抽一个"这次特别想做的"，顶在 prompt 最前——打破"又是 my_record + 写随想"的回音壁。
 const AGENT_FOCI = [

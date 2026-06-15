@@ -1204,6 +1204,38 @@ body::before {
   display: inline-block;
 }
 
+/* ── 电影推荐卡 ── */
+.movie-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+.movie-cover {
+  flex-shrink: 0;
+  width: 72px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.movie-info {
+  min-width: 0;
+  flex: 1;
+}
+.movie-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+.movie-intro {
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ── 聊天输入框上方的引用条 ── */
 .quote-bar {
   flex-shrink: 0;

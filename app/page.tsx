@@ -401,7 +401,7 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 }
 
 /* ───────────── El 状态（心情/天气/推歌 tab 切换） ───────────── */
-type StatusTab = "mood" | "weather" | "song";
+type StatusTab = "mood" | "weather" | "song" | "movie";
 
 function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
   const hasMood = !!(status.mood || status.thought || status.el_note);
@@ -412,10 +412,11 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   if (hasMood) available.push("mood");
   if (hasWeather) available.push("weather");
   if (hasSong) available.push("song");
+  available.push("movie"); // 电影推荐：交互式，常驻
 
   const [active, setActive] = useState<StatusTab>(available[0] ?? "mood");
 
-  const labels: Record<StatusTab, string> = { mood: "心情", weather: "天气", song: "推歌" };
+  const labels: Record<StatusTab, string> = { mood: "心情", weather: "天气", song: "推歌", movie: "电影" };
 
   if (available.length === 0) return null;
 
@@ -506,7 +507,112 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
         </div>
       )}
 
+      {active === "movie" && <MoviePane />}
+
       {status.date && <div className="meta" style={{ marginTop: 10, fontSize: 11 }}>{friendlyDate(status.date)}</div>}
+    </div>
+  );
+}
+
+/* ───────────── 电影推荐（el 推你看，点 想看/不想看/看过 推下一部） ───────────── */
+type MovieCard = {
+  id: string;
+  title: string;
+  year: string;
+  rating: number | null;
+  cover: string;
+  intro: string;
+  genres: string[];
+  url: string;
+};
+
+function MoviePane() {
+  // undefined = 加载中；null = 没有可推的
+  const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/movie")
+      .then((r) => r.json())
+      .then((d) => alive && setMovie(d.movie || null))
+      .catch(() => alive && setMovie(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function react(action: "want" | "skip") {
+    if (busy) return;
+    setBusy(true);
+    setMovie(undefined);
+    try {
+      const d = await fetch("/api/movie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      }).then((r) => r.json());
+      setMovie(d.movie || null);
+    } catch {
+      setMovie(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (movie === undefined)
+    return (
+      <div className="status-pane">
+        <div className="card-label">想推你看</div>
+        <div className="meta" style={{ marginTop: 8 }}>想想推你看什么…</div>
+      </div>
+    );
+  if (!movie)
+    return (
+      <div className="status-pane">
+        <div className="card-label">想推你看</div>
+        <div className="meta" style={{ marginTop: 8 }}>这会儿没有可推的了，过会儿再来～</div>
+      </div>
+    );
+
+  return (
+    <div className="status-pane">
+      <div className="card-label">想推你看</div>
+      <div className="movie-row">
+        {movie.cover && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className="movie-cover"
+            src={movie.cover}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+        <div className="movie-info">
+          <a className="movie-title" href={movie.url} target="_blank" rel="noreferrer">
+            {movie.title}
+            {movie.year ? ` (${movie.year})` : ""}
+          </a>
+          {(movie.rating != null || movie.genres?.length > 0) && (
+            <div className="meta" style={{ marginTop: 4 }}>
+              {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
+              {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
+            </div>
+          )}
+          {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
+        </div>
+      </div>
+      <div className="status-actions">
+        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+          ＋ 想看
+        </button>
+        <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
+          不想看
+        </button>
+      </div>
     </div>
   );
 }

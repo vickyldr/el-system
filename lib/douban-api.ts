@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 // 豆瓣：看宝宝的书影音（她标记的想看/看过 + 星与短评）、查某片详情、豆瓣相似推荐。
 // 豆瓣对机房 IP 全面拦截（sec.douban.com 安全门 / frodo 403），所以一律走她那台上海 VPS 的
 // 「通用转发」relay（中国 IP）：POST { url, method, headers } → { status, setCookie, body }。
@@ -80,7 +82,13 @@ const KIND_HOST: Record<string, string> = {
 };
 const STATUS_CN: Record<string, string> = { wish: "想看/想读", collect: "看过/读过", do: "在看/在读" };
 
-export async function doubanList(statusRaw: string, kindRaw: string): Promise<string> {
+const PAGE_SIZE = 15; // 豆瓣人页每页 15 条
+
+export async function doubanList(
+  statusRaw: string,
+  kindRaw: string,
+  pageRaw?: string,
+): Promise<string> {
   const id = uid();
   if (!id) return "还没配豆瓣用户 ID（DOUBAN_USER_ID）。";
   const status = ({ wish: "wish", collect: "collect", do: "do", doing: "do" } as any)[
@@ -90,7 +98,9 @@ export async function doubanList(statusRaw: string, kindRaw: string): Promise<st
   const kind = ["movie", "book", "music"].includes(String(kindRaw || "").trim())
     ? String(kindRaw).trim()
     : "movie";
-  const url = `https://${KIND_HOST[kind]}/people/${id}/${status}?sort=time&start=0&mode=grid`;
+  const page = Math.max(1, Number(pageRaw) || 1);
+  const start = (page - 1) * PAGE_SIZE;
+  const url = `https://${KIND_HOST[kind]}/people/${id}/${status}?sort=time&start=${start}&mode=grid`;
   let resp: RelayResp;
   try {
     resp = await relayFetch(url, {
@@ -101,25 +111,43 @@ export async function doubanList(statusRaw: string, kindRaw: string): Promise<st
   } catch (e) {
     return `读豆瓣失败（relay 没通？）：${e instanceof Error ? e.message : e}`;
   }
-  if (resp.status === 302 || resp.status === 403 || /<title>[^<]*登录/.test(resp.body || "")) {
-    return `豆瓣这页要登录态才看得全（${resp.status}）。给 el 配上豆瓣账号 cookie（DOUBAN_COOKIE）就能稳读。`;
+  if (resp.status !== 200) {
+    return resp.status === 302 || resp.status === 403
+      ? `豆瓣这页要登录态（${resp.status}）。给 el 配上豆瓣账号 cookie（DOUBAN_COOKIE）就能读。`
+      : `豆瓣返回 ${resp.status}，没读到。`;
   }
-  if (resp.status !== 200) return `豆瓣返回 ${resp.status}，没读到。`;
-  const items = parsePeopleList(resp.body || "");
+  const body = resp.body || "";
+  const items = parsePeopleList(body);
   const lbl = `${kind === "book" ? "书" : kind === "music" ? "音乐" : "电影"}·${STATUS_CN[status]}`;
   if (!items.length) {
-    const txt = stripTags(resp.body || "");
-    return txt.length > 200
-      ? `「她豆瓣 ${lbl}」（没解析出条目，给你原文片段自己读）：\n${txt.slice(0, 4000)}`
-      : "没读到条目（可能要登录态，或这类是空的）。";
+    // 真没条目时才看是不是登录墙（导航里的"登录"链接会误判，所以放到这里、且要没条目）。
+    if (/accounts\.douban\.com\/passport\/login/.test(body)) {
+      return `豆瓣这页要登录态才看得到。用豆瓣账号登一次、把 cookie 配进 DOUBAN_COOKIE 就能读。`;
+    }
+    return page > 1 ? "这页没有了（翻过头了）。" : "这类还没有标记。";
   }
-  return `「她豆瓣 ${lbl}」最近 ${items.length} 条（新的在前）：\n${items.join("\n")}`;
+  // 总数：人页 <title> 结尾通常是「…(696)」
+  const total = (body.match(/\((\d+)\)\s*<\/title>/) || [])[1] || "";
+  const head = total
+    ? `（共 ${total}，第 ${page} 页/每页${PAGE_SIZE}、新的在前）`
+    : `（第 ${page} 页、每页${PAGE_SIZE}）`;
+  const more =
+    total && Number(total) > start + items.length ? `\n…还有更多，下一页用 page=${page + 1}。` : "";
+  return `「她豆瓣 ${lbl}」${head}：\n${items.join("\n")}${more}`;
 }
 
-async function frodo(path: string): Promise<any> {
-  const sep = path.includes("?") ? "&" : "?";
-  const url = `https://frodo.douban.com/api/v2/${path}${sep}apikey=${DOUBAN_APIKEY}`;
-  const resp = await relayFetch(url, {
+const FRODO_SECRET = process.env.DOUBAN_FRODO_SECRET || "bf7dddc7c9cfe6f7"; // frodo 签名密钥（社区公开，与 apikey 配对）
+
+// frodo 新版要请求签名：sig = base64(HMAC-SHA1(secret, "GET&urlencoded(path)&ts"))，只签 path 不签 query。
+async function frodo(pathRel: string, query = ""): Promise<any> {
+  const fullPath = `/api/v2/${pathRel}`;
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = crypto
+    .createHmac("sha1", FRODO_SECRET)
+    .update(`GET&${encodeURIComponent(fullPath)}&${ts}`)
+    .digest("base64");
+  const qs = `apikey=${DOUBAN_APIKEY}&_ts=${ts}&_sig=${encodeURIComponent(sig)}${query ? `&${query}` : ""}`;
+  const resp = await relayFetch(`https://frodo.douban.com${fullPath}?${qs}`, {
     "User-Agent": FRODO_UA,
     ...(cookie() ? { Cookie: cookie() } : {}),
   });
@@ -127,7 +155,7 @@ async function frodo(path: string): Promise<any> {
     throw new Error(
       resp.status === 403 || resp.status === 401
         ? `${resp.status}（可能要账号鉴权，配 DOUBAN_COOKIE）`
-        : String(resp.status),
+        : `${resp.status}${resp.body ? " " + resp.body.slice(0, 80) : ""}`,
     );
   }
   return JSON.parse(resp.body || "{}");
@@ -143,7 +171,7 @@ export async function doubanDetail(idRaw: string): Promise<string> {
     j = await frodo(`movie/${id}`);
   } catch (e) {
     return `查豆瓣详情失败：${e instanceof Error ? e.message : e}`;
-  }
+  } // 注：sig 只签 path
   const title = j.title || j.original_title || "";
   if (!title) return `没查到这部（${j?.msg || "空"}）。`;
   const rating = j.rating?.value ? `${j.rating.value} 分（${j.rating.count || 0}人评）` : "暂无评分";
@@ -165,7 +193,7 @@ export async function doubanRecommend(idRaw: string): Promise<string> {
   if (!id) return "给我电影的豆瓣 id 或链接。";
   let j: any;
   try {
-    j = await frodo(`movie/${id}/recommendations?count=10`);
+    j = await frodo(`movie/${id}/recommendations`, "count=10");
   } catch (e) {
     return `查豆瓣推荐失败：${e instanceof Error ? e.message : e}`;
   }
@@ -186,7 +214,7 @@ export async function doubanSearch(qRaw: string): Promise<string> {
   if (!q) return "搜什么？给个片名。";
   let j: any;
   try {
-    j = await frodo(`search/movie?q=${encodeURIComponent(q)}&count=8`);
+    j = await frodo("search/movie", `q=${encodeURIComponent(q)}&count=8`);
   } catch (e) {
     return `搜豆瓣失败：${e instanceof Error ? e.message : e}`;
   }

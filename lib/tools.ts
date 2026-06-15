@@ -175,6 +175,7 @@ export const TOOLS = [
         action: { type: "string", description: "list / search / detail / recommend" },
         status: { type: "string", description: "list 用：wish 想看 / collect 看过 / do 在看" },
         kind: { type: "string", description: "list 用：movie / book / music，默认 movie" },
+        page: { type: "string", description: "list 用：第几页（每页15条，默认1=最近）" },
         q: { type: "string", description: "search 用：片名关键词" },
         id: { type: "string", description: "detail / recommend 用：豆瓣电影 id 或链接" },
       },
@@ -360,7 +361,8 @@ async function addReminderTool(date: string, text: string, recur: string): Promi
 async function doubanTool(input: any): Promise<string> {
   const m = await import("./douban-api");
   const action = String(input?.action || "").trim();
-  if (action === "list") return m.doubanList(String(input?.status || ""), String(input?.kind || ""));
+  if (action === "list")
+    return m.doubanList(String(input?.status || ""), String(input?.kind || ""), String(input?.page || ""));
   if (action === "search") return m.doubanSearch(String(input?.q || ""));
   if (action === "detail") return m.doubanDetail(String(input?.id || ""));
   if (action === "recommend") return m.doubanRecommend(String(input?.id || ""));

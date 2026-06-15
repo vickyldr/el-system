@@ -325,26 +325,28 @@ const USER_COOKIE = () => process.env.DOUBAN_USER_COOKIE || "";
 export async function doubanMarkWish(idRaw: string): Promise<{ ok: boolean; detail: string }> {
   const mid = idOf(idRaw);
   if (!mid) return { ok: false, detail: "no-id" };
-  if (!USER_COOKIE()) return { ok: false, detail: "no-cookie" }; // 没配主账户 cookie 就不写
+  const ckCookie = USER_COOKIE();
+  if (!ckCookie) return { ok: false, detail: "no-cookie" }; // 没配主账户 cookie 就不写
+  // frodo 写不认 cookie；豆瓣网页端 j/subject/<id>/interest 认 cookie + ck（实测可用，返回 {"r":0}）。
+  const ck = (ckCookie.match(/ck=([^;]+)/) || [])[1]?.replace(/^"|"$/g, "") || "";
   try {
-    const fullPath = `/api/v2/movie/${mid}/interest`;
-    const ts = Math.floor(Date.now() / 1000);
-    const sig = crypto
-      .createHmac("sha1", FRODO_SECRET)
-      .update(`POST&${encodeURIComponent(fullPath)}&${ts}`)
-      .digest("base64");
-    const qs = `apikey=${DOUBAN_APIKEY}&_ts=${ts}&_sig=${encodeURIComponent(sig)}`;
     const resp = await relayFetch(
-      `https://frodo.douban.com${fullPath}?${qs}`,
+      `https://movie.douban.com/j/subject/${mid}/interest`,
       {
-        "User-Agent": FRODO_UA,
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
         "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: USER_COOKIE(),
+        Referer: `https://movie.douban.com/subject/${mid}/`,
+        Cookie: ckCookie,
       },
       "POST",
-      "interest=mark",
+      `ck=${encodeURIComponent(ck)}&interest=wish`,
     );
-    const ok = resp.status === 200;
+    let ok = false;
+    try {
+      ok = resp.status === 200 && JSON.parse(resp.body || "{}").r === 0;
+    } catch {
+      ok = resp.status === 200;
+    }
     return { ok, detail: ok ? "ok" : `${resp.status} ${(resp.body || "").slice(0, 100)}` };
   } catch (e) {
     return { ok: false, detail: e instanceof Error ? e.message : "err" };

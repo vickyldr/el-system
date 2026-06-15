@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const which = provider();
   if (!which) return NextResponse.json({ error: "语音还没配置" }, { status: 503 });
 
-  let body: { text?: string; fast?: boolean };
+  let body: { text?: string; fast?: boolean; emotion?: string };
   try {
     body = await req.json();
   } catch {
@@ -36,14 +36,15 @@ export async function POST(req: Request) {
   const text = (body.text ?? "").trim().slice(0, 600); // 限长省额度
   if (!text) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
   const fast = body.fast === true; // 打电话用 turbo，更快
+  const emo = mapEmotion(body.emotion); // 这一句的情绪（大脑挑的），空则用 env 默认
 
-  // 缓存键 = 家 + 音色 + 模型 + 调性参数 + 文本。命中就直接放，不再生成、不扣额度。
-  const sig = [which, voiceOf(which), modelOf(which, fast), paramsOf(which), text].join("|");
+  // 缓存键 = 家 + 音色 + 模型 + 调性参数(含本句情绪) + 文本。命中就直接放，不再生成、不扣额度。
+  const sig = [which, voiceOf(which), modelOf(which, fast), paramsOf(which, emo), text].join("|");
   const cacheKey = "el:tts:" + createHash("sha256").update(sig).digest("hex");
   const cached = await getCache(cacheKey).catch(() => null);
   if (cached) return mp3(Buffer.from(cached, "base64"));
 
-  const out = which === "minimax" ? await synthMiniMax(text, fast) : await synthElevenLabs(text);
+  const out = which === "minimax" ? await synthMiniMax(text, fast, emo) : await synthElevenLabs(text);
   if ("error" in out) return NextResponse.json({ error: out.error }, { status: out.status });
 
   // 存 30 天，重复听不再花钱。
@@ -72,31 +73,47 @@ function modelOf(which: string, fast = false): string {
   return process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
 }
 
+// 海螺支持的情绪枚举。大脑用中文标情绪，这里映射成海螺认的英文枚举；认不出就空（用默认）。
+const MM_EMOTIONS = ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"];
+function mapEmotion(label?: string): string {
+  const s = (label || "").trim();
+  if (!s) return "";
+  if (MM_EMOTIONS.includes(s)) return s; // 已经是英文枚举
+  if (/(开心|高兴|调皮|兴奋|撒娇|甜|乐)/.test(s)) return "happy";
+  if (/(难过|委屈|低落|失落|伤心|哭|心疼)/.test(s)) return "sad";
+  if (/(生气|吃醋|不爽|恼|怒|嗔)/.test(s)) return "angry";
+  if (/(惊讶|惊喜|意外|吃惊)/.test(s)) return "surprised";
+  if (/(害怕|紧张|怕|慌)/.test(s)) return "fearful";
+  if (/(温柔|平静|认真|正经|淡)/.test(s)) return "neutral";
+  return "";
+}
+
 // 海螺的"调性"：语速/音高/情绪。默认中性（pitch 0 / speed 1）——硬压音调会变"熊大"，
 // 真要更沉应该去重新设计音色，而不是变调。需要时可用环境变量微调。
-function minimaxTuning() {
+// emoOverride：本句大脑挑的情绪，优先于 env 默认。
+function minimaxTuning(emoOverride = "") {
   const speed = Number(process.env.MINIMAX_SPEED) || 1;
   const pitch =
     process.env.MINIMAX_PITCH != null && process.env.MINIMAX_PITCH !== ""
       ? Number(process.env.MINIMAX_PITCH)
       : 0;
-  const emotion = process.env.MINIMAX_EMOTION || "";
+  const emotion = emoOverride || process.env.MINIMAX_EMOTION || "";
   return { speed, pitch, emotion };
 }
-function paramsOf(which: string): string {
+function paramsOf(which: string, emoOverride = ""): string {
   if (which !== "minimax") return "";
-  const t = minimaxTuning();
+  const t = minimaxTuning(emoOverride);
   return `${t.speed},${t.pitch},${t.emotion}`;
 }
 
 // ── 海螺 MiniMax T2A v2 ──（返回 hex 编码音频，要解码成字节）
-async function synthMiniMax(text: string, fast = false): Promise<Synth> {
+async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promise<Synth> {
   const key = process.env.MINIMAX_API_KEY!;
   const group = process.env.MINIMAX_GROUP_ID!;
   const voiceId = process.env.MINIMAX_VOICE_ID!;
   const model = modelOf("minimax", fast);
   const host = process.env.MINIMAX_API_HOST || "https://api.minimaxi.com";
-  const tuning = minimaxTuning();
+  const tuning = minimaxTuning(emoOverride);
   try {
     const r = await fetch(`${host}/v1/t2a_v2?GroupId=${encodeURIComponent(group)}`, {
       method: "POST",

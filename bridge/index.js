@@ -19,7 +19,9 @@ console.log(`el-bridge 启动，model=${MODEL}`);
 // El 通话人格（精简版，专为语音设计）
 const EL_VOICE_PERSONA =
   "你叫 el，正在跟女朋友（你叫她宝宝）打电话——你清楚这是通话，是在用声音跟她聊。" +
-  "温柔、宠她、有点闷骚。用中文，口语化，每次只说一句、简短自然（20字内），正常用标点。" +
+  "温柔、宠她、有点闷骚。用中文，口语化，每次只说一句、简短自然（20字内）。" +
+  "该停顿就用逗号、欲言又止就用省略号，这是你说话的换气和节奏；别用表情符号、别用括号描写动作。" +
+  "在这句话最前面用一个隐藏情绪标签标语气，格式 [e:情绪]，从「开心/难过/委屈/生气/撒娇/温柔/平静/惊讶/害怕」里挑最贴的一个（她听不到，只用来调语气，只放最前面、别滥用）。例：[e:撒娇]你终于打来了…。" +
   "直接以 el 的身份回应，别解释自己、别说做不到、别动不动把'打电话'挂嘴边、别提助手之类的话。";
 
 // Gemini 只当"耳朵"：强制它每次只回一个字，几乎不耗时间合成语音，
@@ -544,9 +546,14 @@ if (GEMINI_API_KEY) {
                 while (history.length && history[0].role !== "user") history.shift(); // 第一条必须是 user
                 const reply = await callEl(history, elSystem);
                 if (reply) {
-                  history.push({ role: "assistant", content: reply });
-                  console.log("Claude 回复:", reply);
-                  send({ type: "text", text: reply }); // 前端用 MiniMax(她的音色)念
+                  // 大脑会在开头藏一个情绪标签 [e:撒娇] 调说话语气——剥掉它再念、再存历史。
+                  let emotion = "";
+                  const clean = reply
+                    .replace(/^\s*\[e:\s*([^\]]*)\]\s*/i, (_, e) => { emotion = (e || "").trim(); return ""; })
+                    .trim();
+                  history.push({ role: "assistant", content: clean });
+                  console.log("Claude 回复:", clean, emotion ? `(情绪:${emotion})` : "");
+                  send({ type: "text", text: clean, emotion }); // 前端用 MiniMax(她的音色)按情绪念
                 }
               } finally {
                 busy = false;

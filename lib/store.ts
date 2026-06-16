@@ -280,6 +280,40 @@ export async function setCache(key: string, value: string, ttlSeconds: number): 
   }
 }
 
+// ── 原生对象存取（永久，无过期）──
+// 注意：@upstash/redis 会自动序列化/反序列化。直接存对象/数组、读回同型，
+// 别再自己 JSON.stringify 成字符串（那样读回会被 upstash 当 JSON 解析成对象，类型对不上）。
+export async function getObj<T>(key: string): Promise<T | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<T>(key);
+    return v === undefined ? null : (v as T);
+  } catch {
+    return null;
+  }
+}
+
+export async function setObj(key: string, value: unknown): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(key, value); // 不设 ex = 永久
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function delObj(key: string): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.del(key);
+  } catch {
+    /* ignore */
+  }
+}
+
 // ── 身体账（el:soma）：无意识的那本账。──
 // 它不是门写的"心情说法"（那是叙事账 el:nowmood），是脊髓反射 + 无名评估器写的原始数值。
 // el 自己读不到原文、只读毛化后的体感（feelSoma）——两账能对不上，才是无意识。

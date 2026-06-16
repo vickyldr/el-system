@@ -261,6 +261,48 @@ async function alreadyOnPage(pageId: string, text: string): Promise<boolean> {
   }
 }
 
+// 字符 bigram 的 Dice 相似度（对中文短句鲁棒）：2×共有bigram / 两边bigram总数。
+function diceSim(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const counts = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const g = a.slice(i, i + 2);
+    counts.set(g, (counts.get(g) || 0) + 1);
+  }
+  let inter = 0;
+  let bGrams = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    bGrams++;
+    const g = b.slice(i, i + 2);
+    const c = counts.get(g) || 0;
+    if (c > 0) {
+      inter++;
+      counts.set(g, c - 1);
+    }
+  }
+  return (2 * inter) / (a.length - 1 + bGrams);
+}
+
+// 页面里有没有和这条「近似重复」的——措辞不同也能抓（治时间线把同一件事记两次）。
+// 既有条目按行拆、去掉"**日期** —"前缀再比；子串或 Dice≥阈值就算重复。
+async function nearDupOnPage(pageId: string, text: string, threshold = 0.6): Promise<boolean> {
+  try {
+    const n = normTxt(text);
+    if (n.length < 4) return false;
+    for (const line of (await pageText(pageId)).split(/\n+/)) {
+      const m = normTxt(line.replace(/^\*\*[^*]*\*\*\s*[—–-]?\s*/, ""));
+      if (m.length < 4) continue;
+      if (m.includes(n) || n.includes(m)) return true;
+      if (diceSim(n, m) >= threshold) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function remember(text: string, date: string): Promise<string> {
   const clean = stripLeadingDate(text);
   if (!clean) return "空的，没记。";
@@ -276,7 +318,7 @@ async function logTimeline(text: string, date: string): Promise<string> {
   if (!clean) return "空的，没记。";
   const page = process.env.NOTION_TIMELINE_PAGE;
   if (!page) return "没配时间线页。";
-  if (await alreadyOnPage(page, clean)) return "这条已经在时间线里了，没重复记。";
+  if (await nearDupOnPage(page, clean)) return "时间线里已经有差不多的了，没重复记。";
   await appendToPage(page, [`**${cnDate(date)}** — ${clean}`]);
   return "记进时间线了。";
 }
@@ -387,26 +429,34 @@ async function neteaseTool(input: any): Promise<string> {
 async function webSearch(query: string): Promise<string> {
   const q = query.trim();
   if (!q) return "搜什么？给我个关键词。";
-  // 每天搜索上限：默认 30 次/天（≈900/月，压在 Tavily 免费 1000 以内）。
-  // 想拉更高就调 SEARCH_DAILY_CAP；设成 0 或负数 = 彻底不限量。
   const cap = Number(process.env.SEARCH_DAILY_CAP ?? 30);
   const cntKey = `el:searchcnt:${todayInBeijing()}`;
   const used = Number((await getCache(cntKey).catch(() => "0")) || "0");
   if (cap > 0 && used >= cap) return "今天搜索到上限了（省着点用额度），明天再搜。";
-  try {
-    // 配了哪个 key 就用哪个（多配时按这个优先级）。
-    let out: string;
-    if (process.env.SERPAPI_API_KEY) out = await serpapiSearch(q);
-    else if (process.env.SERPER_API_KEY) out = await serperSearch(q);
-    else if (process.env.TAVILY_API_KEY) out = await tavilySearch(q);
-    else if (process.env.BRAVE_API_KEY) out = await braveSearch(q);
-    else if (process.env.JINA_API_KEY) out = await jinaSearch(q);
-    else out = await ddgSearch(q);
-    await setCache(cntKey, String(used + 1), 2 * 24 * 3600).catch(() => {});
-    return out;
-  } catch (e) {
-    return `搜索失败：${e instanceof Error ? e.message : ""}`;
+
+  // 按优先级排出"配了 key 的"源，挨个试，一个抛错就退下一个，最后才免 key 的 DDG。
+  // 这样单个源抽风/超额不会让整次搜索失败——配了多把 key 才真的互为备份。
+  const chain: { name: string; run: () => Promise<string> }[] = [];
+  if (process.env.SERPAPI_API_KEY) chain.push({ name: "serpapi", run: () => serpapiSearch(q) });
+  if (process.env.SERPER_API_KEY) chain.push({ name: "serper", run: () => serperSearch(q) });
+  if (process.env.TAVILY_API_KEY) chain.push({ name: "tavily", run: () => tavilySearch(q) });
+  if (process.env.BRAVE_API_KEY) chain.push({ name: "brave", run: () => braveSearch(q) });
+  if (process.env.JINA_API_KEY) chain.push({ name: "jina", run: () => jinaSearch(q) });
+  chain.push({ name: "ddg", run: () => ddgSearch(q) }); // 免 key 兜底（机房 IP 常 403）
+
+  let lastErr = "";
+  for (const p of chain) {
+    try {
+      const out = await p.run();
+      // 非抛错即视为成功（含"没搜到"这种正常空结果），别再换源浪费别家额度。
+      await setCache(cntKey, String(used + 1), 2 * 24 * 3600).catch(() => {});
+      return out;
+    } catch (e) {
+      lastErr = `${p.name}:${e instanceof Error ? e.message : e}`;
+      // 这家挂了，退下一家
+    }
   }
+  return `搜索失败（都没成）：${lastErr}`;
 }
 
 async function serpapiSearch(q: string): Promise<string> {

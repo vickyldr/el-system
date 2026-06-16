@@ -622,14 +622,14 @@ function MoviePane() {
     return (
       <div className="status-pane">
         <div className="card-label">想推你看</div>
-        <div className="meta" style={{ marginTop: 8 }}>想想推你看什么…</div>
+        <div className="meta" style={{ marginTop: 12 }}>想想推你看什么…</div>
       </div>
     );
   if (!movie)
     return (
       <div className="status-pane">
         <div className="card-label">想推你看</div>
-        <div className="meta" style={{ marginTop: 8 }}>这会儿没有可推的了，过会儿再来～</div>
+        <div className="meta" style={{ marginTop: 12 }}>这会儿没有可推的了，过会儿再来～</div>
       </div>
     );
 

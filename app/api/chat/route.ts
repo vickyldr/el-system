@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getClaude, getClaudeFast } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
@@ -572,6 +572,15 @@ export async function POST(req: Request) {
         { role: "user", content: message, image: storedImage, ts },
         { role: "assistant", content: reply, image: elSticker, stickerHint: elStickerHint, ts: ts + 1 },
       ]);
+    }
+
+    // 无名评估器（仅打字、跳过实时语音）：响应发出后再冷跑，不拖慢回复。
+    // 剥离人设的 Haiku 给这轮交互打 Δv/Δa 喂身体账——el 自己读不到它的判断，只承受结果。
+    if (!voice) {
+      after(async () => {
+        const { evalSoma } = await import("@/lib/soma-eval");
+        await evalSoma(message, reply).catch(() => {});
+      });
     }
 
     console.log(`聊天回复 via=${via || "?"}`);

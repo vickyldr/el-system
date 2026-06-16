@@ -17,7 +17,7 @@ export type Fic = FicMeta & { body: string };
 
 const INDEX_KEY = "el:fic:index";
 const itemKey = (id: string) => `el:fic:${id}`;
-const TTL = 100 * 365 * 24 * 3600; // ~永久
+const TTL = 2_000_000_000; // ~63年≈永久。注意别超 redis EX 上限(2^31s)，超了 set 会报错存不进
 
 // 同人文走中转站里更放得开的模型（默认 grok-4.3，可用 FIC_MODEL 覆盖）。
 // 复用现成的 CLAUDE_API_KEY / 中转地址，不用加新密钥。
@@ -39,7 +39,9 @@ async function ficComplete(system: string, user: string, maxTokens = 2000): Prom
 function parseFic(raw: string): { title: string; persona: string; outline: string; body: string } {
   const t = stripFence(raw);
   const grab = (label: string) =>
-    (t.match(new RegExp(`^\\s*${label}[：:]\\s*(.+)$`, "m"))?.[1] || "").trim();
+    (t.match(new RegExp(`^[\\s*#>\\-]*${label}[\\s*]*[：:]\\s*(.+)$`, "m"))?.[1] || "")
+      .replace(/\*+$/, "")
+      .trim();
   const title = grab("标题");
   const persona = grab("人设");
   const outline = grab("大纲");

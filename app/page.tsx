@@ -1080,6 +1080,22 @@ function FicStation() {
     } catch {}
   }
 
+  async function delFic(id: string) {
+    if (!window.confirm("删掉这篇？删了找不回来。")) return;
+    setList((s) => {
+      const next = s.filter((m) => m.id !== id);
+      setLatest(next[0] ?? null);
+      return next;
+    });
+    try {
+      await fetch("/api/fic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id }),
+      });
+    } catch {}
+  }
+
   return (
     <>
       {/* 此刻底部预览格 */}
@@ -1150,11 +1166,18 @@ function FicStation() {
         <Sheet title="往期同人文" onClose={() => setArchiveOpen(false)}>
           <div className="fic-archive">
             {list.map((m) => (
-              <button className="fic-arc-item" key={m.id} onClick={() => openFic(m.id)}>
+              <div className="fic-arc-item" key={m.id} role="button" tabIndex={0} onClick={() => openFic(m.id)}>
+                <button
+                  className="fic-arc-del"
+                  aria-label="删除"
+                  onClick={(e) => { e.stopPropagation(); delFic(m.id); }}
+                >
+                  ✕
+                </button>
                 <div className="fic-arc-title">《{m.title}》</div>
                 {m.persona && <div className="fic-arc-persona">{m.persona}</div>}
                 <div className="fic-arc-date">{new Date(m.createdAt).toLocaleDateString("zh-CN")}</div>
-              </button>
+              </div>
             ))}
           </div>
         </Sheet>

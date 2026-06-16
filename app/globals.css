@@ -2206,3 +2206,27 @@ body::before {
   opacity: 0.5;
   cursor: default;
 }
+
+.fic-arc-item {
+  position: relative;
+  cursor: pointer;
+}
+.fic-arc-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fic-arc-del:active {
+  background: rgba(214, 132, 173, 0.3);
+}

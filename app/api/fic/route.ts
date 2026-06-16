@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listFics, getFic, newFic, continueFic } from "@/lib/fic";
+import { listFics, getFic, newFic, continueFic, deleteFic } from "@/lib/fic";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +34,12 @@ export async function POST(req: Request) {
       const fic = await continueFic(id, typeof body?.prompt === "string" ? body.prompt : undefined);
       if (!fic) return NextResponse.json({ error: "没找到这篇" }, { status: 404 });
       return NextResponse.json({ fic });
+    }
+    if (action === "delete") {
+      const id = String(body?.id || "");
+      if (!id) return NextResponse.json({ error: "缺 id" }, { status: 400 });
+      await deleteFic(id);
+      return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: "未知动作" }, { status: 400 });
   } catch (e) {

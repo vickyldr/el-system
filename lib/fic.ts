@@ -60,6 +60,12 @@ export async function listFics(): Promise<FicMeta[]> {
   return list.slice().sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export async function deleteFic(id: string): Promise<void> {
+  const list = (await loadIndex()).filter((m) => m.id !== id);
+  await saveIndex(list);
+  await setCache(itemKey(id), "", 1).catch(() => {}); // 内容很快过期失效
+}
+
 export async function getFic(id: string): Promise<Fic | null> {
   const raw = await getCache(itemKey(id)).catch(() => null);
   if (!raw) return null;

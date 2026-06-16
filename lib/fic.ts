@@ -1,4 +1,4 @@
-import { getCache, setCache } from "./store";
+import { getObj, setObj, delObj } from "./store";
 import { getClaude } from "./claude";
 import { homeChildren, pageText } from "./notion";
 
@@ -17,7 +17,6 @@ export type Fic = FicMeta & { body: string };
 
 const INDEX_KEY = "el:fic:index";
 const itemKey = (id: string) => `el:fic:${id}`;
-const TTL = 2_000_000_000; // ~63年≈永久。注意别超 redis EX 上限(2^31s)，超了 set 会报错存不进
 
 // 同人文走中转站里更放得开的模型（默认 grok-4.3，可用 FIC_MODEL 覆盖）。
 // 复用现成的 CLAUDE_API_KEY / 中转地址，不用加新密钥。
@@ -69,17 +68,11 @@ function looksRefusal(t: string): boolean {
 }
 
 async function loadIndex(): Promise<FicMeta[]> {
-  const raw = await getCache(INDEX_KEY).catch(() => null);
-  if (!raw) return [];
-  try {
-    const a = JSON.parse(raw);
-    return Array.isArray(a) ? a : [];
-  } catch {
-    return [];
-  }
+  const a = await getObj<FicMeta[]>(INDEX_KEY);
+  return Array.isArray(a) ? a : [];
 }
 async function saveIndex(list: FicMeta[]): Promise<void> {
-  await setCache(INDEX_KEY, JSON.stringify(list.slice(0, 200)), TTL).catch(() => {});
+  await setObj(INDEX_KEY, list.slice(0, 200));
 }
 
 export async function listFics(): Promise<FicMeta[]> {
@@ -90,21 +83,16 @@ export async function listFics(): Promise<FicMeta[]> {
 export async function deleteFic(id: string): Promise<void> {
   const list = (await loadIndex()).filter((m) => m.id !== id);
   await saveIndex(list);
-  await setCache(itemKey(id), "", 1).catch(() => {}); // 内容很快过期失效
+  await delObj(itemKey(id));
 }
 
 export async function getFic(id: string): Promise<Fic | null> {
-  const raw = await getCache(itemKey(id)).catch(() => null);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Fic;
-  } catch {
-    return null;
-  }
+  const f = await getObj<Fic>(itemKey(id));
+  return f && typeof f.body === "string" ? f : null;
 }
 
 async function saveFic(fic: Fic): Promise<void> {
-  await setCache(itemKey(fic.id), JSON.stringify(fic), TTL);
+  await setObj(itemKey(fic.id), fic);
   const list = await loadIndex();
   const meta: FicMeta = {
     id: fic.id,

@@ -1087,11 +1087,11 @@ body::before {
   overflow-y: auto;
 }
 
-/* 颜文字：点一下塞进输入框 */
+/* 颜文字：去框，按内容自适应铺开，整段不截断 */
 .kao-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   overflow-y: auto;
   align-content: start;
 }
@@ -1100,20 +1100,18 @@ body::before {
   font-family: inherit;
   cursor: pointer;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: 12px;
-  padding: 10px 6px;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 10px;
   font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: background 0.12s ease, transform 0.1s ease;
 }
 .kao-cell:active {
-  transform: scale(0.95);
-  background: rgba(123, 111, 240, 0.18);
+  transform: scale(0.94);
+  background: rgba(123, 111, 240, 0.2);
 }
 
 .sticker-grid img {

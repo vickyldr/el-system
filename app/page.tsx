@@ -1075,6 +1075,18 @@ function FortuneCard() {
 
 /* ───────────── 找我（聊天） ───────────── */
 
+// 颜文字：点一下塞进输入框，可以接着打字一起发
+const KAOMOJI = [
+  "(๑•̀ㅂ•́)و✧", "(*´∀`)~♥", "(づ｡◕‿‿◕｡)づ", "ヽ(°〇°)ﾉ", "(｡•́︿•̀｡)",
+  "( ˘ω˘ )", "(≧▽≦)", "(｡･ω･｡)", "(っ˘̩╭╮˘̩)っ", "( ͡° ͜ʖ ͡°)",
+  "¯\\_(ツ)_/¯", "(╯°□°）╯︵ ┻━┻", "┬─┬ノ( º _ ºノ)", "(҂◡_◡)", "(=^･ω･^=)",
+  "(´;ω;`)", "(*/ω＼*)", "(＞﹏＜)", "(•ω•)ﾉ", "ヾ(≧▽≦*)o",
+  "(✿◕‿◕)", "(´｡• ᵕ •｡`)", "(ง •̀_•́)ง", "(￣ω￣;)", "(ᵔᴥᵔ)",
+  "ʕ•ᴥ•ʔ", "(づ￣ ³￣)づ", "(っ◔◡◔)っ ♥", "(◍•ᴗ•◍)", "(„• ֊ •„)",
+  "(｡♥‿♥｡)", "(눈_눈)", "(°ロ°)", "(▰˘◡˘▰)", "( •_•)>⌐■-■",
+];
+
+
 type Msg = {
   role: "user" | "assistant";
   content: string;
@@ -1300,7 +1312,7 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
-  const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
+  const [stickerTab, setStickerTab] = useState<"lib" | "search" | "kao">("kao");
   const [stickerQ, setStickerQ] = useState("");
   const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
   const [searching, setSearching] = useState(false);
@@ -1645,6 +1657,15 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   }
 
+  // 颜文字：塞到输入框里（接着能打字），不直接发
+  function insertKao(k: string) {
+    setInput((v) => v + k);
+    setTimeout(() => {
+      taRef.current?.focus();
+      grow();
+    }, 0);
+  }
+
   async function pickImage(file: File) {
     setUploading(true);
     try {
@@ -1979,6 +2000,13 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
           <div className="sticker-tabs">
             <button
               type="button"
+              className={`stk-tab ${stickerTab === "kao" ? "active" : ""}`}
+              onClick={() => setStickerTab("kao")}
+            >
+              颜文字
+            </button>
+            <button
+              type="button"
               className={`stk-tab ${stickerTab === "lib" ? "active" : ""}`}
               onClick={() => setStickerTab("lib")}
             >
@@ -2013,7 +2041,15 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
             </button>
           </div>
 
-          {stickerTab === "lib" ? (
+          {stickerTab === "kao" ? (
+            <div className="kao-grid">
+              {KAOMOJI.map((k, i) => (
+                <button type="button" className="kao-cell" key={i} onClick={() => insertKao(k)}>
+                  {k}
+                </button>
+              ))}
+            </div>
+          ) : stickerTab === "lib" ? (
             <div className="sticker-grid">
               {lib.length === 0 && (
                 <div className="meta">

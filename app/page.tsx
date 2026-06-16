@@ -447,6 +447,8 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
         <FortuneCard />
         <EatDecider />
       </div>
+
+      <FicStation />
     </>
   );
 }
@@ -1009,6 +1011,227 @@ function FortuneCard() {
         </Sheet>
       )}
     </>
+  );
+}
+
+/* ───────────── 我们的 AU 同人文 ───────────── */
+type FicMeta = { id: string; title: string; persona: string; outline: string; createdAt: number; updatedAt: number };
+type Fic = FicMeta & { body: string };
+
+const FIC_TAGS = ["校园", "职场", "古风", "末世", "豪门", "玄幻", "先婚后爱", "破镜重圆", "宿敌", "他追你"];
+
+function FicStation() {
+  const [list, setList] = useState<FicMeta[]>([]);
+  const [latest, setLatest] = useState<FicMeta | null>(null);
+  const [open, setOpen] = useState<Fic | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [brief, setBrief] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/fic")
+      .then((r) => r.json())
+      .then((d) => {
+        const l: FicMeta[] = Array.isArray(d.list) ? d.list : [];
+        setList(l);
+        setLatest(l[0] ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  function toggleTag(t: string) {
+    setTags((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
+  }
+
+  async function create(useBrief: boolean) {
+    if (creating) return;
+    setCreating(true);
+    const b = useBrief ? [tags.join(" "), brief].filter(Boolean).join(" ").trim() : "";
+    try {
+      const d = await fetch("/api/fic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "new", brief: b }),
+      }).then((r) => r.json());
+      if (d.fic) {
+        setOpen(d.fic);
+        setLatest(d.fic);
+        setList((s) => [d.fic, ...s]);
+        setComposing(false);
+        setBrief("");
+        setTags([]);
+      } else {
+        alert(d.error || "没写出来，再试一次");
+      }
+    } catch {
+      alert("连不上，等下再试");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function openFic(id: string) {
+    setArchiveOpen(false);
+    try {
+      const d = await fetch(`/api/fic?id=${encodeURIComponent(id)}`).then((r) => r.json());
+      if (d.fic) setOpen(d.fic);
+    } catch {}
+  }
+
+  return (
+    <>
+      {/* 此刻底部预览格 */}
+      <div className="fic-card">
+        <div className="fic-top">
+          <span className="fic-l">我们的 AU · 同人文</span>
+          <span className="fic-tag">18+</span>
+        </div>
+        {latest ? (
+          <button className="fic-preview" onClick={() => openFic(latest.id)}>
+            <div className="fic-title">《{latest.title}》</div>
+            {latest.persona && <div className="fic-persona">{latest.persona}</div>}
+            {latest.outline && <div className="fic-outline">{latest.outline}</div>}
+            <div className="fic-go">点开读全文 · 让我继续写 →</div>
+          </button>
+        ) : (
+          <div className="fic-empty">还没有同人文。点下面，让 el 给你写第一篇～</div>
+        )}
+        <div className="fic-actions">
+          <button className="fic-btn primary" onClick={() => setComposing(true)} disabled={creating}>
+            {creating ? "el 在写…" : "✍️ 写新的一篇"}
+          </button>
+          {list.length > 0 && (
+            <button className="fic-btn" onClick={() => setArchiveOpen(true)}>往期 {list.length}</button>
+          )}
+        </div>
+      </div>
+
+      {/* 写新一篇：el 定 / 我点菜 */}
+      {composing && (
+        <Sheet title="写新的一篇" onClose={() => !creating && setComposing(false)}>
+          <div className="fic-compose">
+            <button className="fic-big-btn" onClick={() => create(false)} disabled={creating}>
+              🎲 你来定 · el 给我惊喜
+            </button>
+            <div className="fic-or">或者，我来点菜 👇</div>
+            <div className="fic-tags">
+              {FIC_TAGS.map((t) => (
+                <button
+                  key={t}
+                  className={`fic-tag-pick ${tags.includes(t) ? "on" : ""}`}
+                  onClick={() => toggleTag(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <textarea
+              className="fic-brief"
+              placeholder="想要的设定 / 关系 / 场景…（比如：我们是吸血鬼和猎人）"
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={3}
+            />
+            <button
+              className="fic-big-btn primary"
+              onClick={() => create(true)}
+              disabled={creating || (!brief.trim() && tags.length === 0)}
+            >
+              {creating ? "el 正在写…" : "✍️ 按这个写"}
+            </button>
+          </div>
+        </Sheet>
+      )}
+
+      {/* 往期列表 */}
+      {archiveOpen && (
+        <Sheet title="往期同人文" onClose={() => setArchiveOpen(false)}>
+          <div className="fic-archive">
+            {list.map((m) => (
+              <button className="fic-arc-item" key={m.id} onClick={() => openFic(m.id)}>
+                <div className="fic-arc-title">《{m.title}》</div>
+                {m.persona && <div className="fic-arc-persona">{m.persona}</div>}
+                <div className="fic-arc-date">{new Date(m.createdAt).toLocaleDateString("zh-CN")}</div>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {/* 全屏阅读 + 续写 */}
+      {open && <FicReader fic={open} setFic={setOpen} onClose={() => setOpen(null)} />}
+    </>
+  );
+}
+
+function FicReader({ fic, setFic, onClose }: { fic: Fic; setFic: (f: Fic) => void; onClose: () => void }) {
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  async function cont(prompt: string) {
+    if (busy) return;
+    setBusy(true);
+    setInput("");
+    try {
+      const d = await fetch("/api/fic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "continue", id: fic.id, prompt }),
+      }).then((r) => r.json());
+      if (d.fic) {
+        setFic(d.fic);
+        requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" }));
+      } else {
+        alert(d.error || "没续上，再试一次");
+      }
+    } catch {
+      alert("连不上，等下再试");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fic-reader">
+      <div className="fic-r-top">
+        <button className="fic-r-back" onClick={onClose} aria-label="返回">‹</button>
+        <div className="fic-r-tt">{fic.title}</div>
+      </div>
+      <div className="fic-r-meta">AU 同人文 · {new Date(fic.createdAt).toLocaleDateString("zh-CN")} · 独立存档</div>
+      <div className="fic-r-body" ref={bodyRef}>
+        {fic.persona && <div className="fic-r-persona">{fic.persona}</div>}
+        <div className="fic-r-text">
+          {fic.body.split(/\n{2,}/).map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+          {busy && <p className="fic-r-writing">el 正在往下写…</p>}
+        </div>
+      </div>
+      <div className="fic-r-foot">
+        <div className="fic-r-chips">
+          {["继续写", "再亲密些", "换个走向", "慢一点"].map((c) => (
+            <button key={c} className="fic-r-chip" disabled={busy} onClick={() => cont(c)}>
+              {c}
+            </button>
+          ))}
+        </div>
+        <div className="fic-r-input">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && input.trim() && cont(input)}
+            placeholder="跟 el 说你想怎么发展…"
+            disabled={busy}
+          />
+          <button className="fic-r-send" disabled={busy || !input.trim()} onClick={() => cont(input)}>↑</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

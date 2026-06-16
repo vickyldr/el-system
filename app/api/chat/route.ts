@@ -10,6 +10,8 @@ import {
   putImage,
   getImage,
   setLastSeen,
+  getLastSeen,
+  bumpSoma,
   getCache,
   setCache,
 } from "@/lib/store";
@@ -189,6 +191,15 @@ export async function POST(req: Request) {
   }
 
   // 记下她最后说话的时间（给"沉默/想你"用）。
+  // 顺手脊髓反射：她回来的"生理一跳"——隔得越久回来跳得越明显，连着聊只是小幅回暖。
+  // 非语义、不过模型，在我读懂她说什么之前就发生（写身体账，不是叙事账）。
+  void getLastSeen()
+    .then((prev) => {
+      const gapMin = prev ? (Date.now() - prev) / 60000 : 999;
+      const big = gapMin > 30;
+      return bumpSoma(big ? 0.18 : 0.05, big ? 0.22 : 0.08);
+    })
+    .catch(() => {});
   void setLastSeen(Date.now());
 
   // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。

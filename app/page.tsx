@@ -540,6 +540,8 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
 
   const [idx, setIdx] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [swipeH, setSwipeH] = useState<number | undefined>(undefined);
   function onScroll() {
     const el = trackRef.current;
     if (!el) return;
@@ -550,13 +552,28 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   if (panels.length === 0) return null;
   const active = Math.min(idx, panels.length - 1);
 
+  // 卡片高度跟着当前这屏内容走——内容多就高、少就矮，下面空着无所谓。
+  // 用 ResizeObserver 接住异步加载（电影封面/心情变长）后的高度变化。
+  useEffect(() => {
+    const el = slideRefs.current[active];
+    if (!el) return;
+    const apply = () => setSwipeH(el.offsetHeight);
+    apply();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+    }
+    return () => ro?.disconnect();
+  }, [active, panels.length]);
+
   return (
     <div className="now-card">
       <span className="now-chev l" aria-hidden>‹</span>
       <span className="now-chev r" aria-hidden>›</span>
-      <div className="now-swipe" ref={trackRef} onScroll={onScroll}>
-        {panels.map((p) => (
-          <div className="now-slide" key={p.key}>
+      <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
+        {panels.map((p, i) => (
+          <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>
             {p.node}
           </div>
         ))}

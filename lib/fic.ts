@@ -19,7 +19,27 @@ const INDEX_KEY = "el:fic:index";
 const itemKey = (id: string) => `el:fic:${id}`;
 const TTL = 100 * 365 * 24 * 3600; // ~永久
 
-const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
+// 同人文走中转站里更放得开的模型（默认 grok-4.3，可用 FIC_MODEL 覆盖）。
+// 复用现成的 CLAUDE_API_KEY / 中转地址，不用加新密钥。
+const FIC_MODEL = process.env.FIC_MODEL || "grok-4.3";
+async function ficComplete(system: string, user: string): Promise<string> {
+  const res: any = await getClaude().messages.create({
+    model: FIC_MODEL,
+    max_tokens: 4096,
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+  return (res?.content ?? []).map((b: any) => b?.text || "").join("");
+}
+
+// 模型拒绝的信，别当成正文存下来
+function looksRefusal(t: string): boolean {
+  const s = t.trim().toLowerCase();
+  if (!s) return true;
+  return /\bi (can('| )?t|cannot|won('| )?t|am not able|'m not able)\b/.test(s)
+    || /outside what i can|not able to help|can'?t help with|i won'?t be able/.test(s)
+    || /(我不能|我无法|抱歉，我|不能写这|无法协助|无法帮你写)/.test(t);
+}
 
 async function loadIndex(): Promise<FicMeta[]> {
   const raw = await getCache(INDEX_KEY).catch(() => null);
@@ -121,18 +141,13 @@ ${src || "（暂时没有素材页，凭你对宝宝的了解写。）"}
 输出严格的 JSON（不要任何额外文字、不要代码块围栏）：
 {"title":"标题(4-10字，有味道)","persona":"一句人设，格式：你=…｜el=…","outline":"2-3句剧情大纲","body":"正文，沉浸、有画面、有情绪推进，约600-1000字"}`;
 
-  const res: any = await getClaude().messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    system,
-    messages: [{ role: "user", content: want }],
-  });
-  const text = (res?.content ?? []).map((b: any) => b?.text || "").join("").trim();
+  const text = (await ficComplete(system, want)).trim();
   let parsed: any = {};
   try {
     parsed = JSON.parse(stripFence(text));
   } catch {
-    // 模型没吐 JSON 就兜底：整段当正文
+    // 没吐 JSON：拒绝信就抛错（别存成垃圾），否则整段当正文兜底
+    if (looksRefusal(text)) throw new Error("这次没接住——换个设定/标签，或在 env 里把同人文模型换成更放得开的（如 Grok）再试");
     parsed = { title: "无题", persona: "", outline: "", body: stripFence(text) };
   }
   const now = Date.now();
@@ -166,15 +181,8 @@ ${src || ""}
 这是同人文《${fic.title}》。人设：${fic.persona}
 保持同样的人设、文风、尺度往下续写。只输出【新增的正文段落】，不要重复已有内容、不要任何解释或标题。`;
 
-  const res: any = await getClaude().messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    system,
-    messages: [
-      { role: "user", content: `已有正文：\n\n${fic.body}\n\n——\n${ask}` },
-    ],
-  });
-  const add = (res?.content ?? []).map((b: any) => b?.text || "").join("").trim();
+  const add = (await ficComplete(system, `已有正文：\n\n${fic.body}\n\n——\n${ask}`)).trim();
+  if (looksRefusal(add)) throw new Error("续写没接住——换个说法，或把 FIC_MODEL 换成更放得开的模型再试");
   if (add) {
     fic.body = `${fic.body}\n\n${stripFence(add)}`.trim();
     fic.updatedAt = Date.now();

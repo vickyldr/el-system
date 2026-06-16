@@ -13,6 +13,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// 快速失败：豆瓣那条路慢/挂时（cookie 过期、relay 卡），别让前端无限转圈，
+// 超过 ms 就当「这会儿没有可推的」返回，前端立刻显示空状态而不是一直 loading。
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // el 给宝宝推电影：候选 = 她「想看」里抽 + frodo 拿她高分看过的片找相似；
 // 过滤掉她「看过」的；她点 想看/不想看/看过 后推下一部。状态存 KV。
 // （源③ el 私货推荐 + 点「想看」写进她真豆瓣 = 后续 Phase。）
@@ -90,7 +99,7 @@ async function generate(state: State): Promise<MovieCard | null> {
 export async function GET() {
   const state = await loadState();
   if (state.current) return NextResponse.json({ movie: state.current });
-  const movie = await generate(state).catch(() => null);
+  const movie = await withTimeout(generate(state).catch(() => null), 10000, null);
   if (movie) {
     state.current = movie;
     await saveState(state);
@@ -114,7 +123,7 @@ export async function POST(req: Request) {
     }
     state.current = null;
   }
-  const movie = await generate(state).catch(() => null);
+  const movie = await withTimeout(generate(state).catch(() => null), 10000, null);
   state.current = movie;
   await saveState(state);
   return NextResponse.json({ movie: movie || null, wrote });

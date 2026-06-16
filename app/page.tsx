@@ -1,6 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+// 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
+function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-grip" />
+        <div className="sheet-head">
+          <span className="sheet-title">{title}</span>
+          <button className="sheet-x" onClick={onClose} aria-label="关闭">✕</button>
+        </div>
+        <div className="sheet-body">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 // ── Gemini Live 音频工具函数 ──
 function downsampleBuffer(buffer: Float32Array, fromRate: number, toRate: number): Float32Array {
@@ -376,26 +400,45 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
   const hasAny =
     status && (status.mood || status.song_recommendation || status.weather || status.el_note);
 
+  const [dateStr, setDateStr] = useState("");
+  useEffect(() => {
+    const d = new Date();
+    const wd = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][d.getDay()];
+    setDateStr(`${d.getMonth() + 1}月${d.getDate()}日 ${wd}`);
+  }, []);
+
   return (
     <>
       <div className="now-head">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="now-av" src="/icon-192.png" alt="El" />
-        <div className="now-head-text">
-          <div className="peer-name">El</div>
-          <div className="peer-sub">{greet || "住在你手机里"}</div>
-        </div>
+        <h1 className="now-title">此刻</h1>
+        <div className="now-date">{[dateStr, greet].filter(Boolean).join(" · ")}</div>
       </div>
-
-      <FortuneCard />
-
-      {loading && <SkelList count={2} lines={2} />}
-
-      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
 
       <CountRow days={days} milestone={milestone} />
 
-      <EatDecider />
+      {loading && (
+        <div className="now-card now-card-skel">
+          <div className="skel skel-line sm" />
+          <div className="skel skel-line lg" />
+          <div className="skel skel-line md" />
+        </div>
+      )}
+
+      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
+
+      {!loading && !hasAny && (
+        <div className="now-card">
+          <div className="now-panel">
+            <div className="now-panel-label">心情</div>
+            <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
+          </div>
+        </div>
+      )}
+
+      <div className="now-duo">
+        <FortuneCard />
+        <EatDecider />
+      </div>
     </>
   );
 }
@@ -408,40 +451,18 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   const hasWeather = !!status.weather;
   const hasSong = !!status.song_recommendation;
 
-  const available: StatusTab[] = [];
-  if (hasMood) available.push("mood");
-  if (hasWeather) available.push("weather");
-  if (hasSong) available.push("song");
-  available.push("movie"); // 电影推荐：交互式，常驻
+  // 一块一屏，左右滑：心情 / 天气 / 推歌 / 电影（电影常驻）
+  const panels: { key: StatusTab; node: React.ReactNode }[] = [];
 
-  const [active, setActive] = useState<StatusTab>(available[0] ?? "mood");
-
-  const labels: Record<StatusTab, string> = { mood: "心情", weather: "天气", song: "推歌", movie: "电影" };
-
-  if (available.length === 0) return null;
-
-  return (
-    <div className="card" style={{ marginBottom: 20, animationDelay: "0.1s" }}>
-      {available.length > 1 && (
-        <div className="status-tabs">
-          {available.map((t) => (
-            <button
-              key={t}
-              className={`status-tab ${active === t ? "active" : ""}`}
-              onClick={() => setActive(t)}
-            >
-              {labels[t]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {active === "mood" && hasMood && (
-        <div className="status-pane mood-pane-breathe">
-          <div className="card-label">心情</div>
-          <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta" style={{ marginTop: 12 }}>{status.thought}</div>}
-          {status.el_note && <div className="meta" style={{ marginTop: 12, color: "var(--ink)" }}>{status.el_note}</div>}
+  if (hasMood)
+    panels.push({
+      key: "mood",
+      node: (
+        <div className="now-panel mood-pane-breathe">
+          <div className="now-panel-label">心情</div>
+          <div className="now-panel-mood">{status.mood || <span className="muted">—</span>}</div>
+          {status.thought && <div className="meta">{status.thought}</div>}
+          {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
           {(status.mood || status.thought) && (
             <button
               type="button"
@@ -454,16 +475,20 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
             </button>
           )}
         </div>
-      )}
+      ),
+    });
 
-      {active === "weather" && hasWeather && (
-        <div className="status-pane">
-          <div className="card-label">天气 · {status.weather!.city}</div>
-          <div className="card-value" style={{ marginTop: 4 }}>
+  if (hasWeather)
+    panels.push({
+      key: "weather",
+      node: (
+        <div className="now-panel">
+          <div className="now-panel-label">天气 · {status.weather!.city}</div>
+          <div className="now-panel-big">
             {status.weather!.icon ? `${status.weather!.icon} ` : ""}
-            {status.weather!.temp}° {status.weather!.desc}
+            {status.weather!.temp}° <span className="dim">{status.weather!.desc}</span>
           </div>
-          {status.weather!.outfit && <div className="meta" style={{ marginTop: 12 }}>👕 {status.weather!.outfit}</div>}
+          {status.weather!.outfit && <div className="meta">👕 {status.weather!.outfit}</div>}
           <button
             type="button"
             className="status-reply"
@@ -477,14 +502,17 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
             ↩ 回复这条
           </button>
         </div>
-      )}
+      ),
+    });
 
-      {active === "song" && hasSong && (
-        <div className="status-pane">
-          <div className="card-label">今天想让你听</div>
-          <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation}</div>
-          {status.song_reason && <div className="meta" style={{ marginTop: 12 }}>{status.song_reason}</div>}
-          {/* 两个明确的动作：点歌名不再误触，去网易云 / 回复 各一个按钮 */}
+  if (hasSong)
+    panels.push({
+      key: "song",
+      node: (
+        <div className="now-panel">
+          <div className="now-panel-label">今天想让你听</div>
+          <div className="now-panel-name song-name">{status.song_recommendation}</div>
+          {status.song_reason && <div className="meta">{status.song_reason}</div>}
           <div className="status-actions">
             {status.song_url && (
               <a className="status-reply play" href={status.song_url}>
@@ -505,11 +533,41 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
             </button>
           </div>
         </div>
+      ),
+    });
+
+  panels.push({ key: "movie", node: <MoviePane /> });
+
+  const [idx, setIdx] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  function onScroll() {
+    const el = trackRef.current;
+    if (!el) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== idx) setIdx(i);
+  }
+
+  if (panels.length === 0) return null;
+  const active = Math.min(idx, panels.length - 1);
+
+  return (
+    <div className="now-card">
+      <span className="now-chev l" aria-hidden>‹</span>
+      <span className="now-chev r" aria-hidden>›</span>
+      <div className="now-swipe" ref={trackRef} onScroll={onScroll}>
+        {panels.map((p) => (
+          <div className="now-slide" key={p.key}>
+            {p.node}
+          </div>
+        ))}
+      </div>
+      {panels.length > 1 && (
+        <div className="now-dots">
+          {panels.map((p, i) => (
+            <span key={p.key} className={`now-dot ${i === active ? "on" : ""}`} />
+          ))}
+        </div>
       )}
-
-      {active === "movie" && <MoviePane />}
-
-      {status.date && <div className="meta" style={{ marginTop: 10, fontSize: 11 }}>{friendlyDate(status.date)}</div>}
     </div>
   );
 }
@@ -677,23 +735,39 @@ function EatDecider() {
     }
   }
 
+  const [open, setOpen] = useState(false);
+
   return (
-    <div className="card eat">
-      <div className="card-label">🍱 纠结吃啥？我替你定</div>
-      {pick && <div className="card-value eat-pick">{pick}</div>}
-      <div className="eat-actions">
-        <button className="eat-btn" onClick={() => decide(!!pick)} disabled={loading}>
-          {loading ? "想想…" : pick ? "再来一个" : "让我定"}
-        </button>
-        {keyword && (
-          <button className="eat-btn eat-go" onClick={() => {
-            location.href = `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`;
-          }}>
-            📲 去美团搜「{keyword}」
-          </button>
-        )}
-      </div>
-    </div>
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🍽</span>
+        <span className="duo-l">吃啥</span>
+        <span className="duo-v">{pick ? <>就 <span className="dim">{pick}</span></> : <>饿了？<span className="dim">我帮你定</span></>}</span>
+      </button>
+      {open && (
+        <Sheet title="吃啥" onClose={() => setOpen(false)}>
+          <div className="eat">
+            <div className="card-label">🍱 纠结吃啥？我替你定</div>
+            {pick && <div className="card-value eat-pick">{pick}</div>}
+            <div className="eat-actions">
+              <button className="eat-btn" onClick={() => decide(!!pick)} disabled={loading}>
+                {loading ? "想想…" : pick ? "再来一个" : "让我定"}
+              </button>
+              {keyword && (
+                <button
+                  className="eat-btn eat-go"
+                  onClick={() => {
+                    location.href = `imeituan://www.meituan.com/search?q=${encodeURIComponent(keyword)}`;
+                  }}
+                >
+                  📲 去美团搜「{keyword}」
+                </button>
+              )}
+            </div>
+          </div>
+        </Sheet>
+      )}
+    </>
   );
 }
 
@@ -886,7 +960,17 @@ function FortuneCard() {
     update({ phase: "bound", bindPhrase: phrase });
   }
 
-  if (!s) return null;
+  const [open, setOpen] = useState(false);
+
+  if (!s) {
+    return (
+      <button className="duo-mini" disabled>
+        <span className="duo-ic">🔮</span>
+        <span className="duo-l">今日签</span>
+        <span className="duo-v dim">抽签中…</span>
+      </button>
+    );
+  }
 
   const currentVibe = VIBES.find((v) => v.id === s.vibes[s.drawIndex])!;
   const currentTagline = s.taglines[s.drawIndex];
@@ -894,7 +978,17 @@ function FortuneCard() {
   const isInit = s.phase === "init";
 
   return (
-    <div className="fortune-card" style={{ animationDelay: "0.05s", animation: "fadeInUp 0.42s ease both" }}>
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">{currentVibe?.icon ?? "🔮"}</span>
+        <span className="duo-l">今日签{isBound ? " · 已绑" : ""}</span>
+        <span className="duo-v">
+          {isInit ? <span className="dim">正在抽…</span> : currentTagline ? currentTagline : <span className="dim">点开看看</span>}
+        </span>
+      </button>
+      {open && (
+        <Sheet title="今日签" onClose={() => setOpen(false)}>
+          <div className="fortune-card">
       <div className="fortune-label" style={{ display: "flex", justifyContent: "space-between" }}>
         <span>今日签</span>
         {isBound && <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>已绑</span>}
@@ -972,11 +1066,26 @@ function FortuneCard() {
           <button className="fortune-bind" onClick={bindSign}>🎋 绑签</button>
         )}
       </div>
-    </div>
+          </div>
+        </Sheet>
+      )}
+    </>
   );
 }
 
 /* ───────────── 找我（聊天） ───────────── */
+
+// 颜文字：点一下塞进输入框，可以接着打字一起发
+const KAOMOJI = [
+  "(๑•̀ㅂ•́)و✧", "(*´∀`)~♥", "(づ｡◕‿‿◕｡)づ", "ヽ(°〇°)ﾉ", "(｡•́︿•̀｡)",
+  "( ˘ω˘ )", "(≧▽≦)", "(｡･ω･｡)", "(っ˘̩╭╮˘̩)っ", "( ͡° ͜ʖ ͡°)",
+  "¯\\_(ツ)_/¯", "(╯°□°）╯︵ ┻━┻", "┬─┬ノ( º _ ºノ)", "(҂◡_◡)", "(=^･ω･^=)",
+  "(´;ω;`)", "(*/ω＼*)", "(＞﹏＜)", "(•ω•)ﾉ", "ヾ(≧▽≦*)o",
+  "(✿◕‿◕)", "(´｡• ᵕ •｡`)", "(ง •̀_•́)ง", "(￣ω￣;)", "(ᵔᴥᵔ)",
+  "ʕ•ᴥ•ʔ", "(づ￣ ³￣)づ", "(っ◔◡◔)っ ♥", "(◍•ᴗ•◍)", "(„• ֊ •„)",
+  "(｡♥‿♥｡)", "(눈_눈)", "(°ロ°)", "(▰˘◡˘▰)", "( •_•)>⌐■-■",
+];
+
 
 type Msg = {
   role: "user" | "assistant";
@@ -1203,7 +1312,7 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
-  const [stickerTab, setStickerTab] = useState<"lib" | "search">("lib");
+  const [stickerTab, setStickerTab] = useState<"lib" | "search" | "kao">("kao");
   const [stickerQ, setStickerQ] = useState("");
   const [stickers, setStickers] = useState<{ url: string; preview: string }[]>([]);
   const [searching, setSearching] = useState(false);
@@ -1548,6 +1657,15 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   }
 
+  // 颜文字：塞到输入框里（接着能打字），不直接发
+  function insertKao(k: string) {
+    setInput((v) => v + k);
+    setTimeout(() => {
+      taRef.current?.focus();
+      grow();
+    }, 0);
+  }
+
   async function pickImage(file: File) {
     setUploading(true);
     try {
@@ -1882,6 +2000,13 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
           <div className="sticker-tabs">
             <button
               type="button"
+              className={`stk-tab ${stickerTab === "kao" ? "active" : ""}`}
+              onClick={() => setStickerTab("kao")}
+            >
+              颜文字
+            </button>
+            <button
+              type="button"
               className={`stk-tab ${stickerTab === "lib" ? "active" : ""}`}
               onClick={() => setStickerTab("lib")}
             >
@@ -1916,7 +2041,15 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
             </button>
           </div>
 
-          {stickerTab === "lib" ? (
+          {stickerTab === "kao" ? (
+            <div className="kao-grid">
+              {KAOMOJI.map((k, i) => (
+                <button type="button" className="kao-cell" key={i} onClick={() => insertKao(k)}>
+                  {k}
+                </button>
+              ))}
+            </div>
+          ) : stickerTab === "lib" ? (
             <div className="sticker-grid">
               {lib.length === 0 && (
                 <div className="meta">

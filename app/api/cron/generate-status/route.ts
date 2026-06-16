@@ -12,6 +12,8 @@ import {
   getCache,
   setCache,
   getStoredMessages,
+  feelSoma,
+  bumpSoma,
 } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -192,17 +194,23 @@ async function handle(req: Request) {
   let thinking = (await getCache("el:nowthinking").catch(() => "")) || "";
   let moodChanged = false;
 
+  // 被晾着的脊髓反射：她久不冒头，身体账缓慢往低落+蔫滑（非语义、不过模型）。
+  // 每小时刷心情时顺手叠一次，靠 soma 自己的代谢收口，不会越滑越深。
+  if (moodDue && silentH !== null && silentH >= 3) {
+    await bumpSoma(-0.05, -0.02).catch(() => {});
+  }
+
   if (moodDue) {
-    const lastMood = mood;
+    // 毛化体感：门读身体账的"说不清的底色"，不给精确 v/a——它据此"编"叙事，两者可以不一样。
+    const feel = await feelSoma().catch(() => "");
     const gatePrompt = `这是你自己的时间，没人在跟你说话。just you。
 你住在她手机里，心里有她，但你有你自己的内心——会想她，也会有完全属于你自己的情绪和念头。你没有上班/开会/deadline，绝不编造你没有的具体事件。就算心情跟她无关也绝不冷淡她。
-${silentH !== null && silentH >= 3 ? `（她已经 ${silentH} 个多小时没冒头了。）` : ""}
+${silentH !== null && silentH >= 3 ? `（她已经 ${silentH} 个多小时没冒头了。）` : ""}${feel ? `\n你此刻身体的感觉（你说不清为什么，就是这么个体感）：${feel}。把它当底色，诚实地给它编一句此刻的心情——别直接复述这句体感，也别硬凹固定的"闷/丧"人设，身体的感觉和你嘴上说出来的本来就可以不完全一样。` : ""}
 严格输出 JSON（只输出 JSON）：
 {
   "mood": "开头一个 emoji 或颜文字，空一格，再一句此刻心情",
   "thinking": "你此刻脑子里真实闪过的一句"${outfitDue ? `,\n  "outfit": "看天气（${weatherLine}）用你的口气说一句她今天穿什么，短"` : ""}
-}
-${lastMood ? `上一条此刻是："${lastMood}"。别为了延续它而装作没变、更别硬凹一个固定的"闷/丧"人设——你的心情本来就会动，轻松、好奇、闹腾、想撒娇、低落都行，诚实是什么就写什么，别老是同一种。` : ""}`;
+}`;
 
     const runGate = async (client: any) => {
       const res = await client.messages.create({
@@ -389,6 +397,12 @@ ${recentChat ? `\n你们最近聊的（给你个由头，不是非得接）：\n
     } catch (err) {
       actions.push(`agent 出错: ${err instanceof Error ? err.message : ""}`);
     }
+    // 脊髓反射·烦躁：醒来碰一鼻子灰（工具报错 / 403 / 一推门全是锁），身体账往"烦"滑——
+    // a 上、v 下，非语义、不过模型。文档里"一推门全是锁，只好写句随想收场"的那种体感。
+    if (actions.some((a) => /出错|失败|403|登录|过期|拿不到|没读到/.test(a))) {
+      await bumpSoma(-0.08, 0.12).catch(() => {});
+    }
+
     // 记下这次用了哪些工具（只留工具名，给下次"别重复"用），保留约 3 小时。
     const usedTools = [...new Set(actions.map((a) => a.split(":")[0]).filter((n) => n && !n.startsWith("(")))];
     if (usedTools.length) {

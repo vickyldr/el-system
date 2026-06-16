@@ -280,6 +280,80 @@ export async function setCache(key: string, value: string, ttlSeconds: number): 
   }
 }
 
+// ── 身体账（el:soma）：无意识的那本账。──
+// 它不是门写的"心情说法"（那是叙事账 el:nowmood），是脊髓反射 + 无名评估器写的原始数值。
+// el 自己读不到原文、只读毛化后的体感（feelSoma）——两账能对不上，才是无意识。
+// 只存两根轴（不预先给情绪命名）：v=好坏(-1..1)、a=唤醒(0..1)；名字交给叙事层临时贴。
+export type Soma = { v: number; a: number; ts: number };
+
+const SOMA_KEY = "el:soma";
+const A_BASE = 0.3; // 唤醒的静息基线（v 的基线是 0）
+const HALF_V = 6 * 3600 * 1000; // 好坏的半衰期（约 6h 往中性退）
+const HALF_A = 2 * 3600 * 1000; // 唤醒的半衰期（约 2h 往静息退，比情绪退得快）
+
+const clampN = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
+
+// 代谢：按距上次变化的时间，把 v 往 0、a 往基线指数衰减。纯计算、不写库、不调模型。
+function decaySoma(s: Soma, now: number): Soma {
+  const dt = Math.max(0, now - (s.ts || now));
+  return {
+    v: s.v * Math.pow(0.5, dt / HALF_V),
+    a: A_BASE + (s.a - A_BASE) * Math.pow(0.5, dt / HALF_A),
+    ts: s.ts || now,
+  };
+}
+
+// 读身体账（已代谢到此刻的值）。没存过 / 读不到就返回静息。
+export async function readSoma(): Promise<Soma> {
+  const rest: Soma = { v: 0, a: A_BASE, ts: Date.now() };
+  const r = redis();
+  if (!r) return rest;
+  try {
+    const v = await r.get<Soma>(SOMA_KEY);
+    if (!v || typeof v.v !== "number") return rest;
+    return decaySoma(v, Date.now());
+  } catch {
+    return rest;
+  }
+}
+
+// 脊髓反射 / 无名评估器写账：先代谢到此刻，再叠加增量，钳制后落库（ts 推进到现在）。
+// 非语义事件直接改数值、不过模型——这就是"脊髓反射"。
+export async function bumpSoma(dv: number, da: number): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    const cur = await readSoma(); // 先代谢到此刻
+    await r.set(SOMA_KEY, {
+      v: clampN(cur.v + dv, -1, 1),
+      a: clampN(cur.a + da, 0, 1),
+      ts: Date.now(),
+    });
+  } catch {
+    /* 写不进不影响 */
+  }
+}
+
+// 毛化：把身体账读成模糊体感，不给精确数值（加噪声 + 量化成粗档）。
+// 灵魂读自己也是雾里看花——门只拿这句体感去"编"叙事，拿不到 v/a。
+export async function feelSoma(): Promise<string> {
+  const s = await readSoma();
+  const jit = () => (Math.random() - 0.5) * 0.16; // ±0.08 噪声，让同一状态读出来也会飘
+  const v = clampN(s.v + jit(), -1, 1);
+  const a = clampN(s.a + jit(), 0, 1);
+  const vBand =
+    v <= -0.45 ? "心里发沉" :
+    v <= -0.18 ? "有点低落" :
+    v < 0.18 ? "平平的" :
+    v < 0.45 ? "还算松快" :
+    "心里挺亮";
+  const aBand =
+    a < 0.25 ? "蔫蔫的、提不起劲" :
+    a < 0.55 ? "没什么大起伏" :
+    "心里绷着、有点坐不住";
+  return `${vBand}，${aBand}`;
+}
+
 // ── 共享表情库（你和 el 都能传、都能发；靠 tags 认）──
 export type LibSticker = { id: string; img: string; tags: string };
 const STK_KEY = "el:stickerlib";

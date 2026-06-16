@@ -421,7 +421,7 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   if (available.length === 0) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 14, animationDelay: "0.1s" }}>
+    <div className="card" style={{ marginBottom: 20, animationDelay: "0.1s" }}>
       {available.length > 1 && (
         <div className="status-tabs">
           {available.map((t) => (
@@ -440,8 +440,8 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
         <div className="status-pane mood-pane-breathe">
           <div className="card-label">心情</div>
           <div className="card-value" style={{ marginTop: 4 }}>{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta" style={{ marginTop: 8 }}>{status.thought}</div>}
-          {status.el_note && <div className="meta" style={{ marginTop: 8, color: "var(--ink)" }}>{status.el_note}</div>}
+          {status.thought && <div className="meta" style={{ marginTop: 12 }}>{status.thought}</div>}
+          {status.el_note && <div className="meta" style={{ marginTop: 12, color: "var(--ink)" }}>{status.el_note}</div>}
           {(status.mood || status.thought) && (
             <button
               type="button"
@@ -463,7 +463,7 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
             {status.weather!.icon ? `${status.weather!.icon} ` : ""}
             {status.weather!.temp}° {status.weather!.desc}
           </div>
-          {status.weather!.outfit && <div className="meta" style={{ marginTop: 8 }}>👕 {status.weather!.outfit}</div>}
+          {status.weather!.outfit && <div className="meta" style={{ marginTop: 12 }}>👕 {status.weather!.outfit}</div>}
           <button
             type="button"
             className="status-reply"
@@ -483,7 +483,7 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
         <div className="status-pane">
           <div className="card-label">今天想让你听</div>
           <div className="song-name" style={{ marginTop: 4 }}>{status.song_recommendation}</div>
-          {status.song_reason && <div className="meta" style={{ marginTop: 8 }}>{status.song_reason}</div>}
+          {status.song_reason && <div className="meta" style={{ marginTop: 12 }}>{status.song_reason}</div>}
           {/* 两个明确的动作：点歌名不再误触，去网易云 / 回复 各一个按钮 */}
           <div className="status-actions">
             {status.song_url && (
@@ -564,14 +564,14 @@ function MoviePane() {
     return (
       <div className="status-pane">
         <div className="card-label">想推你看</div>
-        <div className="meta" style={{ marginTop: 8 }}>想想推你看什么…</div>
+        <div className="meta" style={{ marginTop: 12 }}>想想推你看什么…</div>
       </div>
     );
   if (!movie)
     return (
       <div className="status-pane">
         <div className="card-label">想推你看</div>
-        <div className="meta" style={{ marginTop: 8 }}>这会儿没有可推的了，过会儿再来～</div>
+        <div className="meta" style={{ marginTop: 12 }}>这会儿没有可推的了，过会儿再来～</div>
       </div>
     );
 

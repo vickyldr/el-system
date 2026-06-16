@@ -261,6 +261,48 @@ async function alreadyOnPage(pageId: string, text: string): Promise<boolean> {
   }
 }
 
+// 字符 bigram 的 Dice 相似度（对中文短句鲁棒）：2×共有bigram / 两边bigram总数。
+function diceSim(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const counts = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const g = a.slice(i, i + 2);
+    counts.set(g, (counts.get(g) || 0) + 1);
+  }
+  let inter = 0;
+  let bGrams = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    bGrams++;
+    const g = b.slice(i, i + 2);
+    const c = counts.get(g) || 0;
+    if (c > 0) {
+      inter++;
+      counts.set(g, c - 1);
+    }
+  }
+  return (2 * inter) / (a.length - 1 + bGrams);
+}
+
+// 页面里有没有和这条「近似重复」的——措辞不同也能抓（治时间线把同一件事记两次）。
+// 既有条目按行拆、去掉"**日期** —"前缀再比；子串或 Dice≥阈值就算重复。
+async function nearDupOnPage(pageId: string, text: string, threshold = 0.6): Promise<boolean> {
+  try {
+    const n = normTxt(text);
+    if (n.length < 4) return false;
+    for (const line of (await pageText(pageId)).split(/\n+/)) {
+      const m = normTxt(line.replace(/^\*\*[^*]*\*\*\s*[—–-]?\s*/, ""));
+      if (m.length < 4) continue;
+      if (m.includes(n) || n.includes(m)) return true;
+      if (diceSim(n, m) >= threshold) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function remember(text: string, date: string): Promise<string> {
   const clean = stripLeadingDate(text);
   if (!clean) return "空的，没记。";
@@ -276,7 +318,7 @@ async function logTimeline(text: string, date: string): Promise<string> {
   if (!clean) return "空的，没记。";
   const page = process.env.NOTION_TIMELINE_PAGE;
   if (!page) return "没配时间线页。";
-  if (await alreadyOnPage(page, clean)) return "这条已经在时间线里了，没重复记。";
+  if (await nearDupOnPage(page, clean)) return "时间线里已经有差不多的了，没重复记。";
   await appendToPage(page, [`**${cnDate(date)}** — ${clean}`]);
   return "记进时间线了。";
 }

@@ -22,14 +22,39 @@ const TTL = 100 * 365 * 24 * 3600; // ~永久
 // 同人文走中转站里更放得开的模型（默认 grok-4.3，可用 FIC_MODEL 覆盖）。
 // 复用现成的 CLAUDE_API_KEY / 中转地址，不用加新密钥。
 const FIC_MODEL = process.env.FIC_MODEL || "grok-4.3";
-async function ficComplete(system: string, user: string): Promise<string> {
-  const res: any = await getClaude().messages.create({
-    model: FIC_MODEL,
-    max_tokens: 4096,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
+async function ficComplete(system: string, user: string, maxTokens = 2000): Promise<string> {
+  const res: any = await getClaude().messages.create(
+    {
+      model: FIC_MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: user }],
+    },
+    { maxRetries: 1, timeout: 55000 }, // 别干等：最多重试一次、55s 超时
+  );
   return (res?.content ?? []).map((b: any) => b?.text || "").join("");
+}
+
+// 简单分隔格式解析（比 JSON 稳：长正文不怕转义/截断）
+function parseFic(raw: string): { title: string; persona: string; outline: string; body: string } {
+  const t = stripFence(raw);
+  const grab = (label: string) =>
+    (t.match(new RegExp(`^\\s*${label}[：:]\\s*(.+)$`, "m"))?.[1] || "").trim();
+  const title = grab("标题");
+  const persona = grab("人设");
+  const outline = grab("大纲");
+  let body = "";
+  const sep = t.indexOf("---");
+  if (sep >= 0) body = t.slice(sep + 3).trim();
+  if (!body) {
+    // 没分隔符就把标签行去掉，剩下当正文
+    body = t
+      .split("\n")
+      .filter((l) => !/^\s*(标题|人设|大纲)[：:]/.test(l) && l.trim() !== "---")
+      .join("\n")
+      .trim();
+  }
+  return { title, persona, outline, body };
 }
 
 // 模型拒绝的信，别当成正文存下来
@@ -144,17 +169,17 @@ export async function newFic(brief?: string): Promise<Fic> {
 
 ${src || "（暂时没有素材页，凭你对宝宝的了解写。）"}
 
-输出严格的 JSON（不要任何额外文字、不要代码块围栏）：
-{"title":"标题(4-10字，有味道)","persona":"一句人设，格式：你=…｜el=…","outline":"2-3句剧情大纲","body":"正文，沉浸、有画面、有情绪推进，约600-1000字"}`;
+严格按下面格式输出，别加别的：
+标题：（4-10字，有味道）
+人设：你=… ｜ el=…
+大纲：（1-2句）
+---
+（正文：开盖即食、擦边走火的开头，约 400-600 字。写到一个让人心痒、想往下看的地方收住——后面她会让你继续写。）`;
 
-  const text = (await ficComplete(system, want)).trim();
-  let parsed: any = {};
-  try {
-    parsed = JSON.parse(stripFence(text));
-  } catch {
-    // 没吐 JSON：拒绝信就抛错（别存成垃圾），否则整段当正文兜底
-    if (looksRefusal(text)) throw new Error("这次没接住——换个设定/标签，或在 env 里把同人文模型换成更放得开的（如 Grok）再试");
-    parsed = { title: "无题", persona: "", outline: "", body: stripFence(text) };
+  const text = (await ficComplete(system, want, 2000)).trim();
+  const parsed = parseFic(text);
+  if (!parsed.body || looksRefusal(text)) {
+    throw new Error("这次没接住——换个设定/标签，或把 FIC_MODEL 换成更放得开的模型再试");
   }
   const now = Date.now();
   const fic: Fic = {
@@ -185,9 +210,9 @@ export async function continueFic(id: string, prompt?: string): Promise<Fic | nu
 ${src || ""}
 
 这是同人文《${fic.title}》。人设：${fic.persona}
-保持同样的人设、文风、尺度往下续写。只输出【新增的正文段落】，不要重复已有内容、不要任何解释或标题。`;
+保持同样的人设、文风、尺度往下续写。只输出【新增的正文段落】（约 300-500 字，写到一个钩子收住），不要重复已有内容、不要任何解释或标题。`;
 
-  const add = (await ficComplete(system, `已有正文：\n\n${fic.body}\n\n——\n${ask}`)).trim();
+  const add = (await ficComplete(system, `已有正文：\n\n${fic.body}\n\n——\n${ask}`, 1500)).trim();
   if (looksRefusal(add)) throw new Error("续写没接住——换个说法，或把 FIC_MODEL 换成更放得开的模型再试");
   if (add) {
     fic.body = `${fic.body}\n\n${stripFence(add)}`.trim();

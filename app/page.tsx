@@ -209,6 +209,7 @@ export default function Home() {
   const canPull = useRef(false);
   const dragging = useRef(false);
   const startY = useRef(0);
+  const startX = useRef(0);
   const pullRef = useRef(0);
 
   // 下拉刷新：在「此刻 / 我们」页顶部下拉，松手重新加载。
@@ -218,10 +219,17 @@ export default function Home() {
     const onStart = (e: TouchEvent) => {
       canPull.current = el.scrollTop <= 0;
       startY.current = e.touches[0].clientY;
+      startX.current = e.touches[0].clientX;
     };
     const onMove = (e: TouchEvent) => {
       if (!canPull.current) return;
       const dy = e.touches[0].clientY - startY.current;
+      const dx = e.touches[0].clientX - startX.current;
+      // 横向手势（比如左右滑卡片）不抢——只认明显竖直的下拉
+      if (!dragging.current && Math.abs(dx) > Math.abs(dy)) {
+        canPull.current = false;
+        return;
+      }
       if (dy > 0) {
         e.preventDefault();
         dragging.current = true;
@@ -548,6 +556,15 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
     const i = Math.round(el.scrollLeft / el.clientWidth);
     if (i !== idx) setIdx(i);
   }
+  // 点箭头/圆点直接跳到那一屏（不用非得划准）
+  function goTo(i: number) {
+    const el = trackRef.current;
+    if (!el) return;
+    const n = el.children.length;
+    const t = Math.max(0, Math.min(i, n - 1));
+    el.scrollTo({ left: t * el.clientWidth, behavior: "smooth" });
+    setIdx(t);
+  }
 
   if (panels.length === 0) return null;
   const active = Math.min(idx, panels.length - 1);
@@ -569,8 +586,12 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
 
   return (
     <div className="now-card">
-      <span className="now-chev l" aria-hidden>‹</span>
-      <span className="now-chev r" aria-hidden>›</span>
+      {active > 0 && (
+        <button type="button" className="now-chev l" aria-label="上一张" onClick={() => goTo(active - 1)}>‹</button>
+      )}
+      {active < panels.length - 1 && (
+        <button type="button" className="now-chev r" aria-label="下一张" onClick={() => goTo(active + 1)}>›</button>
+      )}
       <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
         {panels.map((p, i) => (
           <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>
@@ -581,7 +602,13 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
       {panels.length > 1 && (
         <div className="now-dots">
           {panels.map((p, i) => (
-            <span key={p.key} className={`now-dot ${i === active ? "on" : ""}`} />
+            <button
+              type="button"
+              key={p.key}
+              className={`now-dot ${i === active ? "on" : ""}`}
+              aria-label={`第 ${i + 1} 屏`}
+              onClick={() => goTo(i)}
+            />
           ))}
         </div>
       )}

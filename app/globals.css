@@ -243,7 +243,7 @@ body::before {
   flex: 0 0 100%;
   scroll-snap-align: center;
   align-self: flex-start;
-  padding: 0 28px;
+  padding: 0 44px;
 }
 
 .now-panel {
@@ -289,37 +289,67 @@ body::before {
   margin-top: 12px;
 }
 
-/* 两侧暗示能滑的箭头 */
+/* 两侧箭头：可点，点一下翻到上/下一屏 */
 .now-chev {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 22px;
-  color: rgba(255, 255, 255, 0.24);
-  z-index: 2;
-  pointer-events: none;
+  z-index: 3;
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.07);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.now-chev:active {
+  transform: translateY(-50%) scale(0.9);
+  background: rgba(123, 111, 240, 0.3);
 }
 .now-chev.l {
-  left: 10px;
+  left: 8px;
 }
 .now-chev.r {
-  right: 10px;
+  right: 8px;
 }
 
 .now-dots {
   display: flex;
   justify-content: center;
-  gap: 7px;
-  margin-top: 12px;
+  gap: 4px;
+  margin-top: 10px;
 }
+/* 圆点：可点跳转，外层透明扩大点击区，圆点本体用 ::before 画 */
 .now-dot {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 8px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.now-dot::before {
+  content: "";
+  display: block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.24);
   transition: width 0.2s ease, background 0.2s ease;
 }
-.now-dot.on {
+.now-dot.on::before {
   width: 18px;
   border-radius: 3px;
   background: #cbb9ff;

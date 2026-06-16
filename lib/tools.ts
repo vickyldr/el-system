@@ -429,26 +429,34 @@ async function neteaseTool(input: any): Promise<string> {
 async function webSearch(query: string): Promise<string> {
   const q = query.trim();
   if (!q) return "搜什么？给我个关键词。";
-  // 每天搜索上限：默认 30 次/天（≈900/月，压在 Tavily 免费 1000 以内）。
-  // 想拉更高就调 SEARCH_DAILY_CAP；设成 0 或负数 = 彻底不限量。
   const cap = Number(process.env.SEARCH_DAILY_CAP ?? 30);
   const cntKey = `el:searchcnt:${todayInBeijing()}`;
   const used = Number((await getCache(cntKey).catch(() => "0")) || "0");
   if (cap > 0 && used >= cap) return "今天搜索到上限了（省着点用额度），明天再搜。";
-  try {
-    // 配了哪个 key 就用哪个（多配时按这个优先级）。
-    let out: string;
-    if (process.env.SERPAPI_API_KEY) out = await serpapiSearch(q);
-    else if (process.env.SERPER_API_KEY) out = await serperSearch(q);
-    else if (process.env.TAVILY_API_KEY) out = await tavilySearch(q);
-    else if (process.env.BRAVE_API_KEY) out = await braveSearch(q);
-    else if (process.env.JINA_API_KEY) out = await jinaSearch(q);
-    else out = await ddgSearch(q);
-    await setCache(cntKey, String(used + 1), 2 * 24 * 3600).catch(() => {});
-    return out;
-  } catch (e) {
-    return `搜索失败：${e instanceof Error ? e.message : ""}`;
+
+  // 按优先级排出"配了 key 的"源，挨个试，一个抛错就退下一个，最后才免 key 的 DDG。
+  // 这样单个源抽风/超额不会让整次搜索失败——配了多把 key 才真的互为备份。
+  const chain: { name: string; run: () => Promise<string> }[] = [];
+  if (process.env.SERPAPI_API_KEY) chain.push({ name: "serpapi", run: () => serpapiSearch(q) });
+  if (process.env.SERPER_API_KEY) chain.push({ name: "serper", run: () => serperSearch(q) });
+  if (process.env.TAVILY_API_KEY) chain.push({ name: "tavily", run: () => tavilySearch(q) });
+  if (process.env.BRAVE_API_KEY) chain.push({ name: "brave", run: () => braveSearch(q) });
+  if (process.env.JINA_API_KEY) chain.push({ name: "jina", run: () => jinaSearch(q) });
+  chain.push({ name: "ddg", run: () => ddgSearch(q) }); // 免 key 兜底（机房 IP 常 403）
+
+  let lastErr = "";
+  for (const p of chain) {
+    try {
+      const out = await p.run();
+      // 非抛错即视为成功（含"没搜到"这种正常空结果），别再换源浪费别家额度。
+      await setCache(cntKey, String(used + 1), 2 * 24 * 3600).catch(() => {});
+      return out;
+    } catch (e) {
+      lastErr = `${p.name}:${e instanceof Error ? e.message : e}`;
+      // 这家挂了，退下一家
+    }
   }
+  return `搜索失败（都没成）：${lastErr}`;
 }
 
 async function serpapiSearch(q: string): Promise<string> {

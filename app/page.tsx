@@ -65,7 +65,7 @@ function base64ToPCMFloat32(b64: string): Float32Array {
   return f32;
 }
 
-type Tab = "now" | "find" | "us";
+type Tab = "now" | "find" | "read" | "us";
 
 // 从「此刻」引用一条去聊天里回复 el（他会知道自己被回复了什么）。
 type Quote = { label: string; text: string };
@@ -292,6 +292,8 @@ export default function Home() {
                 setTab("find");
               }}
             />
+          ) : tab === "read" ? (
+            <CoReadStation key={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -306,6 +308,10 @@ export default function Home() {
         <button className={`tab ${tab === "find" ? "active" : ""}`} onClick={() => setTab("find")}>
           <Icon name="chat" size={21} />
           <span>找我</span>
+        </button>
+        <button className={`tab ${tab === "read" ? "active" : ""}`} onClick={() => setTab("read")}>
+          <Icon name="book" size={21} />
+          <span>一起读</span>
         </button>
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />
@@ -1253,6 +1259,329 @@ function FicReader({ fic, setFic, onClose }: { fic: Fic; setFic: (f: Fic) => voi
           <button className="fic-r-send" disabled={busy || !input.trim()} onClick={() => cont(input)}>↑</button>
         </div>
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ───────────── 一起读（书架 + 阅读器 + 陪读） ───────────── */
+
+type BookChapter = { title: string; chars: number };
+type BookMeta = {
+  id: string;
+  title: string;
+  author: string;
+  format: "epub" | "pdf" | "txt";
+  chapters: BookChapter[];
+  totalChars: number;
+  createdAt: number;
+};
+type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
+
+function CoReadStation() {
+  const [list, setList] = useState<BookMeta[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState<BookMeta | null>(null);
+  const [openProgress, setOpenProgress] = useState(0);
+  const [uploading, setUploading] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function refresh() {
+    fetch("/api/book")
+      .then((r) => r.json())
+      .then((d) => setList(Array.isArray(d.list) ? d.list : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!/\.(epub|pdf|txt)$/i.test(file.name)) {
+      alert("只支持 EPUB / PDF / TXT");
+      return;
+    }
+    setUploading("上传中…");
+    try {
+      const { upload } = await import("@vercel/blob/client");
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/book/upload-url",
+        contentType: file.type || undefined,
+      });
+      setUploading("el 正在翻这本书…");
+      const d = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add", url: blob.url, name: file.name, contentType: file.type }),
+      }).then((r) => r.json());
+      if (d.meta) setList((s) => [d.meta, ...s.filter((b) => b.id !== d.meta.id)]);
+      else alert(d.error || "没接住这本书，换个文件试试");
+    } catch {
+      alert("上传失败，等下再试");
+    } finally {
+      setUploading("");
+    }
+  }
+
+  async function openBook(id: string) {
+    try {
+      const d = await fetch(`/api/book?id=${encodeURIComponent(id)}`).then((r) => r.json());
+      if (d.meta) {
+        setOpen(d.meta);
+        setOpenProgress(d.progress || 0);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function del(id: string) {
+    if (!confirm("删掉这本？一起读过的话也会一起清掉。")) return;
+    setList((s) => s.filter((b) => b.id !== id));
+    await fetch("/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    }).catch(() => {});
+  }
+
+  return (
+    <div className="shelf-wrap">
+      <div className="shelf-head">
+        <div className="shelf-title">一起读</div>
+        <div className="shelf-sub">你传书，我陪你一页页读 · 读到哪聊到哪</div>
+      </div>
+      <button className="shelf-add" onClick={() => fileRef.current?.click()} disabled={!!uploading}>
+        <Icon name="plus" size={18} />
+        <span>{uploading || "上传一本书（EPUB / PDF / TXT）"}</span>
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain"
+        hidden
+        onChange={onPick}
+      />
+
+      {loading ? (
+        <SkelCard lines={3} />
+      ) : list.length === 0 ? (
+        <div className="shelf-empty">
+          书架还空着。
+          <br />
+          传一本你在读的书，我们一起看。
+        </div>
+      ) : (
+        <div className="shelf-grid">
+          {list.map((b) => (
+            <div className="book-spine" key={b.id} role="button" tabIndex={0} onClick={() => openBook(b.id)}>
+              <button
+                className="book-del"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  del(b.id);
+                }}
+                aria-label="删除"
+              >
+                ✕
+              </button>
+              <div className="book-cover">
+                <Icon name="book" size={26} />
+              </div>
+              <div className="book-tt">{b.title}</div>
+              {b.author && <div className="book-au">{b.author}</div>}
+              <div className="book-meta">{b.chapters.length} 章</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <BookReader
+          book={open}
+          startCh={openProgress}
+          onClose={() => {
+            setOpen(null);
+            refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BookReader({ book, startCh, onClose }: { book: BookMeta; startCh: number; onClose: () => void }) {
+  const total = book.chapters.length;
+  const [ch, setCh] = useState(Math.max(0, Math.min(startCh, total - 1)));
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [loadingText, setLoadingText] = useState(true);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chat, setChat] = useState<CoMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+
+  // 这本书的陪读对话只在打开时拉一次
+  useEffect(() => {
+    fetch(`/api/book?id=${encodeURIComponent(book.id)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.chat)) setChat(d.chat);
+      })
+      .catch(() => {});
+  }, [book.id]);
+
+  // 换章：拉这章正文 + 存进度
+  useEffect(() => {
+    let alive = true;
+    setLoadingText(true);
+    fetch(`/api/book?id=${encodeURIComponent(book.id)}&ch=${ch}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setText(d.text || "");
+        setTitle(d.title || `第${ch + 1}节`);
+        requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
+      })
+      .catch(() => {})
+      .finally(() => alive && setLoadingText(false));
+    fetch("/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "progress", id: book.id, ch }),
+    }).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [book.id, ch]);
+
+  function go(n: number) {
+    setCh(Math.max(0, Math.min(n, total - 1)));
+    setTocOpen(false);
+  }
+
+  async function send(msg: string) {
+    const m = msg.trim();
+    if (!m || busy) return;
+    setInput("");
+    setBusy(true);
+    const ts = Date.now();
+    setChat((c) => [...c, { role: "user", content: m, ts, ch }]);
+    requestAnimationFrame(() =>
+      chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }),
+    );
+    try {
+      const d = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "chat", id: book.id, ch, message: m }),
+      }).then((r) => r.json());
+      setChat((c) => [...c, { role: "assistant", content: d.reply || "（没接住，再说一遍？）", ts: ts + 1, ch }]);
+    } catch {
+      setChat((c) => [...c, { role: "assistant", content: "连不上，等下再试", ts: ts + 1, ch }]);
+    } finally {
+      setBusy(false);
+      requestAnimationFrame(() =>
+        chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }),
+      );
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="rd">
+      <div className="rd-top">
+        <button className="rd-back" onClick={onClose} aria-label="返回">
+          ‹
+        </button>
+        <button className="rd-tt" onClick={() => setTocOpen((o) => !o)}>
+          <span className="rd-bk">{book.title}</span>
+          <span className="rd-ch">
+            {title} · {ch + 1}/{total} <Icon name="chevron-down" size={13} />
+          </span>
+        </button>
+      </div>
+
+      {tocOpen && (
+        <div className="rd-toc">
+          {book.chapters.map((c, i) => (
+            <button key={i} className={`rd-toc-item ${i === ch ? "on" : ""}`} onClick={() => go(i)}>
+              <span className="rd-toc-n">{i + 1}</span>
+              <span className="rd-toc-t">{c.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="rd-body" ref={bodyRef}>
+        {loadingText ? (
+          <div className="rd-loading">翻到这一页…</div>
+        ) : (
+          <div className="rd-text">
+            {text.split(/\n{2,}/).map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rd-foot">
+        <button className="rd-nav" disabled={ch <= 0} onClick={() => go(ch - 1)}>
+          ‹ 上一章
+        </button>
+        <button className="rd-talk" onClick={() => setChatOpen(true)}>
+          <Icon name="chat" size={16} /> 和 el 聊这章
+        </button>
+        <button className="rd-nav" disabled={ch >= total - 1} onClick={() => go(ch + 1)}>
+          下一章 ›
+        </button>
+      </div>
+
+      {chatOpen && (
+        <div className="rd-chat-back" onClick={() => setChatOpen(false)}>
+          <div className="rd-chat" onClick={(e) => e.stopPropagation()}>
+            <div className="rd-chat-head">
+              <span>
+                一起读《{book.title}》· {title}
+              </span>
+              <button onClick={() => setChatOpen(false)} aria-label="收起">
+                ✕
+              </button>
+            </div>
+            <div className="rd-chat-body" ref={chatRef}>
+              {chat.length === 0 && (
+                <div className="rd-chat-hint">读到哪了？挑句话、聊聊这一章——我也读着呢。</div>
+              )}
+              {chat.map((m, i) => (
+                <div key={i} className={`rd-bubble ${m.role}`}>
+                  {m.content}
+                </div>
+              ))}
+              {busy && <div className="rd-bubble assistant rd-typing">el 在读…</div>}
+            </div>
+            <div className="rd-chat-input">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && input.trim() && send(input)}
+                placeholder="跟 el 说说这一章…"
+                disabled={busy}
+              />
+              <button disabled={busy || !input.trim()} onClick={() => send(input)}>
+                ↑
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );

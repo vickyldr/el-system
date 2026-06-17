@@ -141,6 +141,39 @@ export async function doubanList(
 
 const FRODO_SECRET = process.env.DOUBAN_FRODO_SECRET || "bf7dddc7c9cfe6f7"; // frodo 签名密钥（社区公开，与 apikey 配对）
 
+// 结构化读「我的人页」想看/看过（网页版，UTF-8 正常、不像 frodo 那条会乱码）。匿名读公开页。
+export type DBPeopleItem = { id: string; title: string; cover: string; url: string };
+export async function doubanPeople(
+  status: "wish" | "collect" | "do",
+  count = 30,
+  start = 0,
+): Promise<{ items: DBPeopleItem[]; total: number }> {
+  const id = uid();
+  if (!id) return { items: [], total: 0 };
+  const url = `https://movie.douban.com/people/${id}/${status}?sort=time&start=${start}&mode=grid`;
+  let resp: RelayResp;
+  try {
+    resp = await relayFetch(url, { "User-Agent": WEB_UA, Referer: "https://www.douban.com/" });
+  } catch {
+    return { items: [], total: 0 };
+  }
+  if (resp.status !== 200) return { items: [], total: 0 };
+  const body = resp.body || "";
+  const items: DBPeopleItem[] = [];
+  for (const b of body.split(/<div class="item/).slice(1)) {
+    const tm = b.match(/<li class="title">\s*<a[^>]*>([\s\S]*?)<\/a>/);
+    const mid = (b.match(/subject\/(\d+)/) || [])[1] || "";
+    if (!tm || !mid) continue;
+    const title = stripTags(tm[1]);
+    if (!title) continue;
+    const cover = (b.match(/<img\s+[^>]*src="([^"]+)"/) || [])[1] || "";
+    items.push({ id: mid, title, cover, url: `https://movie.douban.com/subject/${mid}/` });
+    if (items.length >= count) break;
+  }
+  const total = Number((body.match(/\((\d+)\)\s*<\/title>/) || [])[1]) || items.length;
+  return { items, total };
+}
+
 // frodo 新版要请求签名：sig = base64(HMAC-SHA1(secret, "GET&urlencoded(path)&ts"))，只签 path 不签 query。
 async function frodo(pathRel: string, query = ""): Promise<any> {
   const fullPath = `/api/v2/${pathRel}`;

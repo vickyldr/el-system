@@ -2231,69 +2231,52 @@ body::before {
   background: rgba(214, 132, 173, 0.3);
 }
 
-/* ───────────── 一起读：「此刻」入口卡 ───────────── */
-.coread-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--glass);
-  border: 1px solid var(--hair);
+/* ───────────── 书架 tab（同人文 + 我的书） ───────────── */
+.shelf-tab {
+  padding: 4px 2px 24px;
 }
-.coread-l {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: 0 0 auto;
+.shelf-tab-h {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  padding: 6px 6px 6px;
+}
+.shelf-sec-label {
   font-size: 12px;
-  color: #cbb9ff;
+  color: var(--ink-soft);
+  padding: 16px 6px 8px;
+  letter-spacing: 0.04em;
 }
-.coread-cont {
-  flex: 1;
-  min-width: 0;
+.books-sec {
+  position: relative;
+}
+.books-cont {
+  width: 100%;
   appearance: none;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
   font-family: inherit;
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  border: none;
 }
-.coread-tt {
+.books-cont-tt {
   font-size: 14px;
   font-weight: 600;
-  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.coread-go {
-  font-size: 11.5px;
-  color: var(--ink-soft);
-}
-.coread-shelf {
+.books-cont-go {
   flex: 0 0 auto;
-  appearance: none;
-  font-family: inherit;
-  cursor: pointer;
   font-size: 12px;
-  color: #cbb9ff;
-  background: rgba(123, 111, 240, 0.16);
-  border: 1px solid rgba(123, 111, 240, 0.3);
-  border-radius: 12px;
-  padding: 7px 11px;
-}
-
-/* ───────────── 一起读：全屏书架 ───────────── */
-.rd-tt-static {
-  cursor: default;
-}
-.shelf-body {
-  padding-top: 14px;
+  opacity: 0.92;
 }
 .shelf-add {
   width: 100%;

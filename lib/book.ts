@@ -20,10 +20,13 @@ export type BookMeta = {
 export type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
 const INDEX_KEY = "el:book:index";
+const LASTREAD_KEY = "el:book:lastread"; // 全局"最近在读"指针，给「此刻」卡显示"接着读"
 const metaKey = (id: string) => `el:book:${id}`;
 const chapKey = (id: string, n: number) => `el:book:${id}:ch:${n}`;
 const progKey = (id: string) => `el:book:${id}:prog`;
 const chatKey = (id: string) => `el:book:${id}:chat`;
+
+export type LastRead = { id: string; ch: number; updatedAt: number };
 
 function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -57,7 +60,14 @@ export async function getProgress(id: string): Promise<number> {
   return p && typeof p.ch === "number" ? p.ch : 0;
 }
 export async function setProgress(id: string, ch: number): Promise<void> {
-  await setObj(progKey(id), { ch, updatedAt: Date.now() });
+  const now = Date.now();
+  await setObj(progKey(id), { ch, updatedAt: now });
+  await setObj(LASTREAD_KEY, { id, ch, updatedAt: now });
+}
+
+export async function getLastRead(): Promise<LastRead | null> {
+  const v = await getObj<LastRead>(LASTREAD_KEY);
+  return v && typeof v.id === "string" ? v : null;
 }
 
 export async function getChat(id: string): Promise<CoMsg[]> {
@@ -104,6 +114,8 @@ export async function deleteBook(id: string): Promise<void> {
   await delObj(progKey(id));
   await delObj(chatKey(id));
   await saveIndex((await loadIndex()).filter((m) => m.id !== id));
+  const last = await getLastRead();
+  if (last?.id === id) await delObj(LASTREAD_KEY);
 }
 
 // 记忆注入：复用主聊天 5 分钟缓存的记忆上下文（档案/关于el/长期），让陪读的 el 还是"带着记忆的她"，

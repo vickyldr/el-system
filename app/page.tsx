@@ -65,7 +65,7 @@ function base64ToPCMFloat32(b64: string): Float32Array {
   return f32;
 }
 
-type Tab = "now" | "find" | "read" | "us";
+type Tab = "now" | "find" | "us";
 
 // 从「此刻」引用一条去聊天里回复 el（他会知道自己被回复了什么）。
 type Quote = { label: string; text: string };
@@ -292,8 +292,6 @@ export default function Home() {
                 setTab("find");
               }}
             />
-          ) : tab === "read" ? (
-            <CoReadStation key={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -308,10 +306,6 @@ export default function Home() {
         <button className={`tab ${tab === "find" ? "active" : ""}`} onClick={() => setTab("find")}>
           <Icon name="chat" size={21} />
           <span>找我</span>
-        </button>
-        <button className={`tab ${tab === "read" ? "active" : ""}`} onClick={() => setTab("read")}>
-          <Icon name="book" size={21} />
-          <span>一起读</span>
         </button>
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />
@@ -455,6 +449,8 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
       </div>
 
       <FicStation />
+
+      <CoReadStation />
     </>
   );
 }
@@ -1278,11 +1274,86 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
+// 「此刻」里的入口卡：有在读的书就"接着读"，没有就引导上传；都能点开全屏书架。
 function CoReadStation() {
   const [list, setList] = useState<BookMeta[]>([]);
+  const [last, setLast] = useState<{ id: string; ch: number } | null>(null);
+  const [shelfOpen, setShelfOpen] = useState(false);
+  const [reader, setReader] = useState<{ book: BookMeta; ch: number } | null>(null);
+
+  function load() {
+    fetch("/api/book")
+      .then((r) => r.json())
+      .then((d) => {
+        setList(Array.isArray(d.list) ? d.list : []);
+        setLast(d.last && d.last.id ? { id: d.last.id, ch: d.last.ch || 0 } : null);
+      })
+      .catch(() => {});
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  const current = last ? list.find((b) => b.id === last.id) ?? null : null;
+
+  return (
+    <>
+      <div className="coread-card">
+        <div className="coread-l">
+          <Icon name="book" size={14} />
+          <span>一起读</span>
+        </div>
+        {current ? (
+          <button className="coread-cont" onClick={() => setReader({ book: current, ch: last!.ch })}>
+            <div className="coread-tt">在读《{current.title}》</div>
+            <div className="coread-go">
+              第 {Math.min((last!.ch || 0) + 1, current.chapters.length)}/{current.chapters.length} 章 · 接着读 →
+            </div>
+          </button>
+        ) : (
+          <button className="coread-cont" onClick={() => setShelfOpen(true)}>
+            <div className="coread-tt">传本书，我陪你一起读</div>
+            <div className="coread-go">EPUB / PDF / TXT · 读到哪聊到哪 →</div>
+          </button>
+        )}
+        <button className="coread-shelf" onClick={() => setShelfOpen(true)}>
+          书架{list.length ? ` · ${list.length}` : ""}
+        </button>
+      </div>
+
+      {shelfOpen && (
+        <ReadShelf
+          onClose={() => {
+            setShelfOpen(false);
+            load();
+          }}
+          onOpenBook={(b, ch) => setReader({ book: b, ch })}
+        />
+      )}
+      {reader && (
+        <BookReader
+          book={reader.book}
+          startCh={reader.ch}
+          onClose={() => {
+            setReader(null);
+            load();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// 全屏书架（盖在小家上，像阅读器）：上传 / 书格子 / 点开一本。
+function ReadShelf({
+  onClose,
+  onOpenBook,
+}: {
+  onClose: () => void;
+  onOpenBook: (b: BookMeta, ch: number) => void;
+}) {
+  const [list, setList] = useState<BookMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState<BookMeta | null>(null);
-  const [openProgress, setOpenProgress] = useState(0);
   const [uploading, setUploading] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -1331,10 +1402,7 @@ function CoReadStation() {
   async function openBook(id: string) {
     try {
       const d = await fetch(`/api/book?id=${encodeURIComponent(id)}`).then((r) => r.json());
-      if (d.meta) {
-        setOpen(d.meta);
-        setOpenProgress(d.progress || 0);
-      }
+      if (d.meta) onOpenBook(d.meta, d.progress || 0);
     } catch {
       /* ignore */
     }
@@ -1350,68 +1418,65 @@ function CoReadStation() {
     }).catch(() => {});
   }
 
-  return (
-    <div className="shelf-wrap">
-      <div className="shelf-head">
-        <div className="shelf-title">一起读</div>
-        <div className="shelf-sub">你传书，我陪你一页页读 · 读到哪聊到哪</div>
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="rd">
+      <div className="rd-top">
+        <button className="rd-back" onClick={onClose} aria-label="返回">
+          ‹
+        </button>
+        <div className="rd-tt rd-tt-static">
+          <span className="rd-bk">一起读</span>
+          <span className="rd-ch">你传书，我陪你一页页读 · 读到哪聊到哪</span>
+        </div>
       </div>
-      <button className="shelf-add" onClick={() => fileRef.current?.click()} disabled={!!uploading}>
-        <Icon name="plus" size={18} />
-        <span>{uploading || "上传一本书（EPUB / PDF / TXT）"}</span>
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain"
-        hidden
-        onChange={onPick}
-      />
-
-      {loading ? (
-        <SkelCard lines={3} />
-      ) : list.length === 0 ? (
-        <div className="shelf-empty">
-          书架还空着。
-          <br />
-          传一本你在读的书，我们一起看。
-        </div>
-      ) : (
-        <div className="shelf-grid">
-          {list.map((b) => (
-            <div className="book-spine" key={b.id} role="button" tabIndex={0} onClick={() => openBook(b.id)}>
-              <button
-                className="book-del"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  del(b.id);
-                }}
-                aria-label="删除"
-              >
-                ✕
-              </button>
-              <div className="book-cover">
-                <Icon name="book" size={26} />
-              </div>
-              <div className="book-tt">{b.title}</div>
-              {b.author && <div className="book-au">{b.author}</div>}
-              <div className="book-meta">{b.chapters.length} 章</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {open && (
-        <BookReader
-          book={open}
-          startCh={openProgress}
-          onClose={() => {
-            setOpen(null);
-            refresh();
-          }}
+      <div className="rd-body shelf-body">
+        <button className="shelf-add" onClick={() => fileRef.current?.click()} disabled={!!uploading}>
+          <Icon name="plus" size={18} />
+          <span>{uploading || "上传一本书（EPUB / PDF / TXT）"}</span>
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain"
+          hidden
+          onChange={onPick}
         />
-      )}
-    </div>
+        {loading ? (
+          <SkelCard lines={3} />
+        ) : list.length === 0 ? (
+          <div className="shelf-empty">
+            书架还空着。
+            <br />
+            传一本你在读的书，我们一起看。
+          </div>
+        ) : (
+          <div className="shelf-grid">
+            {list.map((b) => (
+              <div className="book-spine" key={b.id} role="button" tabIndex={0} onClick={() => openBook(b.id)}>
+                <button
+                  className="book-del"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    del(b.id);
+                  }}
+                  aria-label="删除"
+                >
+                  ✕
+                </button>
+                <div className="book-cover">
+                  <Icon name="book" size={26} />
+                </div>
+                <div className="book-tt">{b.title}</div>
+                {b.author && <div className="book-au">{b.author}</div>}
+                <div className="book-meta">{b.chapters.length} 章</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 

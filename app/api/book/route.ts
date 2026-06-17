@@ -7,6 +7,7 @@ import {
   getProgress,
   setProgress,
   getChat,
+  getLastRead,
   addBook,
   deleteBook,
   coReadChat,
@@ -24,8 +25,13 @@ export async function GET(req: Request) {
   const u = new URL(req.url);
   const id = u.searchParams.get("id");
   if (!id) {
-    const list = await listBooks().catch(() => []);
-    return NextResponse.json({ list });
+    const [list, lastRaw] = await Promise.all([
+      listBooks().catch(() => []),
+      getLastRead().catch(() => null),
+    ]);
+    // 指针指向的书还在才给（删了的就别显示"接着读"）
+    const last = lastRaw && list.some((b) => b.id === lastRaw.id) ? lastRaw : null;
+    return NextResponse.json({ list, last });
   }
   const meta = await getBookMeta(id);
   if (!meta) return NextResponse.json({ error: "没找到这本书" }, { status: 404 });

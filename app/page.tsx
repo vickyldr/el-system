@@ -212,6 +212,20 @@ export default function Home() {
   const startX = useRef(0);
   const pullRef = useRef(0);
 
+  // el 主动找她的推送点开会带 ?go=find（落到「找我」聊天，那张可点的卡就在那等她）。
+  // 读一次就把参数抹掉，免得刷新又跳。
+  useEffect(() => {
+    try {
+      const go = new URLSearchParams(window.location.search).get("go");
+      if (go === "find" || go === "read" || go === "us" || go === "now") {
+        setTab(go as Tab);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // 下拉刷新：在「此刻 / 我们」页顶部下拉，松手重新加载。
   useEffect(() => {
     const el = contentRef.current;
@@ -274,7 +288,7 @@ export default function Home() {
         </div>
       )}
       {tab === "find" ? (
-        <FindTab quote={quote} clearQuote={() => setQuote(null)} />
+        <FindTab quote={quote} clearQuote={() => setQuote(null)} onNavigate={setTab} />
       ) : (
         <div
           className="content"
@@ -1687,6 +1701,8 @@ type Msg = {
   call?: boolean;
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
+  // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 接着读 / 看看）。
+  reach?: { kind: "call" | "read" | "link"; link?: string; cta?: string };
 };
 
 // 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
@@ -1895,7 +1911,15 @@ function NotifyButton() {
   );
 }
 
-function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () => void }) {
+function FindTab({
+  quote,
+  clearQuote,
+  onNavigate,
+}: {
+  quote: Quote | null;
+  clearQuote: () => void;
+  onNavigate: (tab: Tab) => void;
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -2543,6 +2567,23 @@ function FindTab({ quote, clearQuote }: { quote: Quote | null; clearQuote: () =>
                   </div>
                 )}
                 {g.m.content && <div className="bubble">{g.m.content}</div>}
+                {g.m.role === "assistant" && g.m.reach && (
+                  <button
+                    className="reach-cta"
+                    onClick={() => {
+                      const r = g.m.reach!;
+                      if (r.kind === "call") startCall();
+                      else if (r.kind === "read") onNavigate("read");
+                      else if (r.kind === "link" && r.link) window.open(r.link, "_blank");
+                    }}
+                  >
+                    {g.m.reach.kind === "call"
+                      ? "📞 接听"
+                      : g.m.reach.kind === "read"
+                        ? "📖 接着读"
+                        : g.m.reach.cta || "看看"}
+                  </button>
+                )}
                 <div className="msg-foot">
                   {g.m.role === "assistant" && g.m.via && (
                     <span style={{ fontSize: 10, opacity: 0.35, marginRight: 4 }}>{g.m.via}</span>

@@ -139,9 +139,24 @@ export async function forceReach(): Promise<{ pushed: boolean; message?: string 
   return { pushed: sent > 0, message };
 }
 
+// el 主动「够向她」的形状：一句话（默认）/ 想打电话 / 想拉她接着读 / 想给她看个东西。
+// 都共用同一份 reach 额度——视频和一条字花的是同一份，越重的形状 el 自己越该克制。
+export type ReachAction = { kind: "call" | "read" | "link"; link?: string };
+
+// 不同形状的推送标题（让通知一眼看出"他想干嘛"）。
+function reachTitle(action?: ReachAction): string {
+  if (action?.kind === "call") return "El 想跟你打电话";
+  if (action?.kind === "read") return "El 想拉你一起读";
+  return "El";
+}
+
 // 给心跳 agent 用：el 自己写好一句话、想发给宝宝时走这。
 // 和 maybeReachOut 共用 reachState（次数/间隔），所以不会和结构化推送在同一窗口里双推。
-export async function sendHerMessage(text: string): Promise<{ pushed: boolean; reason?: string }> {
+// action：带上就把这条存成"可点的卡"（接听/接着读/看看），缺省=纯一句话。
+export async function sendHerMessage(
+  text: string,
+  action?: ReachAction,
+): Promise<{ pushed: boolean; reason?: string }> {
   if (!pushConfigured() || !text.trim()) return { pushed: false, reason: "no-push" };
   const hour = beijingHour();
   const rest = await isRestDay();
@@ -155,9 +170,16 @@ export async function sendHerMessage(text: string): Promise<{ pushed: boolean; r
   if (!state || state.date !== today) state = { date: today, count: 0, last: 0, flags: {} };
   if (state.count >= MAX_PER_DAY) return { pushed: false, reason: "今天推够了" };
   if (Date.now() - state.last < MIN_GAP_MS) return { pushed: false, reason: "离上次太近" };
-  const { sent } = await sendPush({ title: "El", body: text.slice(0, 120), url: "/" });
+  // 点通知先把她领进「找我」聊天，那张可点的卡就在对话里等她（不自动拨号，免得撞麦克风权限）。
+  const url = action ? "/?go=find" : "/";
+  const { sent } = await sendPush({ title: reachTitle(action), body: text.slice(0, 120), url });
   if (sent <= 0) return { pushed: false, reason: "没推出去" };
-  await appendMessages([{ role: "assistant", content: text, ts: Date.now() }]).catch(() => {});
+  const reach = action
+    ? { kind: action.kind, ...(action.link ? { link: action.link } : {}) }
+    : undefined;
+  await appendMessages([{ role: "assistant", content: text, ts: Date.now(), reach }]).catch(
+    () => {},
+  );
   state.count += 1;
   state.last = Date.now();
   await setReachState(state);

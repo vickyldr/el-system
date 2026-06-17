@@ -1611,6 +1611,27 @@ body::before {
   border-color: transparent;
 }
 
+/* el 主动够向她那条消息上的行动按钮（接听 / 接着读 / 看看）——实色，像一张能点的邀请 */
+.reach-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.reach-cta:active {
+  transform: scale(0.96);
+}
+
 /* ── 电影推荐卡 ── */
 .movie-row {
   display: flex;

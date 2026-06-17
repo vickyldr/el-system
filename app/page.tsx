@@ -689,15 +689,15 @@ type MovieCard = {
   url: string;
 };
 
-// 点电影卡：先拉起豆瓣 App（douban:// 深链），没装就回落到网页。
-function openInDouban(id: string, webUrl: string) {
+// 点电影卡：在豆瓣 App 里搜这部片（el 推的片没有现成 id，用搜索深链最稳）；没装就回落网页搜索。
+function openInDouban(title: string, webUrl: string) {
   if (typeof window === "undefined") return;
   let left = false;
   const onHide = () => {
     left = true;
   };
   document.addEventListener("visibilitychange", onHide, { once: true });
-  window.location.href = `douban://douban.com/movie/${id}`;
+  window.location.href = `douban://douban.com/search?q=${encodeURIComponent(title)}`;
   setTimeout(() => {
     document.removeEventListener("visibilitychange", onHide);
     if (!left && !document.hidden) window.location.href = webUrl; // App 没拉起来 → 走网页
@@ -764,7 +764,7 @@ function MoviePane() {
             alt=""
             referrerPolicy="no-referrer"
             style={{ cursor: "pointer" }}
-            onClick={() => openInDouban(movie.id, movie.url)}
+            onClick={() => openInDouban(movie.title, movie.url)}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
@@ -776,7 +776,7 @@ function MoviePane() {
             href={movie.url}
             onClick={(e) => {
               e.preventDefault();
-              openInDouban(movie.id, movie.url);
+              openInDouban(movie.title, movie.url);
             }}
           >
             {movie.title}

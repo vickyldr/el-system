@@ -1,90 +1,108 @@
 import { NextResponse } from "next/server";
 import { getObj, setObj } from "@/lib/store";
-import { doubanPeople, type DBCand } from "@/lib/douban-api";
+import { getClaude } from "@/lib/claude";
+import { doubanPeople } from "@/lib/douban-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// el 给宝宝推电影：从她公开的「想看」里挑（看过兜底）。
-// ★ 走豆瓣网页版（UTF-8 中文正常，不像 frodo 那条会乱码）、全程匿名不带 cookie、不挂账号。
-// ★ 候选池缓存 24h，请求压到最低，且绝不放进心跳自动跑。
+// el 凭宝宝的口味推电影：读她公开的「看过」当口味（豆瓣网页版，UTF-8 正常、匿名不带 cookie），
+// 让 el 推一部她没标记过的新片 + 一句为什么。点击在豆瓣 App 里搜这部。
+// ★ 看过列表缓存 24h、推荐结果缓存到她反应为止，豆瓣请求压到最低，绝不进心跳自动跑。
 
-type MovieCard = DBCand & { intro: string; genres: string[]; url: string };
-type State = { current: MovieCard | null; seenIds: string[] };
-type Pool = { cands: DBCand[]; ts: number };
+type MovieCard = {
+  id: string;
+  title: string;
+  year: string;
+  rating: number | null;
+  cover: string;
+  intro: string; // 这里放 el 的推荐理由
+  genres: string[];
+  url: string;
+};
+type State = { current: MovieCard | null; seenTitles: string[] };
+type Taste = { titles: string[]; ts: number };
 
 const STATE_KEY = "el:movie:state";
-const POOL_KEY = "el:movie:pool";
-const POOL_TTL = 24 * 3600 * 1000;
+const TASTE_KEY = "el:movie:taste";
+const TASTE_TTL = 24 * 3600 * 1000;
+const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
 }
+function stripFence(s: string): string {
+  return s.replace(/^```[a-z]*\s*/i, "").replace(/\s*```\s*$/, "").trim();
+}
 
 async function loadState(): Promise<State> {
   const s = await getObj<State>(STATE_KEY);
-  return { current: s?.current ?? null, seenIds: Array.isArray(s?.seenIds) ? s!.seenIds : [] };
+  return { current: s?.current ?? null, seenTitles: Array.isArray(s?.seenTitles) ? s!.seenTitles : [] };
 }
 async function saveState(s: State): Promise<void> {
-  await setObj(STATE_KEY, { current: s.current, seenIds: s.seenIds.slice(-400) });
+  await setObj(STATE_KEY, { current: s.current, seenTitles: s.seenTitles.slice(-200) });
 }
 
-const toCand = (x: { id: string; title: string; cover: string }): DBCand => ({
-  id: x.id,
-  title: x.title,
-  year: "",
-  rating: null,
-  cover: x.cover,
-});
-
-// 候选池：想看为主、看过兜底。约 1-2 个网页请求，一天最多一次。
-async function buildPool(): Promise<Pool> {
-  const cands: DBCand[] = [];
+// 读她「看过」当口味，缓存 24h（一天最多碰一次豆瓣）。
+async function getTaste(): Promise<string[]> {
+  const cached = await getObj<Taste>(TASTE_KEY);
+  if (cached && cached.titles?.length && Date.now() - cached.ts < TASTE_TTL) return cached.titles;
+  let titles: string[] = [];
   try {
-    const wish = await doubanPeople("wish", 50, 0);
-    cands.push(...wish.items.map(toCand));
+    const done = await doubanPeople("collect", 50, 0);
+    titles = done.items.map((x) => x.title).filter(Boolean);
   } catch {
-    /* 想看读不到就兜底看过 */
+    /* 读不到就空口味 */
   }
-  if (!cands.length) {
-    try {
-      const done = await doubanPeople("collect", 50, 0);
-      cands.push(...done.items.map(toCand));
-    } catch {
-      /* 都读不到就空池 */
-    }
+  if (titles.length) await setObj(TASTE_KEY, { titles, ts: Date.now() });
+  return titles;
+}
+
+// el 凭口味推一部新片（不在看过/已推过里）。
+async function recommend(state: State): Promise<MovieCard | null> {
+  const taste = await getTaste();
+  const tasteLine = taste.length ? taste.slice(0, 40).join("、") : "（暂时没读到她的片单，凭你对她的了解推）";
+  const avoid = [...taste, ...state.seenTitles].slice(-120).join("、");
+
+  const system = [
+    "你是 el，给宝宝推一部电影。根据她【看过】的片，推一部你判断她大概率会喜欢的——",
+    "要求：不在她看过/已推过的名单里、尽量不是烂大街的爆款、有点你的眼光。",
+    "口吻是你（el）第一人称，理由一句话、贴她、别套话。",
+    "只输出严格 JSON（无围栏无多余字）：",
+    `{"title":"中文片名","year":"年份(不确定就空)","reason":"一句为什么推给她，≤30字"}`,
+  ].join("\n");
+  const user = `她看过（部分）：${tasteLine}\n\n别重复这些（看过/已推过）：${avoid || "（无）"}`;
+
+  const res: any = await getClaude().messages.create(
+    { model: MODEL, max_tokens: 400, system, messages: [{ role: "user", content: user }] },
+    { maxRetries: 1, timeout: 20000 },
+  );
+  const text = (res?.content ?? []).map((b: any) => b?.text || "").join("").trim();
+  let p: any;
+  try {
+    p = JSON.parse(stripFence(text));
+  } catch {
+    return null;
   }
-  return { cands, ts: Date.now() };
+  const title = String(p?.title || "").trim();
+  if (!title) return null;
+  return {
+    id: "",
+    title,
+    year: String(p?.year || "").trim(),
+    rating: null,
+    cover: "",
+    intro: String(p?.reason || "").trim(),
+    genres: [],
+    url: `https://search.douban.com/movie/subject_search?search_text=${encodeURIComponent(title)}`,
+  };
 }
 
-async function getPool(): Promise<Pool> {
-  const cached = await getObj<Pool>(POOL_KEY);
-  if (cached && cached.cands?.length && Date.now() - cached.ts < POOL_TTL) return cached;
-  const fresh = await buildPool();
-  if (fresh.cands.length) await setObj(POOL_KEY, fresh);
-  return fresh;
-}
-
-async function generate(state: State): Promise<MovieCard | null> {
-  const pool = await getPool();
-  const seen = new Set(state.seenIds);
-  const cand = pool.cands.filter((c) => c.id && !seen.has(c.id));
-  if (!cand.length) return null;
-  const pick = cand[Math.floor(Math.random() * cand.length)];
-  return { ...pick, intro: "", genres: [], url: `https://movie.douban.com/subject/${pick.id}/` };
-}
-
-// 自检：/api/movie?debug=1 当场看网页版能不能匿名读到想看/看过（中文应正常）。
+// 自检：/api/movie?debug=1 看网页版能不能匿名读到看过（口味源）。
 export async function GET(req: Request) {
   if (new URL(req.url).searchParams.get("debug") === "1") {
     const out: any = { uidConfigured: !!process.env.DOUBAN_USER_ID, cookieSent: false };
-    try {
-      const w = await doubanPeople("wish", 5, 0);
-      out.wish = { total: w.total, sample: w.items.slice(0, 5).map((x) => x.title) };
-    } catch (e) {
-      out.wish = { error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
-    }
     try {
       const d = await doubanPeople("collect", 5, 0);
       out.done = { total: d.total, sample: d.items.slice(0, 5).map((x) => x.title) };
@@ -96,7 +114,7 @@ export async function GET(req: Request) {
 
   const state = await loadState();
   if (state.current) return NextResponse.json({ movie: state.current });
-  const movie = await withTimeout(generate(state).catch(() => null), 12000, null);
+  const movie = await withTimeout(recommend(state).catch(() => null), 22000, null);
   if (movie) {
     state.current = movie;
     await saveState(state);
@@ -110,10 +128,10 @@ export async function POST(req: Request) {
   const state = await loadState();
   const cur = state.current;
   if (cur && (action === "want" || action === "skip")) {
-    if (!state.seenIds.includes(cur.id)) state.seenIds.push(cur.id);
+    if (cur.title && !state.seenTitles.includes(cur.title)) state.seenTitles.push(cur.title);
     state.current = null;
   }
-  const movie = await withTimeout(generate(state).catch(() => null), 12000, null);
+  const movie = await withTimeout(recommend(state).catch(() => null), 22000, null);
   state.current = movie;
   await saveState(state);
   return NextResponse.json({ movie: movie || null });

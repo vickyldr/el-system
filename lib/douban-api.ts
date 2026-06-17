@@ -9,8 +9,9 @@ import { getCache, setCache } from "./store";
 const RELAY_URL = process.env.RELAY_URL || process.env.NETEASE_RELAY || "";
 const RELAY_SECRET = process.env.RELAY_SECRET || process.env.NETEASE_RELAY_SECRET || "";
 const DOUBAN_APIKEY = process.env.DOUBAN_APIKEY || "0dad551ec0f84ed02907ff5c42e8ec70"; // frodo 通用 apikey（社区公开）
-// 有账号 cookie 更稳（豆瓣越来越多页面要登录态）；没有也先尽力读公开页。
-const cookie = () => process.env.DOUBAN_COOKIE || "";
+// 强制匿名：永不带账号 cookie，只读公开数据（frodo 公开 apikey + 公开主页）。
+// —— 之前带 cookie 的自动化把宝宝账号搞 ban 了，这里硬性关掉，请求不挂任何账号。
+const cookie = () => "";
 const uid = () => process.env.DOUBAN_USER_ID || "";
 
 const WEB_UA =
@@ -320,7 +321,8 @@ export async function doubanMovieInfo(id: string): Promise<
 // ── 写她真豆瓣「想看」（要主账户 cookie，DOUBAN_USER_COOKIE）──
 // frodo 写接口要 POST 签名（POST&path&ts）+ 登录态 cookie。端点未必一次猜对，先 best-effort，
 // 配了 cookie 才会真写；没配只在 app 里记。具体能不能写，先用 VPS 测试验证再依赖。
-const USER_COOKIE = () => process.env.DOUBAN_USER_COOKIE || "";
+// 强制关掉写：写「想看」要登录态，匿名模式下不写她真豆瓣（只在 app 内记）。
+const USER_COOKIE = () => "";
 
 export async function doubanMarkWish(idRaw: string): Promise<{ ok: boolean; detail: string }> {
   const mid = idOf(idRaw);

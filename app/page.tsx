@@ -504,7 +504,7 @@ function DailyTrivia() {
 }
 
 /* ───────────── El 状态（心情/天气/推歌 左右滑） ───────────── */
-type StatusTab = "mood" | "weather" | "song";
+type StatusTab = "mood" | "weather" | "song" | "movie";
 
 function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
   const hasMood = !!(status.mood || status.thought || status.el_note);
@@ -597,6 +597,8 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
       ),
     });
 
+  panels.push({ key: "movie", node: <MoviePane /> });
+
   const [idx, setIdx] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -671,6 +673,108 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ───────────── 电影推荐（el 推你看，匿名读豆瓣公开数据；想看/不想看推下一部）───────────── */
+type MovieCard = {
+  id: string;
+  title: string;
+  year: string;
+  rating: number | null;
+  cover: string;
+  intro: string;
+  genres: string[];
+  url: string;
+};
+
+function MoviePane() {
+  const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/movie")
+      .then((r) => r.json())
+      .then((d) => alive && setMovie(d.movie || null))
+      .catch(() => alive && setMovie(null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function react(action: "want" | "skip") {
+    if (busy) return;
+    setBusy(true);
+    setMovie(undefined);
+    try {
+      const d = await fetch("/api/movie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      }).then((r) => r.json());
+      setMovie(d.movie || null);
+    } catch {
+      setMovie(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (movie === undefined)
+    return (
+      <div className="now-panel">
+        <div className="now-panel-label">想推你看</div>
+        <div className="meta">想想推你看什么…</div>
+      </div>
+    );
+  if (!movie)
+    return (
+      <div className="now-panel">
+        <div className="now-panel-label">想推你看</div>
+        <div className="meta">这会儿没有可推的了，过会儿再来～</div>
+      </div>
+    );
+
+  return (
+    <div className="now-panel">
+      <div className="now-panel-label">想推你看</div>
+      <div className="movie-row">
+        {movie.cover && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className="movie-cover"
+            src={movie.cover}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+        <div className="movie-info">
+          <a className="movie-title" href={movie.url} target="_blank" rel="noreferrer">
+            {movie.title}
+            {movie.year ? ` (${movie.year})` : ""}
+          </a>
+          {(movie.rating != null || movie.genres?.length > 0) && (
+            <div className="meta" style={{ marginTop: 4 }}>
+              {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
+              {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
+            </div>
+          )}
+          {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
+        </div>
+      </div>
+      <div className="status-actions">
+        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+          ＋ 想看
+        </button>
+        <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
+          不想看
+        </button>
+      </div>
     </div>
   );
 }

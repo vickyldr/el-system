@@ -496,13 +496,14 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
     panels.push({
       key: "weather",
       node: (
-        <div className="now-panel">
+        <div className="now-panel weather-pane">
           <div className="now-panel-label">天气 · {status.weather!.city}</div>
-          <div className="now-panel-big">
-            {status.weather!.icon ? `${status.weather!.icon} ` : ""}
-            {status.weather!.temp}° <span className="dim">{status.weather!.desc}</span>
+          <div className="weather-row">
+            {status.weather!.icon && <span className="weather-ic">{status.weather!.icon}</span>}
+            <span className="weather-temp">{status.weather!.temp}°</span>
+            {status.weather!.desc && <span className="weather-desc">{status.weather!.desc}</span>}
           </div>
-          {status.weather!.outfit && <div className="meta">👕 {status.weather!.outfit}</div>}
+          {status.weather!.outfit && <div className="meta weather-outfit">👕 {status.weather!.outfit}</div>}
           <button
             type="button"
             className="status-reply"
@@ -591,7 +592,8 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   useEffect(() => {
     const el = slideRefs.current[active];
     if (!el) return;
-    const apply = () => setSwipeH(el.offsetHeight);
+    // +24：留出轨道上下内边距 + 卡片底部那道 3D 厚度边，别让 overflow 把卡片下沿裁掉
+    const apply = () => setSwipeH(el.offsetHeight + 24);
     apply();
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {

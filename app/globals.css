@@ -246,7 +246,7 @@ body::before {
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
   scroll-padding: 0 22px;
-  padding: 6px 22px 4px; /* 两端各留 22px，首尾卡不贴死边 */
+  padding: 8px 22px 14px; /* 两端各留 22px，上下留出 3D 厚度边不被裁 */
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   transition: height 0.28s ease;
@@ -258,6 +258,7 @@ body::before {
 .now-slide {
   flex: 0 0 84%; /* 比满宽窄一截 → 旁边露出下一张的边 */
   scroll-snap-align: center;
+  scroll-snap-stop: always; /* 一次滑动最多翻一张，不让惯性一甩掠过中间几张 */
   align-self: flex-start;
 }
 

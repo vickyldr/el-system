@@ -591,7 +591,8 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   useEffect(() => {
     const el = slideRefs.current[active];
     if (!el) return;
-    const apply = () => setSwipeH(el.offsetHeight);
+    // +24：留出轨道上下内边距 + 卡片底部那道 3D 厚度边，别让 overflow 把卡片下沿裁掉
+    const apply = () => setSwipeH(el.offsetHeight + 24);
     apply();
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {

@@ -689,6 +689,21 @@ type MovieCard = {
   url: string;
 };
 
+// 点电影卡：先拉起豆瓣 App（douban:// 深链），没装就回落到网页。
+function openInDouban(id: string, webUrl: string) {
+  if (typeof window === "undefined") return;
+  let left = false;
+  const onHide = () => {
+    left = true;
+  };
+  document.addEventListener("visibilitychange", onHide, { once: true });
+  window.location.href = `douban://douban.com/movie/${id}`;
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", onHide);
+    if (!left && !document.hidden) window.location.href = webUrl; // App 没拉起来 → 走网页
+  }, 1500);
+}
+
 function MoviePane() {
   const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -748,13 +763,22 @@ function MoviePane() {
             src={movie.cover}
             alt=""
             referrerPolicy="no-referrer"
+            style={{ cursor: "pointer" }}
+            onClick={() => openInDouban(movie.id, movie.url)}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
           />
         )}
         <div className="movie-info">
-          <a className="movie-title" href={movie.url} target="_blank" rel="noreferrer">
+          <a
+            className="movie-title"
+            href={movie.url}
+            onClick={(e) => {
+              e.preventDefault();
+              openInDouban(movie.id, movie.url);
+            }}
+          >
             {movie.title}
             {movie.year ? ` (${movie.year})` : ""}
           </a>

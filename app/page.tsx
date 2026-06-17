@@ -116,6 +116,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
         </svg>
       );
+    case "screen":
+      return (
+        <svg {...p}>
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+      );
     case "bell":
       return (
         <svg {...p}>
@@ -1707,6 +1714,7 @@ type Msg = {
   image?: string;
   call?: boolean;
   video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
+  screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
@@ -1737,14 +1745,15 @@ function groupMessages(msgs: Msg[]): MsgGroup[] {
 function CallCard({ items }: { items: { m: Msg; i: number }[] }) {
   const [open, setOpen] = useState(false);
   const isVideo = items.some(({ m }) => m.video); // 这段里有视频通话的句子，就标成视频
+  const isScreen = !isVideo && items.some(({ m }) => m.screen); // 共享屏幕的那段
   return (
     <div className="call-card-wrap">
       <button className={`call-card ${open ? "open" : ""}`} onClick={() => setOpen((o) => !o)}>
         <span className="call-card-ic">
-          <Icon name={isVideo ? "video" : "phone"} size={17} />
+          <Icon name={isScreen ? "screen" : isVideo ? "video" : "phone"} size={17} />
         </span>
         <span className="call-card-text">
-          <b>{isVideo ? "视频通话" : "语音通话"}</b>
+          <b>{isScreen ? "共享屏幕" : isVideo ? "视频通话" : "语音通话"}</b>
           <span className="call-card-sub">
             {items.length} 句 · {fmtTime(items[0].m.ts)}
           </span>
@@ -1949,8 +1958,10 @@ function FindTab({
   const [liveOn, setLiveOn] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
-  const [callVideo, setCallVideo] = useState(false); // 这通是不是视频（开了摄像头、把画面喂给 el 当眼睛）
-  const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览
+  const [callMode, setCallMode] = useState<"voice" | "video" | "screen">("voice"); // 语音 / 视频(摄像头) / 共享屏幕
+  const [canScreen, setCanScreen] = useState(false); // 浏览器支不支持共享屏幕（手机不支持，藏起按钮）
+  const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
+  const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
   const streamRef = useRef<MediaStream | null>(null);
   const acRef = useRef<AudioContext | null>(null);
@@ -1961,7 +1972,7 @@ function FindTab({
   const botSpeaking = useRef(false); // el(MiniMax 声音)正在说话——这期间不把麦克风回传给 Gemini，防回授
   const currentSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const callActive = useRef(false);
-  const callVideoRef = useRef(false); // 这通是不是视频（给 addCallMsg 用，避免闭包读到旧的 state）
+  const callModeRef = useRef<"voice" | "video" | "screen">("voice"); // 给 addCallMsg 用，避免闭包读到旧 state
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -2020,7 +2031,14 @@ function FindTab({
 
   // 通话里的一句话：标记成 call、显示在对话框、并存进云端（el 回顾时能看到当时在打电话）。
   function addCallMsg(role: "user" | "assistant", content: string) {
-    const m: Msg = { role, content, ts: Date.now(), call: true, ...(callVideoRef.current ? { video: true } : {}) };
+    const m: Msg = {
+      role,
+      content,
+      ts: Date.now(),
+      call: true,
+      ...(callModeRef.current === "video" ? { video: true } : {}),
+      ...(callModeRef.current === "screen" ? { screen: true } : {}),
+    };
     setMsgs((s) => [...s, m]);
     fetch("/api/messages", {
       method: "POST",
@@ -2057,19 +2075,31 @@ function FindTab({
     }
   }
 
-  // 视频通话开起来后，把摄像头流绑到自己的画面预览上（防 startCall 里元素还没挂载的竞态）。
+  // 浏览器支不支持共享屏幕（getDisplayMedia 手机上没有）——决定要不要显示那个按钮。
   useEffect(() => {
-    if (inCall && callVideo && videoRef.current && streamRef.current) {
+    setCanScreen(
+      typeof navigator !== "undefined" &&
+        typeof navigator.mediaDevices?.getDisplayMedia === "function",
+    );
+  }, []);
+
+  // 视频模式开起来后，把摄像头流绑到自己的画面预览上（防 startCall 里元素还没挂载的竞态）。
+  useEffect(() => {
+    if (inCall && callMode === "video" && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
       videoRef.current.play().catch(() => {});
     }
-  }, [inCall, callVideo]);
+  }, [inCall, callMode]);
 
-  // 视频通话：定时从摄像头抓一帧（缩到 480 宽、jpeg）发给 bridge，喂给 el 当"眼睛"。
-  // 只留最新一帧、每 1.5s 一次——el 看见的是"此刻的你"，又不灌爆。
-  function startFrameCapture(ws: WebSocket) {
-    const stream = streamRef.current;
-    const track = stream?.getVideoTracks()[0];
+  // 视频 / 共享屏幕：定时从画面里抓一帧（缩小、jpeg）发给 bridge，喂给 el 当"眼睛"。
+  // 只留最新一帧、每 1.5s 一次——el 看见的是"此刻"，又不灌爆。摄像头看脸 480 够；屏幕要看清字给到 1280。
+  function startFrameCapture(
+    ws: WebSocket,
+    visualStream: MediaStream,
+    maxW: number,
+    kind: "camera" | "screen",
+  ) {
+    const track = visualStream.getVideoTracks()[0];
     if (!track) return;
     const v = document.createElement("video");
     v.muted = true;
@@ -2082,7 +2112,7 @@ function FindTab({
       const vw = v.videoWidth;
       const vh = v.videoHeight;
       if (!vw || !vh) return;
-      const W = 480;
+      const W = Math.min(maxW, vw);
       const H = Math.round((vh / vw) * W);
       canvas.width = W;
       canvas.height = H;
@@ -2090,35 +2120,52 @@ function FindTab({
       if (!ctx) return;
       ctx.drawImage(v, 0, 0, W, H);
       const data = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
-      if (data) ws.send(JSON.stringify({ type: "frame", data }));
+      if (data) ws.send(JSON.stringify({ type: "frame", data, kind }));
     };
     frameTimerRef.current = setInterval(grab, 1500);
   }
 
-  async function startCall(video = false) {
+  async function startCall(mode: "voice" | "video" | "screen" = "voice") {
     if (callActive.current) return; // 防重复点
     callActive.current = true;
-    callVideoRef.current = video;
-    setCallVideo(video);
+    callModeRef.current = mode;
+    setCallMode(mode);
     setInCall(true); // 立刻弹出通话界面，别让人觉得"点了没反应"
     setCallState("idle");
     try {
+      // 先拿媒体——尤其屏幕共享，要趁点击手势还在，别让后面的 await 把它弄失效。
+      // 麦克风（耳朵）始终要；眼睛按 mode：摄像头 / 屏幕 / 没有。
+      let stream: MediaStream;
+      let visualStream: MediaStream | null = null;
+      let frameW = 480;
+      if (mode === "screen") {
+        visualStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        displayStreamRef.current = visualStream;
+        frameW = 1280; // 屏幕要看清字，抓大一点
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
+        });
+        // 她在浏览器里点"停止共享"时，干净地挂断
+        const vt = visualStream.getVideoTracks()[0];
+        if (vt) vt.onended = () => { if (callActive.current) endCall(); };
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
+          video: mode === "video" ? ({ facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } as MediaTrackConstraints) : false,
+        });
+        if (mode === "video") visualStream = stream; // 摄像头画面就在这条流里
+      }
+      streamRef.current = stream;
+
+      // 视频模式：自己的画面预览（屏幕共享不预览，避免镜中镜，浮层里给一行字代替）
+      if (mode === "video" && visualStream && videoRef.current) {
+        videoRef.current.srcObject = visualStream;
+        videoRef.current.play().catch(() => {});
+      }
+
       const tokenRes = await fetch("/api/live-token");
       const { wsUrl, secret, error } = await tokenRes.json();
       if (error || !wsUrl) { alert("通话服务未配置，请检查 GEMINI_API_KEY"); endCall(); return; }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
-        video: video ? ({ facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } as MediaTrackConstraints) : false,
-      });
-      streamRef.current = stream;
-      if (video) {
-        // 自己的画面预览（静音、内联播放，别把麦克风又放出来）
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }
 
       const AC = window.AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new AC();
@@ -2177,17 +2224,22 @@ function FindTab({
         processor.connect(silentGain);
         silentGain.connect(ac.destination);
 
-        if (video) startFrameCapture(ws); // 视频通话：开始把画面喂给 el
+        if (visualStream)
+          startFrameCapture(ws, visualStream, frameW, mode === "screen" ? "screen" : "camera"); // 视频/屏幕：开始把画面喂给 el
       };
     } catch {
-      alert("打电话需要麦克风权限哦");
+      alert(
+        mode === "screen"
+          ? "没拿到屏幕共享（是不是取消了？记得电脑浏览器才支持哦）"
+          : "打电话需要麦克风权限哦",
+      );
       endCall();
     }
   }
 
   function endCall() {
     callActive.current = false;
-    callVideoRef.current = false;
+    callModeRef.current = "voice";
     if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
@@ -2195,13 +2247,15 @@ function FindTab({
     processorRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    displayStreamRef.current?.getTracks().forEach((t) => t.stop()); // 停掉屏幕共享
+    displayStreamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     acRef.current?.close().catch(() => {});
     acRef.current = null;
     outputGainRef.current = null;
     nextPlayTimeRef.current = 0;
     setInCall(false);
-    setCallVideo(false);
+    setCallMode("voice");
     setCallState("idle");
   }
 
@@ -2552,13 +2606,18 @@ function FindTab({
         <div className="top-actions">
           <NotifyButton />
           {liveOn && (
-            <button className="icon-btn" onClick={() => startCall(false)} aria-label="打电话">
+            <button className="icon-btn" onClick={() => startCall("voice")} aria-label="打电话">
               <Icon name="phone" size={19} />
             </button>
           )}
           {liveOn && (
-            <button className="icon-btn" onClick={() => startCall(true)} aria-label="视频通话">
+            <button className="icon-btn" onClick={() => startCall("video")} aria-label="视频通话">
               <Icon name="video" size={19} />
+            </button>
+          )}
+          {liveOn && canScreen && (
+            <button className="icon-btn" onClick={() => startCall("screen")} aria-label="共享屏幕">
+              <Icon name="screen" size={19} />
             </button>
           )}
           {msgs.length > 0 && (
@@ -2571,8 +2630,14 @@ function FindTab({
 
       {inCall && (
         <div className="call-overlay">
-          <div className="call-title">{callVideo ? "和 el 视频中" : "和 el 通话中"}</div>
-          {callVideo && (
+          <div className="call-title">
+            {callMode === "video"
+              ? "和 el 视频中"
+              : callMode === "screen"
+                ? "和 el 共享屏幕中"
+                : "和 el 通话中"}
+          </div>
+          {callMode === "video" && (
             <video
               ref={videoRef}
               className="call-selfcam"
@@ -2580,6 +2645,13 @@ function FindTab({
               muted
               playsInline
             />
+          )}
+          {callMode === "screen" && (
+            <div className="call-sharing">
+              正在把屏幕共享给 el…
+              <br />
+              他看着你这边的画面跟你聊
+            </div>
           )}
           <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
             <Icon
@@ -2653,8 +2725,8 @@ function FindTab({
                     className="reach-cta"
                     onClick={() => {
                       const r = g.m.reach!;
-                      if (r.kind === "call") startCall(false);
-                      else if (r.kind === "video") startCall(true);
+                      if (r.kind === "call") startCall("voice");
+                      else if (r.kind === "video") startCall("video");
                       else if (r.kind === "read") onNavigate("read");
                       else if (r.kind === "link" && r.link) window.open(r.link, "_blank");
                     }}

@@ -1642,6 +1642,15 @@ body::before {
   transform: scale(0.96);
 }
 
+/* 共享屏幕通话时浮层里的一行提示（不预览屏幕本身，避免镜中镜） */
+.call-sharing {
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted, #9aa);
+  max-width: 260px;
+}
+
 /* ── 电影推荐卡 ── */
 .movie-row {
   display: flex;

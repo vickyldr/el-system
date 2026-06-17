@@ -9,6 +9,7 @@ export type StoredMsg = {
   stickerHint?: string; // 这条若是 el 贴的表情，记下它的意思，好让 el 事后知道自己发过啥
   call?: boolean; // 这条是不是语音通话里的（显示成通话卡片，el 回顾时也知道当时在打电话）
   video?: boolean; // 这条是不是视频通话里的（el 当时能看见她，夜里固化记忆时认得出"这是我看着她的一晚"）
+  screen?: boolean; // 这条是不是共享屏幕通话里的（el 当时看着她的屏幕）
   // el 主动「够向她」时这条带的动作：不只是一句话，而是约她打电话 / 拉她来接着读 / 给她看个东西。
   // 前端把它渲染成一张带按钮的卡（接听 / 接着读 / 看看）。kind 缺省=纯一句话。
   reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };

@@ -30,7 +30,13 @@ async function handle(req: Request) {
   const transcript = dayMsgs
     .map((m) => {
       const who = m.role === "user" ? "宝宝" : "我";
-      const tag = m.call ? (m.video ? "【视频通话】" : "【通话】") : "";
+      const tag = m.call
+        ? m.video
+          ? "【视频通话】"
+          : m.screen
+            ? "【共享屏幕】"
+            : "【通话】"
+        : "";
       const img = m.image ? "（发了一张图）" : "";
       return `${tag}${who}：${m.content}${img}`;
     })

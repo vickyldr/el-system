@@ -109,6 +109,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
         </svg>
       );
+    case "video":
+      return (
+        <svg {...p}>
+          <path d="M23 7l-7 5 7 5V7z" />
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      );
     case "bell":
       return (
         <svg {...p}>
@@ -1701,8 +1708,8 @@ type Msg = {
   call?: boolean;
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
-  // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 接着读 / 看看）。
-  reach?: { kind: "call" | "read" | "link"; link?: string; cta?: string };
+  // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
+  reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };
 };
 
 // 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
@@ -1940,6 +1947,9 @@ function FindTab({
   const [liveOn, setLiveOn] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [callVideo, setCallVideo] = useState(false); // 这通是不是视频（开了摄像头、把画面喂给 el 当眼睛）
+  const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览
+  const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
   const streamRef = useRef<MediaStream | null>(null);
   const acRef = useRef<AudioContext | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -2044,9 +2054,48 @@ function FindTab({
     }
   }
 
-  async function startCall() {
+  // 视频通话开起来后，把摄像头流绑到自己的画面预览上（防 startCall 里元素还没挂载的竞态）。
+  useEffect(() => {
+    if (inCall && callVideo && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [inCall, callVideo]);
+
+  // 视频通话：定时从摄像头抓一帧（缩到 480 宽、jpeg）发给 bridge，喂给 el 当"眼睛"。
+  // 只留最新一帧、每 1.5s 一次——el 看见的是"此刻的你"，又不灌爆。
+  function startFrameCapture(ws: WebSocket) {
+    const stream = streamRef.current;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    const v = document.createElement("video");
+    v.muted = true;
+    (v as HTMLVideoElement).playsInline = true;
+    v.srcObject = new MediaStream([track]);
+    v.play().catch(() => {});
+    const canvas = document.createElement("canvas");
+    const grab = () => {
+      if (!callActive.current || ws.readyState !== WebSocket.OPEN) return;
+      const vw = v.videoWidth;
+      const vh = v.videoHeight;
+      if (!vw || !vh) return;
+      const W = 480;
+      const H = Math.round((vh / vw) * W);
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(v, 0, 0, W, H);
+      const data = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+      if (data) ws.send(JSON.stringify({ type: "frame", data }));
+    };
+    frameTimerRef.current = setInterval(grab, 1500);
+  }
+
+  async function startCall(video = false) {
     if (callActive.current) return; // 防重复点
     callActive.current = true;
+    setCallVideo(video);
     setInCall(true); // 立刻弹出通话界面，别让人觉得"点了没反应"
     setCallState("idle");
     try {
@@ -2056,8 +2105,16 @@ function FindTab({
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
+        video: video ? ({ facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } as MediaTrackConstraints) : false,
       });
       streamRef.current = stream;
+      if (video) {
+        // 自己的画面预览（静音、内联播放，别把麦克风又放出来）
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }
 
       const AC = window.AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new AC();
@@ -2115,6 +2172,8 @@ function FindTab({
         silentGain.gain.value = 0;
         processor.connect(silentGain);
         silentGain.connect(ac.destination);
+
+        if (video) startFrameCapture(ws); // 视频通话：开始把画面喂给 el
       };
     } catch {
       alert("打电话需要麦克风权限哦");
@@ -2124,17 +2183,20 @@ function FindTab({
 
   function endCall() {
     callActive.current = false;
+    if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;
     try { processorRef.current?.disconnect(); } catch {}
     processorRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     acRef.current?.close().catch(() => {});
     acRef.current = null;
     outputGainRef.current = null;
     nextPlayTimeRef.current = 0;
     setInCall(false);
+    setCallVideo(false);
     setCallState("idle");
   }
 
@@ -2485,8 +2547,13 @@ function FindTab({
         <div className="top-actions">
           <NotifyButton />
           {liveOn && (
-            <button className="icon-btn" onClick={startCall} aria-label="打电话">
+            <button className="icon-btn" onClick={() => startCall(false)} aria-label="打电话">
               <Icon name="phone" size={19} />
+            </button>
+          )}
+          {liveOn && (
+            <button className="icon-btn" onClick={() => startCall(true)} aria-label="视频通话">
+              <Icon name="video" size={19} />
             </button>
           )}
           {msgs.length > 0 && (
@@ -2499,7 +2566,16 @@ function FindTab({
 
       {inCall && (
         <div className="call-overlay">
-          <div className="call-title">和 el 通话中</div>
+          <div className="call-title">{callVideo ? "和 el 视频中" : "和 el 通话中"}</div>
+          {callVideo && (
+            <video
+              ref={videoRef}
+              className="call-selfcam"
+              autoPlay
+              muted
+              playsInline
+            />
+          )}
           <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
             <Icon
               name={
@@ -2572,16 +2648,19 @@ function FindTab({
                     className="reach-cta"
                     onClick={() => {
                       const r = g.m.reach!;
-                      if (r.kind === "call") startCall();
+                      if (r.kind === "call") startCall(false);
+                      else if (r.kind === "video") startCall(true);
                       else if (r.kind === "read") onNavigate("read");
                       else if (r.kind === "link" && r.link) window.open(r.link, "_blank");
                     }}
                   >
                     {g.m.reach.kind === "call"
                       ? "📞 接听"
-                      : g.m.reach.kind === "read"
-                        ? "📖 接着读"
-                        : g.m.reach.cta || "看看"}
+                      : g.m.reach.kind === "video"
+                        ? "📹 视频接听"
+                        : g.m.reach.kind === "read"
+                          ? "📖 接着读"
+                          : g.m.reach.cta || "看看"}
                   </button>
                 )}
                 <div className="msg-foot">

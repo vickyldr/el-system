@@ -141,11 +141,12 @@ export async function forceReach(): Promise<{ pushed: boolean; message?: string 
 
 // el 主动「够向她」的形状：一句话（默认）/ 想打电话 / 想拉她接着读 / 想给她看个东西。
 // 都共用同一份 reach 额度——视频和一条字花的是同一份，越重的形状 el 自己越该克制。
-export type ReachAction = { kind: "call" | "read" | "link"; link?: string };
+export type ReachAction = { kind: "call" | "video" | "read" | "link"; link?: string };
 
 // 不同形状的推送标题（让通知一眼看出"他想干嘛"）。
 function reachTitle(action?: ReachAction): string {
   if (action?.kind === "call") return "El 想跟你打电话";
+  if (action?.kind === "video") return "El 想跟你视频";
   if (action?.kind === "read") return "El 想拉你一起读";
   return "El";
 }

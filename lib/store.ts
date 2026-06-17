@@ -10,7 +10,7 @@ export type StoredMsg = {
   call?: boolean; // 这条是不是语音通话里的（显示成通话卡片，el 回顾时也知道当时在打电话）
   // el 主动「够向她」时这条带的动作：不只是一句话，而是约她打电话 / 拉她来接着读 / 给她看个东西。
   // 前端把它渲染成一张带按钮的卡（接听 / 接着读 / 看看）。kind 缺省=纯一句话。
-  reach?: { kind: "call" | "read" | "link"; link?: string; cta?: string };
+  reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };
 };
 
 const KEY = "el:chat"; // 单用户，整段对话存一个 key

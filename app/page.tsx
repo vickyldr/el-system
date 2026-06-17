@@ -554,19 +554,32 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
   const trackRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [swipeH, setSwipeH] = useState<number | undefined>(undefined);
+  // 卡变窄、能露出邻卡后，不能再按"整屏宽"算第几张——找离视口中心最近的那张。
   function onScroll() {
     const el = trackRef.current;
     if (!el) return;
-    const i = Math.round(el.scrollLeft / el.clientWidth);
-    if (i !== idx) setIdx(i);
+    const center = el.scrollLeft + el.clientWidth / 2;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < el.children.length; i++) {
+      const c = el.children[i] as HTMLElement;
+      const cc = c.offsetLeft + c.offsetWidth / 2;
+      const d = Math.abs(cc - center);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best !== idx) setIdx(best);
   }
-  // 点箭头/圆点直接跳到那一屏（不用非得划准）
+  // 点圆点：把那一张滚到正中（首/尾会被浏览器夹到边，自然留边）
   function goTo(i: number) {
     const el = trackRef.current;
     if (!el) return;
     const n = el.children.length;
     const t = Math.max(0, Math.min(i, n - 1));
-    el.scrollTo({ left: t * el.clientWidth, behavior: "smooth" });
+    const c = el.children[t] as HTMLElement;
+    el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
     setIdx(t);
   }
 
@@ -590,12 +603,6 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
 
   return (
     <div className="now-card">
-      {active > 0 && (
-        <button type="button" className="now-chev l" aria-label="上一张" onClick={() => goTo(active - 1)}>‹</button>
-      )}
-      {active < panels.length - 1 && (
-        <button type="button" className="now-chev r" aria-label="下一张" onClick={() => goTo(active + 1)}>›</button>
-      )}
       <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
         {panels.map((p, i) => (
           <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>

@@ -453,6 +453,52 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
         <FortuneCard />
         <EatDecider />
       </div>
+
+      <DailyTrivia />
+    </>
+  );
+}
+
+/* ───────────── 今天的冷知识 · 电影（带真实来源） ───────────── */
+type Trivia = { date: string; oneliner: string; detail: string; sourceTitle: string; sourceUrl: string };
+
+function DailyTrivia() {
+  const [t, setT] = useState<Trivia | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/trivia")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && d.trivia?.oneliner) setT(d.trivia);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!t) return null;
+  return (
+    <>
+      <button className="trivia-line" onClick={() => setOpen(true)}>
+        <span className="trivia-tag">🎬 今天的冷知识</span>
+        <span className="trivia-one">{t.oneliner}</span>
+        <span className="trivia-chev">›</span>
+      </button>
+      {open && (
+        <Sheet title="今天的冷知识 · 电影" onClose={() => setOpen(false)}>
+          <div className="trivia-detail">
+            <div className="trivia-d-one">{t.oneliner}</div>
+            <p className="trivia-d-text">{t.detail}</p>
+            {t.sourceUrl && (
+              <a className="trivia-src" href={t.sourceUrl} target="_blank" rel="noreferrer">
+                来源：{t.sourceTitle} ↗
+              </a>
+            )}
+          </div>
+        </Sheet>
+      )}
     </>
   );
 }

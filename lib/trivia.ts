@@ -64,7 +64,7 @@ export async function getDailyTrivia(date: string): Promise<Trivia | null> {
   try {
     const res: any = await getClaude().messages.create(
       {
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
+        model: process.env.CHEAP_MODEL || "claude-haiku-4-5-20251001", // 冷知识琐碎，走中转站 Haiku 省钱
         max_tokens: 600,
         system,
         messages: [{ role: "user", content: `搜索结果：\n\n${blob.slice(0, 4000)}` }],

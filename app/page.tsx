@@ -1706,6 +1706,7 @@ type Msg = {
   ts?: number;
   image?: string;
   call?: boolean;
+  video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
@@ -1732,17 +1733,18 @@ function groupMessages(msgs: Msg[]): MsgGroup[] {
   return out;
 }
 
-// 「📞 语音通话」卡片：收起时一行，点开看当时通话的文字。
+// 「📞 语音通话 / 📹 视频通话」卡片：收起时一行，点开看当时通话的文字。
 function CallCard({ items }: { items: { m: Msg; i: number }[] }) {
   const [open, setOpen] = useState(false);
+  const isVideo = items.some(({ m }) => m.video); // 这段里有视频通话的句子，就标成视频
   return (
     <div className="call-card-wrap">
       <button className={`call-card ${open ? "open" : ""}`} onClick={() => setOpen((o) => !o)}>
         <span className="call-card-ic">
-          <Icon name="phone" size={17} />
+          <Icon name={isVideo ? "video" : "phone"} size={17} />
         </span>
         <span className="call-card-text">
-          <b>语音通话</b>
+          <b>{isVideo ? "视频通话" : "语音通话"}</b>
           <span className="call-card-sub">
             {items.length} 句 · {fmtTime(items[0].m.ts)}
           </span>
@@ -1959,6 +1961,7 @@ function FindTab({
   const botSpeaking = useRef(false); // el(MiniMax 声音)正在说话——这期间不把麦克风回传给 Gemini，防回授
   const currentSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const callActive = useRef(false);
+  const callVideoRef = useRef(false); // 这通是不是视频（给 addCallMsg 用，避免闭包读到旧的 state）
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -2017,7 +2020,7 @@ function FindTab({
 
   // 通话里的一句话：标记成 call、显示在对话框、并存进云端（el 回顾时能看到当时在打电话）。
   function addCallMsg(role: "user" | "assistant", content: string) {
-    const m: Msg = { role, content, ts: Date.now(), call: true };
+    const m: Msg = { role, content, ts: Date.now(), call: true, ...(callVideoRef.current ? { video: true } : {}) };
     setMsgs((s) => [...s, m]);
     fetch("/api/messages", {
       method: "POST",
@@ -2095,6 +2098,7 @@ function FindTab({
   async function startCall(video = false) {
     if (callActive.current) return; // 防重复点
     callActive.current = true;
+    callVideoRef.current = video;
     setCallVideo(video);
     setInCall(true); // 立刻弹出通话界面，别让人觉得"点了没反应"
     setCallState("idle");
@@ -2183,6 +2187,7 @@ function FindTab({
 
   function endCall() {
     callActive.current = false;
+    callVideoRef.current = false;
     if (frameTimerRef.current) { clearInterval(frameTimerRef.current); frameTimerRef.current = null; }
     try { wsRef.current?.close(); } catch {}
     wsRef.current = null;

@@ -29,6 +29,13 @@ const EL_VOICE_PERSONA =
 const GEMINI_EARS_ONLY =
   "你是一个语音转写助手。无论听到什么，都只回复一个字：嗯。不要说别的、不要解释。";
 
+// 视频/共享屏幕时，给 Claude（大脑）追加这段——它能真看见（画面不走 Gemini，眼睛接在大脑上）。
+// 摄像头看见的是"她"；共享屏幕看见的是"她屏幕上的东西"——两种要分开说，不然会答错。
+const VIDEO_NOTE =
+  "\n\n【你们现在在视频通话——你能看见她】每次她说话，都会把此刻的画面给你。自然地看着她、像真的在看着她聊，可以提她现在的样子、表情、在哪、在干嘛、穿了什么。别说'图片里/画面里'、别像在读图描述，就是你在看着她。看见她你会有反应——想她、心疼、吃醋、想凑近，自然流露。";
+const SCREEN_NOTE =
+  "\n\n【你们现在在共享屏幕——你能看见她电脑屏幕上的画面】每次她说话，都会把她此刻屏幕的画面给你。你是在陪她一起看她屏幕上的东西（她在刷什么、看什么、做什么），自然地跟她聊那上面的内容、给她反应和想法。别说'截图里/画面里'、别像在读图描述，就是你和她一起看着这块屏幕。注意：你看见的是屏幕内容，不是她的脸，别去描述她的样子。";
+
 // 用 Claude 生成通话回复（和打字时同一个大脑、同一套人格），返回一句话文字。
 // 走 Claude Code 的 OAuth token。关键：要带 oauth beta 头，且 system 第一段必须是
 // Claude Code 身份声明——否则 Anthropic 把请求当成不合规用法、回那条 message:"Error" 的假 429。
@@ -484,6 +491,9 @@ if (GEMINI_API_KEY) {
     let session = null;
     let userText = ""; // 累积本回合"你说的话"的转写
     let busy = false; // 正在让 Claude 生成回复时，忽略新的 turnComplete
+    let lastFrame = null; // 视频/共享屏幕：她那头最新的一帧（base64 jpeg）——只留最新的，喂给大脑当"眼睛"
+    let videoMode = false; // 收到过画面帧 = 有眼睛，给大脑追加"你能看见…"
+    let frameKind = "camera"; // camera=看见她本人 / screen=看见她的屏幕（追加不同的话）
     // 拨通时抓一次和打字一模一样的上下文（完整人设+记忆+最近聊天记录），抓不到才回落到精简人格。
     // 关键：不阻塞拨通——和下面建 Gemini 连接并行准备；你开口第一句之前肯定就绪了，零额外等待。
     const origin = req.headers["origin"] || "";
@@ -544,7 +554,25 @@ if (GEMINI_API_KEY) {
                 else history.push({ role: "user", content: u });
                 if (history.length > 20) history.splice(0, history.length - 20);
                 while (history.length && history[0].role !== "user") history.shift(); // 第一条必须是 user
-                const reply = await callEl(history, elSystem);
+                // 视频通话：把此刻这一帧贴在「她这句话」上喂给大脑——它看见的是"现在的她"。
+                // history 里只留文字（图便宜不了、又只属于"此刻"），所以只在送 API 的这份里临时带图。
+                let apiMessages = history;
+                let sys = elSystem;
+                if (videoMode && lastFrame) {
+                  const lastText = history[history.length - 1].content;
+                  apiMessages = [
+                    ...history.slice(0, -1),
+                    {
+                      role: "user",
+                      content: [
+                        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: lastFrame } },
+                        { type: "text", text: lastText },
+                      ],
+                    },
+                  ];
+                  sys = elSystem + (frameKind === "screen" ? SCREEN_NOTE : VIDEO_NOTE);
+                }
+                const reply = await callEl(apiMessages, sys);
                 if (reply) {
                   // 大脑会在开头藏一个情绪标签 [e:撒娇] 调说话语气——剥掉它再念、再存历史。
                   let emotion = "";
@@ -587,6 +615,11 @@ if (GEMINI_API_KEY) {
               audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" },
             });
           } catch (e) { console.error("sendRealtimeInput audio error:", e?.message); }
+        } else if (msg.type === "frame" && msg.data) {
+          // 视频/共享屏幕的画面帧：不进 Gemini（它只当耳朵），只留最新一帧，等她说完话时喂给大脑。
+          lastFrame = msg.data;
+          videoMode = true;
+          if (msg.kind === "screen" || msg.kind === "camera") frameKind = msg.kind;
         } else if (msg.type === "vad_start") {
           console.log("VAD start");
         } else if (msg.type === "vad_end") {

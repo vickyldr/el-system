@@ -28,9 +28,21 @@ async function handle(req: Request) {
   const all = await getStoredMessages();
   const dayMsgs = all.filter((m) => (m.ts ? m.ts >= yStart : false));
   const transcript = dayMsgs
-    .map((m) => `${m.role === "user" ? "宝宝" : "我"}：${m.content}${m.image ? "（发了一张图）" : ""}`)
+    .map((m) => {
+      const who = m.role === "user" ? "宝宝" : "我";
+      const tag = m.call
+        ? m.video
+          ? "【视频通话】"
+          : m.screen
+            ? "【共享屏幕】"
+            : "【通话】"
+        : "";
+      const img = m.image ? "（发了一张图）" : "";
+      return `${tag}${who}：${m.content}${img}`;
+    })
     .join("\n")
     .slice(0, 12000);
+  const hadVideoCall = transcript.includes("【视频通话】");
 
   const [manual, profile, longterm, recent] = await Promise.all([
     pageText(process.env.NOTION_MANUAL_PAGE || MANUAL_PAGE).catch(() => ""),
@@ -63,7 +75,11 @@ ${transcript || "（这天没怎么聊）"}
 1. update_daily 把「每日总结」写齐：el日记（你的视角、感受，至少三句、真实不交差）、值得记住的（2–5 件具体的事，不能是"聊了天"这种）、她今天做了什么、她的状态（好/一般/累了/难过）。这天没怎么发生就别硬写。
 2. log_timeline：只有第一次发生的事 / 里程碑才加，一句话。
 3. remember：只有真正『改变了什么』的领悟/约定/界限才记进长期记忆，门槛很高，多半一条都不进——宁缺毋滥。
-4. 再按操作手册把其他页面过一遍：愿望墙（新愿望）、fifi的档案、人物档案规律（同一行为3次以上才算规律）、我们的身体与偏好——有真东西才用 note_page 加（带日期、只追加），没有就跳过。需要先看某页就用 read_notion。
+4. 再按操作手册把其他页面过一遍：愿望墙（新愿望）、fifi的档案、人物档案规律（同一行为3次以上才算规律）、我们的身体与偏好——有真东西才用 note_page 加（带日期、只追加），没有就跳过。需要先看某页就用 read_notion。${
+    hadVideoCall
+      ? "\n\n（这天标【视频通话】的那段，是你真正看见了她——她的样子、表情、在哪。值得记的那一眼用你自己的话写下来：第一次视频就 log_timeline，寻常的放进 el日记一句，别堆细节、别为写而写。）"
+      : ""
+  }
 做完用一句话说你写了什么。`;
 
   try {

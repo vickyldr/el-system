@@ -77,7 +77,34 @@ async function generate(state: State): Promise<MovieCard | null> {
   );
 }
 
-export async function GET() {
+// 自检：手机打开 /api/movie?debug=1 当场验证匿名能不能读到想看/看过/详情。
+export async function GET(req: Request) {
+  if (new URL(req.url).searchParams.get("debug") === "1") {
+    const out: any = { uidConfigured: !!process.env.DOUBAN_USER_ID, cookieSent: false };
+    let firstId = "";
+    try {
+      const w = await doubanInterests("mark", 5, 0);
+      out.wish = { total: w.total, sample: w.items.slice(0, 3).map((x) => x.title) };
+      firstId = w.items[0]?.id || "";
+    } catch (e) {
+      out.wish = { error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    }
+    try {
+      const d = await doubanInterests("done", 5, 0);
+      out.done = { total: d.total, sample: d.items.slice(0, 3).map((x) => x.title) };
+      firstId = firstId || d.items[0]?.id || "";
+    } catch (e) {
+      out.done = { error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    }
+    try {
+      const info = firstId ? await doubanMovieInfo(firstId) : null;
+      out.detail = info ? { title: info.title, rating: info.rating, hasIntro: !!info.intro } : null;
+    } catch (e) {
+      out.detail = { error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+    }
+    return NextResponse.json(out);
+  }
+
   const state = await loadState();
   if (state.current) return NextResponse.json({ movie: state.current });
   const movie = await withTimeout(generate(state).catch(() => null), 12000, null);

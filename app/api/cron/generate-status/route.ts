@@ -63,7 +63,6 @@ const AGENT_TOOL_NAMES = new Set([
   "web_search",
   "read_link",
   "netease",
-  "douban",
   "read_notion",
   "note_self",
   "grow_self",

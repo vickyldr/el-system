@@ -299,6 +299,34 @@ body::before {
   font-size: 30px;
 }
 
+/* 天气：图标 + 温度 + 描述排成对齐的一行，紧凑，不再一柱擎天 */
+.weather-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 2px;
+}
+.weather-ic {
+  font-size: 30px;
+  line-height: 1;
+  align-self: center;
+}
+.weather-temp {
+  font-size: 42px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.weather-desc {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.weather-outfit {
+  margin-top: 14px;
+}
+
 .now-panel-name {
   font-family: var(--font-display);
   font-size: 34px;
@@ -1475,34 +1503,38 @@ body::before {
   box-shadow: none;
 }
 
-/* ── 此刻「↩ 回复这条」按钮 ── */
+/* ── 此刻的小动作按钮：「↩ 回复这条」「▶ 去网易云听」── */
 .status-reply {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--accent-2);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: 12px;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 16px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #cbb9ff;
+  background: rgba(123, 111, 240, 0.13);
+  border: 1px solid rgba(123, 111, 240, 0.26);
+  border-radius: 999px;
+  padding: 8px 15px;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
-}
-.status-reply:active {
-  transform: scale(0.95);
+  white-space: nowrap;
 }
 .status-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
 }
 .status-actions .status-reply {
   margin-top: 0;
 }
+/* 「去网易云听」= 主行动，填充实色 */
 .status-reply.play {
-  color: var(--accent);
+  color: #fff;
   text-decoration: none;
-  display: inline-block;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  border-color: transparent;
 }
 
 /* ── 电影推荐卡 ── */

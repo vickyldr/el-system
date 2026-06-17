@@ -496,13 +496,14 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
     panels.push({
       key: "weather",
       node: (
-        <div className="now-panel">
+        <div className="now-panel weather-pane">
           <div className="now-panel-label">天气 · {status.weather!.city}</div>
-          <div className="now-panel-big">
-            {status.weather!.icon ? `${status.weather!.icon} ` : ""}
-            {status.weather!.temp}° <span className="dim">{status.weather!.desc}</span>
+          <div className="weather-row">
+            {status.weather!.icon && <span className="weather-ic">{status.weather!.icon}</span>}
+            <span className="weather-temp">{status.weather!.temp}°</span>
+            {status.weather!.desc && <span className="weather-desc">{status.weather!.desc}</span>}
           </div>
-          {status.weather!.outfit && <div className="meta">👕 {status.weather!.outfit}</div>}
+          {status.weather!.outfit && <div className="meta weather-outfit">👕 {status.weather!.outfit}</div>}
           <button
             type="button"
             className="status-reply"

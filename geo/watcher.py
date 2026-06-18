@@ -118,16 +118,27 @@ def login():
     return api
 
 
+def _dev_name(d):
+    return str((getattr(d, "content", None) or getattr(d, "_content", None) or {}).get("name", ""))
+
+
+def _dev_model(d):
+    c = getattr(d, "content", None) or getattr(d, "_content", None) or {}
+    return str(c.get("deviceClass", "")) + " " + str(c.get("deviceModel", "")) + " " + str(c.get("rawDeviceModel", ""))
+
+
 def pick_device(api):
     devices = list(api.devices)
     if not devices:
         raise RuntimeError("这个 Apple ID 下没有可定位的设备。")
     if DEVICE_NAME:
         for d in devices:
-            name = (getattr(d, "content", None) or getattr(d, "_content", None) or {}).get("name", "")
-            if DEVICE_NAME.lower() in str(name).lower():
+            if DEVICE_NAME.lower() in _dev_name(d).lower():
                 return d
-    # 默认第一台（通常就是 iPhone）
+    # 没指定就优先挑 iPhone（按名字或机型），挑不到再退回第一台
+    for d in devices:
+        if "iphone" in (_dev_name(d) + " " + _dev_model(d)).lower():
+            return d
     return devices[0]
 
 

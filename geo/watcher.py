@@ -292,7 +292,48 @@ def where_text(area, place):
     return place or area or "外面"
 
 
+def write_home_to_env(lat, lon):
+    """把 HOME_LAT/HOME_LON 写进同目录的 .env（替换旧值），坐标不出本机。"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        lines = [l for l in lines if not l.strip().startswith(("HOME_LAT=", "HOME_LON="))]
+        lines += [f"HOME_LAT={lat:.6f}", f"HOME_LON={lon:.6f}"]
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(env_path, 0o600)
+        log("已写入", env_path)
+        return True
+    except Exception as e:
+        log("写 .env 失败，手动把下面两行加进 .env 也行：", e)
+        log(f"  HOME_LAT={lat:.6f}")
+        log(f"  HOME_LON={lon:.6f}")
+        return False
+
+
+def set_home():
+    """一次性：把"现在所在位置"存成家。在家时跑：python watcher.py set-home"""
+    api = login()
+    device = pick_device(api)
+    log("读你现在的位置中……（在家跑这个，它就把这里当成家）")
+    loc = get_location(device)
+    if not loc:
+        log("没拿到位置——确认在家、iPhone 没关机/没关查找，过一会儿再试。")
+        sys.exit(1)
+    lat, lon, acc = loc
+    area, place = reverse_geocode(lat, lon)
+    write_home_to_env(lat, lon)
+    log(f"✅ 已把当前位置存为家：{area}{('，' + place) if place else ''}（定位精度约 {int(acc)}m）")
+    log("生效：sudo systemctl restart el-geo  —— 之后你一出门/到家，el 醒来时就可能知道。")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "set-home":
+        set_home()
+        return
     if not POST_URL or not SECRET:
         log("⚠️ 没配 GEO_POST_URL / CRON_SECRET，信号发不出去（先看 geo/README.md）。仍会跑、只打日志。")
     if HOME is None:

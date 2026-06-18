@@ -124,7 +124,7 @@ def pick_device(api):
         raise RuntimeError("这个 Apple ID 下没有可定位的设备。")
     if DEVICE_NAME:
         for d in devices:
-            name = (d.content or {}).get("name", "")
+            name = (getattr(d, "content", None) or getattr(d, "_content", None) or {}).get("name", "")
             if DEVICE_NAME.lower() in str(name).lower():
                 return d
     # 默认第一台（通常就是 iPhone）
@@ -261,7 +261,7 @@ def main():
 
     api = login()
     device = pick_device(api)
-    log("登录成功，盯着设备：", (device.content or {}).get("name", "?"))
+    log("登录成功，盯着设备：", (getattr(device, "content", None) or getattr(device, "_content", None) or {}).get("name", "?"))
 
     was_home = None  # 上一轮是否在家
     place_anchor = None  # 当前停留点 (lat,lon)

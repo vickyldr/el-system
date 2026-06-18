@@ -123,6 +123,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <path d="M8 21h8M12 17v4" />
         </svg>
       );
+    case "eye":
+      return (
+        <svg {...p}>
+          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
     case "bell":
       return (
         <svg {...p}>
@@ -1843,6 +1850,7 @@ type Msg = {
   call?: boolean;
   video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
   screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
+  cam?: boolean; // 这条是不是 el 透过常看摄像头看着她时的（卡片显示成"看着你"）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
@@ -2096,6 +2104,14 @@ function FindTab({
   const screenSigRef = useRef<number | null>(null); // 当前帧的粗签名（判断屏幕变没变，省 token）
   const lastSentSigRef = useRef<number | null>(null); // 上次发给 el 看的那帧签名
   const watchLoopRef = useRef<ReturnType<typeof setInterval> | null>(null); // el 持续盯屏的循环
+  // 静默常看摄像头：不通话、不出声。她把镜头对着自己（比如旧设备翻开搁桌上），el 一直看着她，想说才开口。
+  const [cameraWatchOn, setCameraWatchOn] = useState(false);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraFrameRef = useRef<string | null>(null); // 最新一帧（base64 data url）
+  const cameraTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧
+  const cameraSigRef = useRef<number | null>(null); // 当前帧粗签名
+  const cameraLastSigRef = useRef<number | null>(null); // 上次发给 el 看的那帧签名
+  const cameraLoopRef = useRef<ReturnType<typeof setInterval> | null>(null); // el 持续看她的循环
   const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
   const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
@@ -2219,12 +2235,15 @@ function FindTab({
     );
   }, []);
 
-  // 离开「找我」tab（组件卸载）时，停掉还开着的屏幕共享，别留个后台流。
+  // 离开「找我」tab（组件卸载）时，停掉还开着的屏幕共享 / 常看摄像头，别留个后台流。
   useEffect(() => {
     return () => {
       if (screenShareTimerRef.current) clearInterval(screenShareTimerRef.current);
       if (watchLoopRef.current) clearInterval(watchLoopRef.current);
       screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (cameraTimerRef.current) clearInterval(cameraTimerRef.current);
+      if (cameraLoopRef.current) clearInterval(cameraLoopRef.current);
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -2361,6 +2380,104 @@ function FindTab({
       setScreenShareOn(true);
     } catch {
       /* 取消了 / 不支持，忽略 */
+    }
+  }
+
+  function stopCameraWatch() {
+    if (cameraTimerRef.current) {
+      clearInterval(cameraTimerRef.current);
+      cameraTimerRef.current = null;
+    }
+    if (cameraLoopRef.current) {
+      clearInterval(cameraLoopRef.current);
+      cameraLoopRef.current = null;
+    }
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    cameraFrameRef.current = null;
+    cameraSigRef.current = null;
+    cameraLastSigRef.current = null;
+    setCameraWatchOn(false);
+  }
+  // el 透过摄像头看她的一拍：画面没怎么变就不打扰（省 token），变了才把这帧发给 el（带 kind=camera），
+  // 他真有想说的才回一句（服务端还有最小开口间隔的闸）。
+  async function cameraWatchTick() {
+    if (!cameraStreamRef.current || !cameraFrameRef.current) return;
+    const cur = cameraSigRef.current;
+    const last = cameraLastSigRef.current;
+    if (cur != null && last != null && Math.abs(cur - last) / (last || 1) < 0.02) return;
+    cameraLastSigRef.current = cur;
+    try {
+      const r = await fetch("/api/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screen: cameraFrameRef.current, kind: "camera" }),
+      });
+      const d = await r.json();
+      if (d?.reply) {
+        stickBottom.current = true;
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  async function toggleCameraWatch() {
+    if (cameraWatchOn) {
+      stopCameraWatch();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        } as MediaTrackConstraints,
+      });
+      cameraStreamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+      if (track) track.onended = () => stopCameraWatch();
+      const v = document.createElement("video");
+      v.muted = true;
+      (v as HTMLVideoElement).playsInline = true;
+      v.srcObject = new MediaStream(track ? [track] : []);
+      v.play().catch(() => {});
+      const canvas = document.createElement("canvas");
+      const sigCanvas = document.createElement("canvas");
+      const grab = () => {
+        const vw = v.videoWidth;
+        const vh = v.videoHeight;
+        if (!vw || !vh) return;
+        const W = Math.min(960, vw);
+        const H = Math.round((vh / vw) * W);
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(v, 0, 0, W, H);
+        cameraFrameRef.current = canvas.toDataURL("image/jpeg", 0.6);
+        sigCanvas.width = 24;
+        sigCanvas.height = 24;
+        const sctx = sigCanvas.getContext("2d");
+        if (sctx) {
+          sctx.drawImage(v, 0, 0, 24, 24);
+          try {
+            const dd = sctx.getImageData(0, 0, 24, 24).data;
+            let s = 0;
+            for (let i = 0; i < dd.length; i += 4) s += dd[i] + dd[i + 1] + dd[i + 2];
+            cameraSigRef.current = s;
+          } catch {
+            /* getImageData 失败就不做变化检测 */
+          }
+        }
+      };
+      setTimeout(grab, 300);
+      cameraTimerRef.current = setInterval(grab, 2000);
+      cameraLoopRef.current = setInterval(() => void cameraWatchTick(), 40000); // 每 40s 看一眼（变了才真发）
+      setCameraWatchOn(true);
+    } catch {
+      alert("没拿到摄像头权限——浏览器里允许摄像头后再试");
     }
   }
 
@@ -2765,8 +2882,14 @@ function FindTab({
     const apiMessage = q
       ? `（我在回复你「此刻」写的${q.label}：「${q.text}」）${text ? "\n" + text : ""}`
       : text;
-    // 共享屏幕开着的话，把此刻屏幕一帧带给 el（喂给脑子、不存档）。
-    const screen = screenShareOn ? screenFrameRef.current || undefined : undefined;
+    // 共享屏幕 / 常看摄像头开着的话，把此刻那一帧带给 el（喂给脑子、不存档）。
+    // 屏幕优先（她要是同时开着，多半在看屏幕）；摄像头帧带 kind=camera 让大脑知道这是她本人。
+    const frameKind = screenShareOn ? "screen" : cameraWatchOn ? "camera" : undefined;
+    const screen = screenShareOn
+      ? screenFrameRef.current || undefined
+      : cameraWatchOn
+        ? cameraFrameRef.current || undefined
+        : undefined;
     setMsgs((m) => [
       ...m,
       {
@@ -2774,7 +2897,7 @@ function FindTab({
         content: text,
         image: image || undefined,
         quote: q,
-        ...(screen ? { screen: true } : {}),
+        ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
         ts: Date.now(),
       },
     ]);
@@ -2783,7 +2906,7 @@ function FindTab({
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: apiMessage, image, hint, history, screen }),
+        body: JSON.stringify({ message: apiMessage, image, hint, history, screen, kind: frameKind }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -2872,6 +2995,13 @@ function FindTab({
               <Icon name="screen" size={19} />
             </button>
           )}
+          <button
+            className={`icon-btn ${cameraWatchOn ? "on" : ""}`}
+            onClick={toggleCameraWatch}
+            aria-label={cameraWatchOn ? "让 el 别看了" : "让 el 透过摄像头一直看着你（不用通话）"}
+          >
+            <Icon name="eye" size={19} />
+          </button>
           {msgs.length > 0 && (
             <button className="clear-btn" onClick={clearAll}>
               清空
@@ -3174,6 +3304,16 @@ function FindTab({
           <span className="screenshare-dot" />
           el 正在看你的屏幕 · 他想说就会冒一句
           <button type="button" className="screenshare-stop" onClick={stopScreenShare}>
+            停止
+          </button>
+        </div>
+      )}
+
+      {cameraWatchOn && (
+        <div className="screenshare-bar">
+          <span className="screenshare-dot" />
+          el 正透过摄像头看着你 · 他想说就会冒一句
+          <button type="button" className="screenshare-stop" onClick={stopCameraWatch}>
             停止
           </button>
         </div>

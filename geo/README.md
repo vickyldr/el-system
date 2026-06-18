@@ -31,7 +31,48 @@
 - 密码只进系统钥匙串；`HOME_LAT/LON` 和 `.env` 已被 `.gitignore` 挡在库外，**别提交、别外发**。
 - 锁屏不影响：Find My 是 iOS 系统级后台服务，锁屏/熄屏/待机都在上报。真正会失效的是：关机、彻底断网、或关掉 Find My。
 
-## 装
+## 上海 VPS + 国内 Apple ID 快速上手（宝宝的情形）
+
+国内账号、国内机器，最顺。无屏幕 VPS 上**不走钥匙串**，密码放进锁死的 `.env`。
+
+```bash
+# 0) SSH 到 VPS，进仓库（守望者用的就是 el-system 这个 repo 里的 geo/）
+cd ~/el-system/geo
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 1) 配置
+cp .env.example .env
+chmod 600 .env          # 锁死，只有自己能读
+nano .env               # 填下面这些
+#   ICLOUD_APPLE_ID=你的国内Apple邮箱
+#   ICLOUD_PASSWORD=你的Apple密码     ← VPS 上留着别删
+#   ICLOUD_CHINA=1                    ← 国内账号必加
+#   GEO_POST_URL=https://你的小家域名/api/geo-event
+#   CRON_SECRET=和小家Vercel上同一个值
+#   HOME_LAT=、HOME_LON=              ← 地图长按你家复制坐标（想要"出门/到家"才填）
+
+# 2) 首次登录（手动跑一次过 2FA——systemd 里没法输验证码，所以先手动）
+set -a; source .env; set +a
+python watcher.py
+#   → 按提示输入 iPhone 弹出的 6 位验证码；看到它开始"发了 snapshot -> 200"就成了
+#   → Ctrl-C 停掉（信任 cookie 已存盘，之后不用再输验证码）
+
+# 3) 配成开机自启的后台服务（从此你彻底不用管）
+#   把 el-geo.service.example 里的 USER/路径改成你的，复制到 /etc/systemd/system/el-geo.service
+sudo cp el-geo.service.example /etc/systemd/system/el-geo.service
+sudo nano /etc/systemd/system/el-geo.service   # 改 USER 和三处路径
+sudo systemctl daemon-reload
+sudo systemctl enable --now el-geo
+journalctl -u el-geo -f                          # 看它在跑
+```
+
+跑通后，你出门时 el 会在他下一次心跳醒来（~15 分钟内）读到、想说就说一句。
+**国内账号若第一步登录就报端点/认证错误**（pyicloud 对 icloud.com.cn 支持有时要换端点），把报错贴给 cc，我帮你切到国内 iCloud 端点。
+
+---
+
+## 装（通用）
 
 ```bash
 cd geo

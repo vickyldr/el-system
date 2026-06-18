@@ -171,7 +171,36 @@ def get_location(device):
 
 # ── 富化：坐标 → 人话（全免费、无需 key）──
 def reverse_geocode(lat, lon):
-    """OSM Nominatim 反查。返回 (area, place)。area=城市·区，place=最具体的名字（楼/店/路）。"""
+    """反查地址，返回 (area, place)。先试 BigDataCloud（国内可访问），再试 Nominatim（国外备用）。"""
+    # 1) BigDataCloud（国内 VPS 一般能访问，免费无 key）
+    try:
+        r = requests.get(
+            "https://api.bigdatacloud.net/data/reverse-geocode-client",
+            params={"latitude": lat, "longitude": lon, "localityLanguage": "zh"},
+            headers=UA,
+            timeout=10,
+        )
+        d = r.json()
+        city = d.get("city") or d.get("locality") or d.get("principalSubdivision") or ""
+        district = ""
+        info = (d.get("localityInfo") or {}).get("administrative") or []
+        for item in reversed(info):
+            if item.get("adminLevel", 99) >= 6:
+                district = item.get("name", "")
+                break
+        area = " · ".join([x for x in (city, district) if x]) or city
+        place = ""
+        for item in ((d.get("localityInfo") or {}).get("informative") or []):
+            n = item.get("name", "")
+            if n and n != city:
+                place = f"{n}附近"
+                break
+        if area:
+            return area, place
+    except Exception:
+        pass
+
+    # 2) Nominatim（国外 VPS / 代理场景备用）
     try:
         r = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
@@ -184,7 +213,6 @@ def reverse_geocode(lat, lon):
         city = addr.get("city") or addr.get("town") or addr.get("county") or addr.get("state") or ""
         district = addr.get("suburb") or addr.get("city_district") or addr.get("district") or addr.get("borough") or ""
         area = " · ".join([x for x in (city, district) if x]) or addr.get("state", "")
-        # place：优先 POI 名（name），否则商场/店/楼，否则路
         place = (
             d.get("name")
             or addr.get("mall")

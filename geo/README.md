@@ -33,7 +33,7 @@
 
 ## 上海 VPS + 国内 Apple ID 快速上手（宝宝的情形）
 
-国内账号、国内机器，最顺。无屏幕 VPS 上**不走钥匙串**，密码放进锁死的 `.env`。
+国内账号、国内机器最稳的是 iCloud 登录与本地富化；唯一坑是**国内连不上 `*.vercel.app`**，所以位置信号走 **Railway bridge 中转**（见下方 `GEO_POST_URL`）。无屏幕 VPS 上**不走钥匙串**，密码放进锁死的 `.env`。
 
 ```bash
 # 0) SSH 到 VPS，进仓库（守望者用的就是 el-system 这个 repo 里的 geo/）
@@ -48,7 +48,9 @@ nano .env               # 填下面这些
 #   ICLOUD_APPLE_ID=你的国内Apple邮箱
 #   ICLOUD_PASSWORD=你的Apple密码     ← VPS 上留着别删
 #   ICLOUD_CHINA=1                    ← 国内账号必加
-#   GEO_POST_URL=https://你的小家域名/api/geo-event
+#   GEO_POST_URL=https://你的bridge域名/geo-event   ← 国内 VPS 走 Railway bridge 中转（*.vercel.app 在国内被墙）
+#                                                      bridge 域名 = Vercel 上的 BRIDGE_URL，形如 https://xxx.up.railway.app
+#                                                      （国外/本地能直连 Vercel 时才填 https://你的小家域名/api/geo-event）
 #   CRON_SECRET=和小家Vercel上同一个值
 #   HOME_LAT=、HOME_LON=              ← 地图长按你家复制坐标（想要"出门/到家"才填）
 
@@ -128,6 +130,9 @@ python watcher.py
 | launchd log 一直空 | 环境变量加 `PYTHONUNBUFFERED=1` |
 | 中国大陆 Apple ID 登不上 | `.env` 设 `ICLOUD_CHINA=1` |
 | 一直 "缺位置" | 检查 iPhone 没关机/没关 Find My、这台机器能联网 |
+| 国内 VPS 发送 `Network is unreachable` / 超时 | `*.vercel.app`、`upstash.io` 在国内被墙。`GEO_POST_URL` 改走 Railway bridge 中转 `https://<BRIDGE_URL>/geo-event`（bridge→Vercel 那条通）。先 `curl https://<BRIDGE_URL>/health` 验通 |
+| 国内反查地址失败（Nominatim 连不上） | 已内置 BigDataCloud 作国内首选、Nominatim 退为国外备用，无需手动改 |
+| 盯错了设备（如 iPad）/ "这轮没拿到位置" | watcher 已默认优先挑 iPhone；多台同类设备用 `ICLOUD_DEVICE_NAME` 指定 |
 
 ## 还没做（下一步，按需要再加）
 

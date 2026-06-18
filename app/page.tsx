@@ -3662,6 +3662,25 @@ function RpgTab() {
     }
   }
 
+  async function sendActionText(text: string) {
+    if (!text || loading || !session) return;
+    setLoading(true);
+    setSession((prev) =>
+      prev ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] } : prev
+    );
+    try {
+      await fetch("/api/rpg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "play", input: text }),
+      });
+      const s = await fetch("/api/rpg").then((x) => x.json());
+      setSession(s.session ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function sendAction() {
     const text = input.trim();
     if (!text || loading || !session) return;
@@ -3748,6 +3767,16 @@ function RpgTab() {
 
   const displayHistory = session.history.filter((m) => !(m.role === "player" && m.text.startsWith("新游戏开始")));
 
+  // 从最后一条 gm 消息里解析 A/B/C 选项
+  const lastGm = [...session.history].reverse().find((m) => m.role === "gm");
+  const choices: string[] = [];
+  if (lastGm && !loading) {
+    for (const line of lastGm.text.split("\n")) {
+      const m = line.match(/^([A-C])[\.、．]\s*(.+)/);
+      if (m) choices.push(m[2].trim());
+    }
+  }
+
   return (
     <div className="rpg-wrap">
       <div className="rpg-header">
@@ -3770,10 +3799,19 @@ function RpgTab() {
         )}
         <div ref={bottomRef} />
       </div>
+      {choices.length > 0 && (
+        <div className="rpg-choices">
+          {choices.map((c, i) => (
+            <button key={i} className="rpg-choice-btn" onClick={() => { setInput(""); sendActionText(`${String.fromCharCode(65 + i)}. ${c}`); }}>
+              {String.fromCharCode(65 + i)}. {c}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="rpg-input-row">
         <input
           className="rpg-input"
-          placeholder="你想做什么"
+          placeholder={choices.length > 0 ? "或者自己说…" : "你想做什么"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}

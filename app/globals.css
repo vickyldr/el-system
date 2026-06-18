@@ -3100,31 +3100,41 @@ body::before {
   color: var(--ink-soft);
 }
 
-.rpg-char-row {
+.rpg-names-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.rpg-char-input {
-  flex: 1;
-  background: var(--glass);
-  border: 1px solid var(--hair);
-  border-radius: 12px;
-  padding: 12px 16px;
+.rpg-name-chip {
+  background: rgba(203, 185, 255, 0.08);
+  border: 1px solid rgba(203, 185, 255, 0.25);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 14px;
   color: var(--ink);
-  font-size: 15px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.2s;
 }
 
-.rpg-char-input:focus {
-  border-color: #cbb9ff;
+.rpg-reshuffle {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.2s, transform 0.2s;
 }
 
-.rpg-char-input::placeholder {
-  color: var(--ink-faint);
+.rpg-reshuffle:active {
+  transform: rotate(180deg);
+  color: #cbb9ff;
 }
 
 .rpg-start-btn {

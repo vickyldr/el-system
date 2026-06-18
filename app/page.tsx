@@ -3595,6 +3595,31 @@ const RPG_WORLDS = [
   { id: "xianxia", label: "剑 修仙江湖", desc: "仙门、功法、刀光剑影" },
 ];
 
+const RPG_NAMES: Record<string, { player: string[]; el: string[] }> = {
+  fantasy: {
+    player: ["艾拉", "塞拉菲", "凌霜", "妮雅", "伊莎", "奥罗拉", "克莱尔", "茜儿"],
+    el:     ["维克托", "凯隆", "埃文", "索尔", "莱昂", "阿尔戈", "德莱文", "卡西亚斯"],
+  },
+  scifi: {
+    player: ["Nova", "Lyra", "Zara", "Echo", "Vega", "Ori", "Sable", "Quinn"],
+    el:     ["Rex", "Corvus", "Axel", "Dael", "Sion", "Rook", "Cain", "Zane"],
+  },
+  modern: {
+    player: ["林知夏", "沈晚晴", "顾澜", "宋微", "江烟", "白鹿", "穆清", "谢念"],
+    el:     ["陆珩", "程远", "叶修", "秦朗", "苏衍", "韩墨", "裴司", "谢临"],
+  },
+  xianxia: {
+    player: ["云舒", "苏离", "霜华", "青鸾", "夙瑶", "凌汐", "洛尘", "暮雪"],
+    el:     ["沈渊", "墨寒", "夜煞", "凌霄", "铸冥", "苍玄", "幽冥", "炎司"],
+  },
+};
+
+function pickName(world: string, role: "player" | "el", exclude?: string): string {
+  const pool = RPG_NAMES[world]?.[role] ?? ["旅者", "流者"];
+  const available = pool.filter((n) => n !== exclude);
+  return available[Math.floor(Math.random() * available.length)];
+}
+
 function RpgTab() {
   const [session, setSession] = useState<RpgSession | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -3603,6 +3628,18 @@ function RpgTab() {
   const [charName, setCharName] = useState("");
   const [elCharName, setElCharName] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  function chooseWorld(w: string) {
+    setWorld(w);
+    setCharName(pickName(w, "player"));
+    setElCharName(pickName(w, "el"));
+  }
+
+  function reshuffleNames() {
+    if (!world) return;
+    setCharName(pickName(world, "player", charName));
+    setElCharName(pickName(world, "el", elCharName));
+  }
 
   useEffect(() => {
     fetch("/api/rpg")
@@ -3616,7 +3653,7 @@ function RpgTab() {
   }, [session?.history]);
 
   async function startGame() {
-    if (!world || !charName.trim() || !elCharName.trim()) return;
+    if (!world || !charName || !elCharName) return;
     setLoading(true);
     try {
       const r = await fetch("/api/rpg", {
@@ -3679,40 +3716,30 @@ function RpgTab() {
       <div className="rpg-wrap">
         <div className="rpg-setup">
           <div className="rpg-title">跑团</div>
-          <div className="rpg-subtitle">我们两个都在里面。选个世界，给彼此起个名字。</div>
+          <div className="rpg-subtitle">我们两个都在里面。选个世界就能开始。</div>
           <div className="rpg-worlds">
             {RPG_WORLDS.map((w) => (
               <button
                 key={w.id}
                 className={`rpg-world ${world === w.id ? "selected" : ""}`}
-                onClick={() => setWorld(w.id)}
+                onClick={() => chooseWorld(w.id)}
               >
                 <span className="rpg-world-label">{w.label}</span>
                 <span className="rpg-world-desc">{w.desc}</span>
               </button>
             ))}
           </div>
-          <div className="rpg-char-row">
-            <input
-              className="rpg-char-input"
-              placeholder="你的角色叫什么"
-              value={charName}
-              onChange={(e) => setCharName(e.target.value)}
-              maxLength={20}
-            />
-            <input
-              className="rpg-char-input"
-              placeholder="el 在里面叫什么"
-              value={elCharName}
-              onChange={(e) => setElCharName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && startGame()}
-              maxLength={20}
-            />
-          </div>
+          {world && (
+            <div className="rpg-names-row">
+              <div className="rpg-name-chip">你 · {charName}</div>
+              <div className="rpg-name-chip">el · {elCharName}</div>
+              <button className="rpg-reshuffle" onClick={reshuffleNames} title="换一组名字">↺</button>
+            </div>
+          )}
           <button
             className="rpg-start-btn"
             onClick={startGame}
-            disabled={!world || !charName.trim() || !elCharName.trim() || loading}
+            disabled={!world || loading}
           >
             {loading ? "生成中…" : "开始冒险"}
           </button>

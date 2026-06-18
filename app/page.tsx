@@ -537,6 +537,7 @@ type Trivia = { date: string; oneliner: string; detail: string; sourceTitle: str
 
 function DailyTrivia() {
   const [t, setT] = useState<Trivia | null>(null);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -545,13 +546,27 @@ function DailyTrivia() {
       .then((d) => {
         if (alive && d.trivia?.oneliner) setT(d.trivia);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
   }, []);
 
-  if (!t) return null;
+  // 当天首次要联网搜 + 过模型生成（可能要几十秒）。生成期间也占住这一格、
+  // 显示"想想…"，别让卡片直接消失（和"想推你看"一致）；确认真没有了才收起。
+  if (!t) {
+    if (!loading) return null;
+    return (
+      <div className="duo-mini" aria-hidden>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">今天的冷知识</span>
+        <span className="duo-v">
+          <span className="dim">想想…</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <>
       <button className="duo-mini" onClick={() => setOpen(true)}>

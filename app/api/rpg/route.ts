@@ -34,7 +34,29 @@ function buildMessages(session: RpgSession) {
   }));
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const genNames = searchParams.get("names");
+  if (genNames) {
+    const world = searchParams.get("world") ?? "";
+    const claude = getClaudeFast();
+    const resp = await claude.messages.create({
+      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
+      max_tokens: 60,
+      system: "你是一个起名助手。只输出 JSON，不要任何其他内容。",
+      messages: [{
+        role: "user",
+        content: `给跑团游戏生成两个名字，风格贴合这个世界背景：「${world}」。一个给女玩家角色，一个给她的男性同伴。名字要有个性，不要烂大街。输出格式：{"player":"名字","el":"名字"}`,
+      }],
+    });
+    const raw = resp.content.filter((b: { type: string }) => b.type === "text").map((b: { type: string; text?: string }) => b.text ?? "").join("");
+    try {
+      const names = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+      return NextResponse.json({ player: names.player ?? "旅者", el: names.el ?? "行者" });
+    } catch {
+      return NextResponse.json({ player: "旅者", el: "行者" });
+    }
+  }
   const session = await getRpgSession();
   return NextResponse.json({ session });
 }

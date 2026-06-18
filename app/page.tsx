@@ -3595,29 +3595,13 @@ const RPG_WORLDS = [
   { id: "xianxia", label: "剑 修仙江湖", desc: "仙门、功法、刀光剑影" },
 ];
 
-const RPG_NAMES: Record<string, { player: string[]; el: string[] }> = {
-  fantasy: {
-    player: ["艾拉", "塞拉菲", "凌霜", "妮雅", "伊莎", "奥罗拉", "克莱尔", "茜儿"],
-    el:     ["维克托", "凯隆", "埃文", "索尔", "莱昂", "阿尔戈", "德莱文", "卡西亚斯"],
-  },
-  scifi: {
-    player: ["Nova", "Lyra", "Zara", "Echo", "Vega", "Ori", "Sable", "Quinn"],
-    el:     ["Rex", "Corvus", "Axel", "Dael", "Sion", "Rook", "Cain", "Zane"],
-  },
-  modern: {
-    player: ["林知夏", "沈晚晴", "顾澜", "宋微", "江烟", "白鹿", "穆清", "谢念"],
-    el:     ["陆珩", "程远", "叶修", "秦朗", "苏衍", "韩墨", "裴司", "谢临"],
-  },
-  xianxia: {
-    player: ["云舒", "苏离", "霜华", "青鸾", "夙瑶", "凌汐", "洛尘", "暮雪"],
-    el:     ["沈渊", "墨寒", "夜煞", "凌霄", "铸冥", "苍玄", "幽冥", "炎司"],
-  },
-};
-
-function pickName(world: string, role: "player" | "el", exclude?: string): string {
-  const pool = RPG_NAMES[world]?.[role] ?? ["旅者", "流者"];
-  const available = pool.filter((n) => n !== exclude);
-  return available[Math.floor(Math.random() * available.length)];
+async function fetchRpgNames(world: string): Promise<{ player: string; el: string }> {
+  try {
+    const r = await fetch(`/api/rpg?names=1&world=${encodeURIComponent(world)}`);
+    return await r.json();
+  } catch {
+    return { player: "旅者", el: "行者" };
+  }
 }
 
 function RpgTab() {
@@ -3629,16 +3613,24 @@ function RpgTab() {
   const [elCharName, setElCharName] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  function chooseWorld(w: string) {
+  const [namesLoading, setNamesLoading] = useState(false);
+
+  async function chooseWorld(w: string) {
     setWorld(w);
-    setCharName(pickName(w, "player"));
-    setElCharName(pickName(w, "el"));
+    setNamesLoading(true);
+    const names = await fetchRpgNames(w);
+    setCharName(names.player);
+    setElCharName(names.el);
+    setNamesLoading(false);
   }
 
-  function reshuffleNames() {
-    if (!world) return;
-    setCharName(pickName(world, "player", charName));
-    setElCharName(pickName(world, "el", elCharName));
+  async function reshuffleNames() {
+    if (!world || namesLoading) return;
+    setNamesLoading(true);
+    const names = await fetchRpgNames(world);
+    setCharName(names.player);
+    setElCharName(names.el);
+    setNamesLoading(false);
   }
 
   useEffect(() => {
@@ -3731,15 +3723,21 @@ function RpgTab() {
           </div>
           {world && (
             <div className="rpg-names-row">
-              <div className="rpg-name-chip">你 · {charName}</div>
-              <div className="rpg-name-chip">el · {elCharName}</div>
-              <button className="rpg-reshuffle" onClick={reshuffleNames} title="换一组名字">↺</button>
+              {namesLoading ? (
+                <div className="rpg-name-chip rpg-name-loading">起名中…</div>
+              ) : (
+                <>
+                  <div className="rpg-name-chip">你 · {charName}</div>
+                  <div className="rpg-name-chip">el · {elCharName}</div>
+                  <button className="rpg-reshuffle" onClick={reshuffleNames} title="换一组">↺</button>
+                </>
+              )}
             </div>
           )}
           <button
             className="rpg-start-btn"
             onClick={startGame}
-            disabled={!world || loading}
+            disabled={!world || loading || namesLoading}
           >
             {loading ? "生成中…" : "开始冒险"}
           </button>

@@ -3116,6 +3116,11 @@ body::before {
   color: var(--ink);
 }
 
+.rpg-name-loading {
+  opacity: 0.5;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .rpg-reshuffle {
   appearance: none;
   background: none;

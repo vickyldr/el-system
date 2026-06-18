@@ -215,61 +215,32 @@ body::before {
   text-align: right;
 }
 
-/* ── 此刻：心情/天气/推歌做成"一张张露边的卡"，左右滑（仿植物店那种轮播）──
-   .now-card 只是个透明的轨道容器；真正的卡是每一张 .now-panel。 */
-.now-card {
-  position: relative;
-  margin: 2px 0 20px;
-  display: flex;
-  flex-direction: column;
+/* ── 此刻：el 的心情敞开当主角，其余（天气/推歌/电影/今日签/吃啥）
+   收成一格格磨砂小卡，点开走底部抽屉看详情——留白多、不再一屏摊开。
+   磨砂玻璃：半透底 + 背景模糊 + 极淡顶光，不用 --elev-2 那道硬厚边。 */
+.mood-hero,
+.duo-mini,
+.trivia-line {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* 心情主卡：el 第一人称的话，敞开放着，留足呼吸的地方 */
+.mood-hero {
+  border-radius: var(--r-xl);
+  padding: 28px 24px 26px;
+  margin: 2px 0 22px;
   animation: fadeInUp 0.42s ease both;
 }
-
-/* 骨架屏：当成一张普通卡 */
-.now-card-skel {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-xl);
-  box-shadow: var(--elev-2);
-  padding: 26px;
-  min-height: 200px;
-  justify-content: center;
-  gap: 12px;
-}
-
-.now-swipe {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin: 0 -22px; /* 出血：吃掉 content 的左右内距，让卡能滑到贴近屏幕边、邻卡露得出来 */
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  scroll-padding: 0 22px;
-  padding: 8px 22px 14px; /* 两端各留 22px，上下留出 3D 厚度边不被裁 */
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  transition: height 0.28s ease;
-}
-.now-swipe::-webkit-scrollbar {
-  display: none;
-}
-
-.now-slide {
-  flex: 0 0 84%; /* 比满宽窄一截 → 旁边露出下一张的边 */
-  scroll-snap-align: center;
-  scroll-snap-stop: always; /* 一次滑动最多翻一张，不让惯性一甩掠过中间几张 */
-  align-self: flex-start;
-}
-
-/* 每一屏 = 一张抬起来的卡 */
-.now-panel {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  box-shadow: var(--elev-2);
-  padding: 22px 22px 20px;
+.mood-hero-text {
+  font-family: var(--font-hand);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
 .now-panel-label {
@@ -280,26 +251,16 @@ body::before {
   margin-bottom: 16px;
 }
 
-.now-panel-mood {
-  font-family: var(--font-hand);
-  font-size: 25px;
+/* 抽屉里：推歌曲名 */
+.now-panel-name {
+  font-family: var(--font-display);
+  font-size: 34px;
   font-weight: 600;
-  line-height: 1.5;
-  word-break: break-word;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
 }
 
-.now-panel-big {
-  font-size: 52px;
-  font-weight: 600;
-  line-height: 1;
-}
-.now-panel-big .dim {
-  color: var(--ink-soft);
-  font-weight: 400;
-  font-size: 30px;
-}
-
-/* 天气：图标 + 温度 + 描述排成对齐的一行，紧凑，不再一柱擎天 */
+/* 天气（抽屉里）：图标 + 温度 + 描述排成对齐的一行 */
 .weather-row {
   display: flex;
   align-items: baseline;
@@ -327,51 +288,6 @@ body::before {
   margin-top: 14px;
 }
 
-.now-panel-name {
-  font-family: var(--font-display);
-  font-size: 34px;
-  font-weight: 600;
-  letter-spacing: -0.5px;
-  line-height: 1.1;
-}
-
-.now-panel .meta {
-  margin-top: 12px;
-}
-
-.now-dots {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 10px;
-}
-/* 圆点：可点跳转，外层透明扩大点击区，圆点本体用 ::before 画 */
-.now-dot {
-  appearance: none;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 8px 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.now-dot::before {
-  content: "";
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.24);
-  transition: width 0.2s ease, background 0.2s ease;
-}
-.now-dot.on::before {
-  width: 18px;
-  border-radius: 3px;
-  background: #cbb9ff;
-  box-shadow: 0 0 8px var(--glow);
-}
-
 /* ── 此刻最底：今天的冷知识 · 电影 ── */
 .trivia-line {
   width: 100%;
@@ -382,18 +298,15 @@ body::before {
   align-items: center;
   gap: 10px;
   margin-top: 2px;
-  padding: 13px 16px;
+  padding: 14px 16px;
   border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--hair);
   color: var(--ink);
   text-align: left;
-  box-shadow: var(--elev-1);
-  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  transition: transform 0.15s ease, border-color 0.2s ease;
 }
 .trivia-line:active {
-  transform: translateY(2px);
-  box-shadow: 0 0 0 var(--edge);
+  transform: scale(0.98);
+  border-color: rgba(203, 185, 255, 0.3);
 }
 .trivia-tag {
   flex: 0 0 auto;
@@ -446,32 +359,30 @@ body::before {
   word-break: break-all;
 }
 
-/* ── 此刻：下面两格（今日签 / 吃啥）── */
-.now-duo {
-  display: flex;
+/* ── 此刻：收起来的那些小卡（天气/推歌/电影/今日签/吃啥）排成两列网格，
+   点哪格走底部抽屉看详情 ── */
+.now-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-bottom: 18px;
 }
 .duo-mini {
-  flex: 1;
   appearance: none;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
   border-radius: var(--r-md);
-  padding: 16px 17px;
-  box-shadow: var(--elev-2);
+  padding: 17px 17px;
   display: flex;
   flex-direction: column;
-  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  transition: transform 0.15s ease, border-color 0.2s ease;
   animation: fadeInUp 0.42s ease both;
 }
 .duo-mini:active {
-  transform: translateY(3px);
-  box-shadow: var(--elev-1);
+  transform: scale(0.97);
+  border-color: rgba(203, 185, 255, 0.3);
 }
 .duo-mini:disabled {
   opacity: 0.7;
@@ -580,12 +491,14 @@ body::before {
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--glass);
   border: 1px solid var(--hair);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
   border-radius: var(--r-lg);
   padding: 22px 22px;
   margin-bottom: var(--sp-4);
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   animation: fadeInUp 0.42s ease both;
 }
 
@@ -868,9 +781,12 @@ body::before {
 .count-chip {
   font-size: 12px;
   color: var(--ink-soft);
-  background: rgba(255,255,255,0.05);
-  border-radius: 10px;
-  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 999px;
+  padding: 4px 12px;
 }
 
 /* ── 底部 tab 栏：磨砂玻璃，文档流里的最后一个孩子，永远贴底、不会飘 ── */
@@ -1360,12 +1276,14 @@ body::before {
   text-align: left;
   background: var(--glass);
   border: 1px solid rgba(123, 111, 240, 0.32);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
   border-radius: 16px;
   padding: 11px 14px;
   color: var(--ink);
   cursor: pointer;
   font-family: inherit;
-  box-shadow: var(--shadow);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .call-card-ic {
@@ -1481,8 +1399,11 @@ body::before {
 }
 
 .msg.el .bubble {
-  background: var(--el-bubble);
+  background: var(--glass);
   border: 1px solid var(--hair);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   border-bottom-left-radius: 6px;
   font-family: var(--font-hand);
   font-size: 15.5px;
@@ -1587,21 +1508,26 @@ body::before {
   box-shadow: none;
 }
 
-/* ── 此刻的小动作按钮：「↩ 回复这条」「▶ 去网易云听」── */
+/* ── 此刻的小动作按钮：「↩ 回复」「▶ 去听」——收得小而安静，贴留白的调子 ── */
 .status-reply {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 16px;
-  font-size: 12.5px;
+  gap: 4px;
+  margin-top: 18px;
+  font-size: 12px;
   font-weight: 500;
   color: #cbb9ff;
-  background: rgba(123, 111, 240, 0.13);
-  border: 1px solid rgba(123, 111, 240, 0.26);
+  background: none;
+  border: none;
   border-radius: 999px;
-  padding: 8px 15px;
+  padding: 4px 2px;
   cursor: pointer;
   white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+.status-reply:active {
+  opacity: 0.55;
 }
 .status-actions {
   display: flex;
@@ -1613,12 +1539,14 @@ body::before {
 .status-actions .status-reply {
   margin-top: 0;
 }
-/* 「去网易云听」= 主行动，填充实色 */
+/* 「去听」= 主行动，保留一点分量的实色小胶囊 */
 .status-reply.play {
   color: #fff;
   text-decoration: none;
   background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
-  border-color: transparent;
+  border: none;
+  padding: 7px 14px;
+  opacity: 1;
 }
 
 /* el 主动够向她那条消息上的行动按钮（接听 / 接着读 / 看看）——实色，像一张能点的邀请 */
@@ -1733,7 +1661,9 @@ body::before {
   margin: 6px 12px 0;
   padding: 8px 12px;
   border-left: 3px solid var(--accent);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
   border-radius: 0 10px 10px 0;
 }
 .quote-bar-body {
@@ -1870,13 +1800,16 @@ body::before {
 }
 
 .wish {
-  background: var(--panel);
+  background: var(--glass);
   border: 1px solid var(--hair);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
   border-radius: 16px;
   padding: 14px 16px;
   margin-bottom: 12px;
   font-size: 15px;
   line-height: 1.55;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .wish.done {
@@ -1968,10 +1901,13 @@ body::before {
 }
 
 .diary-entry {
-  background: var(--panel);
+  background: var(--glass);
   border: 1px solid var(--hair);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
   border-radius: 16px;
   padding: 16px 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .diary-head {

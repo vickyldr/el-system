@@ -335,7 +335,9 @@ export default function Home() {
               }}
             />
           ) : tab === "read" ? (
-            <BookshelfTab key={refreshKey} />
+            // 不按 refreshKey 整体重挂——那会把沉浸的二级页打回选卡片首页（被误当成"返回上一级"）。
+            // 改成只刷新当前打开的内容，停留在原地。
+            <BookshelfTab refreshKey={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -453,9 +455,6 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
     };
   }, []);
 
-  const hasAny =
-    status && (status.mood || status.song_recommendation || status.weather || status.el_note);
-
   const [dateStr, setDateStr] = useState("");
   useEffect(() => {
     const d = new Date();
@@ -472,32 +471,64 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 
       <CountRow days={days} milestone={milestone} />
 
-      {loading && (
-        <div className="now-card now-card-skel">
-          <div className="skel skel-line sm" />
+      {loading ? (
+        <div className="mood-hero">
+          <div className="now-panel-label">心情</div>
           <div className="skel skel-line lg" />
           <div className="skel skel-line md" />
         </div>
+      ) : (
+        <MoodHero status={status} onQuote={onQuote} />
       )}
 
-      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
-
-      {!loading && !hasAny && (
-        <div className="now-card">
-          <div className="now-panel">
-            <div className="now-panel-label">心情</div>
-            <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
-          </div>
-        </div>
-      )}
-
-      <div className="now-duo">
+      {/* 心情之外的都收成小卡，点开走抽屉 */}
+      <div className="now-grid">
+        {status && status.weather && <WeatherMini status={status} onQuote={onQuote} />}
+        {status && status.song_recommendation && <SongMini status={status} onQuote={onQuote} />}
+        <MovieMini />
         <FortuneCard />
         <EatDecider />
       </div>
 
       <DailyTrivia />
     </>
+  );
+}
+
+/* ───────────── 心情：el 第一人称的话，敞开当主角 ───────────── */
+function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quote) => void }) {
+  const mood = status?.mood;
+  const thought = status?.thought;
+  const elNote = status?.el_note;
+  const has = !!(mood || thought || elNote);
+  return (
+    <section className="mood-hero">
+      <div className="now-panel-label">心情</div>
+      {has ? (
+        <>
+          <div className="mood-hero-text">{mood || <span className="muted">—</span>}</div>
+          {thought && <div className="meta">{thought}</div>}
+          {elNote && (
+            <div className="meta" style={{ color: "var(--ink)" }}>
+              {elNote}
+            </div>
+          )}
+          {(mood || thought) && (
+            <button
+              type="button"
+              className="status-reply"
+              onClick={() =>
+                onQuote({ label: "心情", text: [mood, thought].filter(Boolean).join(" / ") })
+              }
+            >
+              回复
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
+      )}
+    </section>
   );
 }
 
@@ -545,81 +576,62 @@ function DailyTrivia() {
   );
 }
 
-/* ───────────── El 状态（心情/天气/推歌 左右滑） ───────────── */
-type StatusTab = "mood" | "weather" | "song" | "movie";
-
-function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
-  const hasMood = !!(status.mood || status.thought || status.el_note);
-  const hasWeather = !!status.weather;
-  const hasSong = !!status.song_recommendation;
-
-  // 一块一屏，左右滑：心情 / 天气 / 推歌 / 电影（电影常驻）
-  const panels: { key: StatusTab; node: React.ReactNode }[] = [];
-
-  if (hasMood)
-    panels.push({
-      key: "mood",
-      node: (
-        <div className="now-panel mood-pane-breathe">
-          <div className="now-panel-label">心情</div>
-          <div className="now-panel-mood">{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta">{status.thought}</div>}
-          {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
-          {(status.mood || status.thought) && (
-            <button
-              type="button"
-              className="status-reply"
-              onClick={() =>
-                onQuote({ label: "心情", text: [status.mood, status.thought].filter(Boolean).join(" / ") })
-              }
-            >
-              ↩ 回复这条
-            </button>
-          )}
-        </div>
-      ),
-    });
-
-  if (hasWeather)
-    panels.push({
-      key: "weather",
-      node: (
-        <div className="now-panel weather-pane">
-          <div className="now-panel-label">天气 · {status.weather!.city}</div>
+/* ───────────── 天气 / 推歌：收成小卡，点开走底部抽屉 ───────────── */
+function WeatherMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  const w = status.weather!;
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">{w.icon || "🌤"}</span>
+        <span className="duo-l">天气</span>
+        <span className="duo-v">
+          {w.temp}° <span className="dim">{w.desc}</span>
+        </span>
+      </button>
+      {open && (
+        <Sheet title={`天气 · ${w.city}`} onClose={() => setOpen(false)}>
           <div className="weather-row">
-            {status.weather!.icon && <span className="weather-ic">{status.weather!.icon}</span>}
-            <span className="weather-temp">{status.weather!.temp}°</span>
-            {status.weather!.desc && <span className="weather-desc">{status.weather!.desc}</span>}
+            {w.icon && <span className="weather-ic">{w.icon}</span>}
+            <span className="weather-temp">{w.temp}°</span>
+            {w.desc && <span className="weather-desc">{w.desc}</span>}
           </div>
-          {status.weather!.outfit && <div className="meta weather-outfit">👕 {status.weather!.outfit}</div>}
+          {w.outfit && <div className="meta weather-outfit">👕 {w.outfit}</div>}
           <button
             type="button"
             className="status-reply"
             onClick={() =>
               onQuote({
                 label: "天气",
-                text: `${status.weather!.temp}° ${status.weather!.desc}${status.weather!.outfit ? " · " + status.weather!.outfit : ""}`,
+                text: `${w.temp}° ${w.desc}${w.outfit ? " · " + w.outfit : ""}`,
               })
             }
           >
-            ↩ 回复这条
+            回复
           </button>
-        </div>
-      ),
-    });
+        </Sheet>
+      )}
+    </>
+  );
+}
 
-  if (hasSong)
-    panels.push({
-      key: "song",
-      node: (
-        <div className="now-panel">
-          <div className="now-panel-label">今天想让你听</div>
+function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎵</span>
+        <span className="duo-l">想让你听</span>
+        <span className="duo-v">{status.song_recommendation}</span>
+      </button>
+      {open && (
+        <Sheet title="今天想让你听" onClose={() => setOpen(false)}>
           <div className="now-panel-name song-name">{status.song_recommendation}</div>
-          {status.song_reason && <div className="meta">{status.song_reason}</div>}
+          {status.song_reason && <div className="meta song-reason">{status.song_reason}</div>}
           <div className="status-actions">
             {status.song_url && (
               <a className="status-reply play" href={status.song_url}>
-                ▶ 去网易云听
+                去听
               </a>
             )}
             <button
@@ -632,90 +644,12 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
                 })
               }
             >
-              ↩ 回复这条
+              回复
             </button>
           </div>
-        </div>
-      ),
-    });
-
-  panels.push({ key: "movie", node: <MoviePane /> });
-
-  const [idx, setIdx] = useState(0);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [swipeH, setSwipeH] = useState<number | undefined>(undefined);
-  // 卡变窄、能露出邻卡后，不能再按"整屏宽"算第几张——找离视口中心最近的那张。
-  function onScroll() {
-    const el = trackRef.current;
-    if (!el) return;
-    const center = el.scrollLeft + el.clientWidth / 2;
-    let best = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < el.children.length; i++) {
-      const c = el.children[i] as HTMLElement;
-      const cc = c.offsetLeft + c.offsetWidth / 2;
-      const d = Math.abs(cc - center);
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    if (best !== idx) setIdx(best);
-  }
-  // 点圆点：把那一张滚到正中（首/尾会被浏览器夹到边，自然留边）
-  function goTo(i: number) {
-    const el = trackRef.current;
-    if (!el) return;
-    const n = el.children.length;
-    const t = Math.max(0, Math.min(i, n - 1));
-    const c = el.children[t] as HTMLElement;
-    el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
-    setIdx(t);
-  }
-
-  if (panels.length === 0) return null;
-  const active = Math.min(idx, panels.length - 1);
-
-  // 卡片高度跟着当前这屏内容走——内容多就高、少就矮，下面空着无所谓。
-  // 用 ResizeObserver 接住异步加载（电影封面/心情变长）后的高度变化。
-  useEffect(() => {
-    const el = slideRefs.current[active];
-    if (!el) return;
-    // +24：留出轨道上下内边距 + 卡片底部那道 3D 厚度边，别让 overflow 把卡片下沿裁掉
-    const apply = () => setSwipeH(el.offsetHeight + 24);
-    apply();
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(apply);
-      ro.observe(el);
-    }
-    return () => ro?.disconnect();
-  }, [active, panels.length]);
-
-  return (
-    <div className="now-card">
-      <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
-        {panels.map((p, i) => (
-          <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>
-            {p.node}
-          </div>
-        ))}
-      </div>
-      {panels.length > 1 && (
-        <div className="now-dots">
-          {panels.map((p, i) => (
-            <button
-              type="button"
-              key={p.key}
-              className={`now-dot ${i === active ? "on" : ""}`}
-              aria-label={`第 ${i + 1} 屏`}
-              onClick={() => goTo(i)}
-            />
-          ))}
-        </div>
+        </Sheet>
       )}
-    </div>
+    </>
   );
 }
 
@@ -746,7 +680,9 @@ function openInDouban(title: string, webUrl: string) {
   }, 1500);
 }
 
-function MoviePane() {
+/* ───────────── 电影：收成小卡，点开抽屉看详情 + 想看/不想看 ───────────── */
+function MovieMini() {
+  const [open, setOpen] = useState(false);
   const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -779,69 +715,76 @@ function MoviePane() {
     }
   }
 
-  if (movie === undefined)
-    return (
-      <div className="now-panel">
-        <div className="now-panel-label">想推你看</div>
-        <div className="meta">想想推你看什么…</div>
-      </div>
-    );
-  if (!movie)
-    return (
-      <div className="now-panel">
-        <div className="now-panel-label">想推你看</div>
-        <div className="meta">这会儿没有可推的了，过会儿再来～</div>
-      </div>
-    );
-
   return (
-    <div className="now-panel">
-      <div className="now-panel-label">想推你看</div>
-      <div className="movie-row">
-        {movie.cover && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="movie-cover"
-            src={movie.cover}
-            alt=""
-            referrerPolicy="no-referrer"
-            style={{ cursor: "pointer" }}
-            onClick={() => openInDouban(movie.title, movie.url)}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        )}
-        <div className="movie-info">
-          <a
-            className="movie-title"
-            href={movie.url}
-            onClick={(e) => {
-              e.preventDefault();
-              openInDouban(movie.title, movie.url);
-            }}
-          >
-            {movie.title}
-            {movie.year ? ` (${movie.year})` : ""}
-          </a>
-          {(movie.rating != null || movie.genres?.length > 0) && (
-            <div className="meta" style={{ marginTop: 4 }}>
-              {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
-              {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
-            </div>
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">想推你看</span>
+        <span className="duo-v">
+          {movie === undefined ? (
+            <span className="dim">想想…</span>
+          ) : movie ? (
+            movie.title
+          ) : (
+            <span className="dim">暂时没有</span>
           )}
-          {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
-        </div>
-      </div>
-      <div className="status-actions">
-        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
-          ＋ 想看
-        </button>
-        <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
-          不想看
-        </button>
-      </div>
-    </div>
+        </span>
+      </button>
+      {open && (
+        <Sheet title="想推你看" onClose={() => setOpen(false)}>
+          {movie === undefined && <div className="meta">想想推你看什么…</div>}
+          {movie === null && <div className="meta">这会儿没有可推的了，过会儿再来～</div>}
+          {movie && (
+            <>
+              <div className="movie-row">
+                {movie.cover && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    className="movie-cover"
+                    src={movie.cover}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openInDouban(movie.title, movie.url)}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                )}
+                <div className="movie-info">
+                  <a
+                    className="movie-title"
+                    href={movie.url}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openInDouban(movie.title, movie.url);
+                    }}
+                  >
+                    {movie.title}
+                    {movie.year ? ` (${movie.year})` : ""}
+                  </a>
+                  {(movie.rating != null || movie.genres?.length > 0) && (
+                    <div className="meta" style={{ marginTop: 4 }}>
+                      {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
+                      {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
+                    </div>
+                  )}
+                  {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
+                </div>
+              </div>
+              <div className="status-actions">
+                <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+                  想看
+                </button>
+                <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
+                  不想看
+                </button>
+              </div>
+            </>
+          )}
+        </Sheet>
+      )}
+    </>
   );
 }
 
@@ -1511,7 +1454,7 @@ const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soo
 ];
 
 // 「沉浸」tab：翻卡片选今天做什么。
-function BookshelfTab() {
+function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
   const [sub, setSub] = useState<ShelfSub | null>(null);
 
   if (sub) {
@@ -1523,9 +1466,10 @@ function BookshelfTab() {
           <span className="imm-back-icon-big">{card.icon}</span>
           <span className="imm-back-title">{card.title}</span>
         </button>
-        {sub === "fic"  && <FicStation />}
-        {sub === "book" && <BooksSection />}
-        {sub === "rpg"  && <RpgTab />}
+        {/* 下拉刷新只重挂内容、保留所在的二级页（sub 不丢） */}
+        {sub === "fic"  && <FicStation key={refreshKey} />}
+        {sub === "book" && <BooksSection key={refreshKey} />}
+        {sub === "rpg"  && <RpgTab key={refreshKey} />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>

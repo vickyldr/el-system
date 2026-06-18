@@ -546,3 +546,42 @@ export async function clearGeoEvents(): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 跑团游戏 ──────────────────────────────────────────────
+export type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
+export type RpgSession = {
+  world: string;
+  charName: string;
+  history: RpgMsg[];
+};
+const RPG_KEY = "el:rpg:session";
+
+export async function getRpgSession(): Promise<RpgSession | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    return await r.get<RpgSession>(RPG_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function setRpgSession(s: RpgSession): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(RPG_KEY, s);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function resetRpgSession(): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.del(RPG_KEY);
+  } catch {
+    /* ignore */
+  }
+}

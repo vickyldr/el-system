@@ -65,7 +65,7 @@ function base64ToPCMFloat32(b64: string): Float32Array {
   return f32;
 }
 
-type Tab = "now" | "find" | "read" | "us";
+type Tab = "now" | "find" | "read" | "us" | "rpg";
 
 // 从「此刻」引用一条去聊天里回复 el（他会知道自己被回复了什么）。
 type Quote = { label: string; text: string };
@@ -216,6 +216,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
       );
+    case "dice":
+      return (
+        <svg {...p}>
+          <rect x="2" y="2" width="20" height="20" rx="3" ry="3" />
+          <path d="M8 8h.01M12 12h.01M16 16h.01M8 16h.01M16 8h.01" strokeWidth={2.4} />
+        </svg>
+      );
     default:
       return null;
   }
@@ -329,6 +336,8 @@ export default function Home() {
             />
           ) : tab === "read" ? (
             <BookshelfTab key={refreshKey} />
+          ) : tab === "rpg" ? (
+            <RpgTab key={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -351,6 +360,10 @@ export default function Home() {
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />
           <span>我们</span>
+        </button>
+        <button className={`tab ${tab === "rpg" ? "active" : ""}`} onClick={() => setTab("rpg")}>
+          <Icon name="dice" size={21} />
+          <span>跑团</span>
         </button>
       </nav>
     </div>
@@ -3534,6 +3547,175 @@ function MemoryView() {
 
 // El 的日记：每天他给你写的那段，只读地翻给你看（他写的时候不知道你能看到）。
 // 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
+// ── 跑团 ────────────────────────────────────────────────
+type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
+type RpgSession = { world: string; charName: string; history: RpgMsg[] };
+
+const RPG_WORLDS = [
+  { id: "fantasy", label: "✦ 奇幻王国", desc: "魔法、龙、地下城" },
+  { id: "scifi", label: "◈ 星际漂流", desc: "太空船、外星文明、未知星系" },
+  { id: "modern", label: "⌘ 都市迷踪", desc: "现代城市、悬案、神秘组织" },
+  { id: "xianxia", label: "剑 修仙江湖", desc: "仙门、功法、刀光剑影" },
+];
+
+function RpgTab() {
+  const [session, setSession] = useState<RpgSession | null | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState("");
+  const [world, setWorld] = useState("");
+  const [charName, setCharName] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/rpg")
+      .then((r) => r.json())
+      .then((d) => setSession(d.session ?? null))
+      .catch(() => setSession(null));
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [session?.history]);
+
+  async function startGame() {
+    if (!world || !charName.trim()) return;
+    setLoading(true);
+    try {
+      const r = await fetch("/api/rpg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start", world, charName: charName.trim() }),
+      });
+      const d = await r.json();
+      // refresh session
+      const s = await fetch("/api/rpg").then((x) => x.json());
+      setSession(s.session ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendAction() {
+    const text = input.trim();
+    if (!text || loading || !session) return;
+    setInput("");
+    setLoading(true);
+    // optimistic
+    setSession((prev) =>
+      prev
+        ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] }
+        : prev
+    );
+    try {
+      const r = await fetch("/api/rpg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "play", input: text }),
+      });
+      const d = await r.json();
+      const s = await fetch("/api/rpg").then((x) => x.json());
+      setSession(s.session ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetGame() {
+    await fetch("/api/rpg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    setSession(null);
+    setWorld("");
+    setCharName("");
+  }
+
+  if (session === undefined) {
+    return <div className="rpg-wrap"><div className="rpg-loading">…</div></div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="rpg-wrap">
+        <div className="rpg-setup">
+          <div className="rpg-title">跑团</div>
+          <div className="rpg-subtitle">el 来做你的 GM，挑一个世界，我们开始。</div>
+          <div className="rpg-worlds">
+            {RPG_WORLDS.map((w) => (
+              <button
+                key={w.id}
+                className={`rpg-world ${world === w.id ? "selected" : ""}`}
+                onClick={() => setWorld(w.id)}
+              >
+                <span className="rpg-world-label">{w.label}</span>
+                <span className="rpg-world-desc">{w.desc}</span>
+              </button>
+            ))}
+          </div>
+          <div className="rpg-char-row">
+            <input
+              className="rpg-char-input"
+              placeholder="你的角色叫什么"
+              value={charName}
+              onChange={(e) => setCharName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && startGame()}
+              maxLength={20}
+            />
+          </div>
+          <button
+            className="rpg-start-btn"
+            onClick={startGame}
+            disabled={!world || !charName.trim() || loading}
+          >
+            {loading ? "生成中…" : "开始冒险"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const displayHistory = session.history.filter((m) => m.role !== "player" || !m.text.startsWith("新游戏开始"));
+
+  return (
+    <div className="rpg-wrap">
+      <div className="rpg-header">
+        <span className="rpg-world-tag">{RPG_WORLDS.find((w) => w.id === session.world)?.label ?? session.world}</span>
+        <span className="rpg-char-tag">扮演：{session.charName}</span>
+        <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+      </div>
+      <div className="rpg-history">
+        {displayHistory.map((m, i) => (
+          <div key={i} className={`rpg-msg rpg-msg-${m.role}`}>
+            {m.role === "gm" && <span className="rpg-gm-badge">el</span>}
+            <div className="rpg-msg-text">{m.text}</div>
+          </div>
+        ))}
+        {loading && (
+          <div className="rpg-msg rpg-msg-gm">
+            <span className="rpg-gm-badge">el</span>
+            <div className="rpg-msg-text rpg-thinking">…</div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <div className="rpg-input-row">
+        <input
+          className="rpg-input"
+          placeholder="你想做什么"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
+          disabled={loading}
+        />
+        <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
+          <Icon name="send" size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DiaryView() {
   const { data, loading, err } = useJson<{
     entries: { date: string; diary: string; mood: string }[];

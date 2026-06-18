@@ -2088,11 +2088,14 @@ function FindTab({
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
   const [callMode, setCallMode] = useState<"voice" | "video" | "screen">("voice"); // 语音 / 视频(摄像头) / 共享屏幕
   const [canScreen, setCanScreen] = useState(false); // 浏览器支不支持共享屏幕（手机不支持，藏起按钮）
-  // 静默共享屏幕：不通话、打字，发消息时把此刻屏幕一帧随手带给 el 看。
+  // 共享屏幕：不通话。el 在后台持续盯着，自己想说就开口；她也能随时打字（消息带上此刻这帧）。
   const [screenShareOn, setScreenShareOn] = useState(false);
   const screenFrameRef = useRef<string | null>(null); // 最新一帧屏幕（base64 data url）
   const screenShareStreamRef = useRef<MediaStream | null>(null);
   const screenShareTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const screenSigRef = useRef<number | null>(null); // 当前帧的粗签名（判断屏幕变没变，省 token）
+  const lastSentSigRef = useRef<number | null>(null); // 上次发给 el 看的那帧签名
+  const watchLoopRef = useRef<ReturnType<typeof setInterval> | null>(null); // el 持续盯屏的循环
   const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
   const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
@@ -2220,6 +2223,7 @@ function FindTab({
   useEffect(() => {
     return () => {
       if (screenShareTimerRef.current) clearInterval(screenShareTimerRef.current);
+      if (watchLoopRef.current) clearInterval(watchLoopRef.current);
       screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
@@ -2266,16 +2270,45 @@ function FindTab({
     frameTimerRef.current = setInterval(grab, 1500);
   }
 
-  // 静默共享屏幕：开了之后定时把屏幕抓一帧存到 ref，发消息时带给 el 看（不通话、不出声）。
+  // 共享屏幕：el 在后台持续盯着，自己想说就开口（watchTick）；抓帧也供她打字时随消息带上。
   function stopScreenShare() {
     if (screenShareTimerRef.current) {
       clearInterval(screenShareTimerRef.current);
       screenShareTimerRef.current = null;
     }
+    if (watchLoopRef.current) {
+      clearInterval(watchLoopRef.current);
+      watchLoopRef.current = null;
+    }
     screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenShareStreamRef.current = null;
     screenFrameRef.current = null;
+    screenSigRef.current = null;
+    lastSentSigRef.current = null;
     setScreenShareOn(false);
+  }
+  // el 后台盯屏的一拍：屏幕没怎么变就不打扰（省 token、不重复念）；变了就把这帧发给 el，
+  // 他真有想说的才回一句（服务端还有最小开口间隔的闸）。
+  async function watchTick() {
+    if (!screenShareStreamRef.current || !screenFrameRef.current) return;
+    const cur = screenSigRef.current;
+    const last = lastSentSigRef.current;
+    if (cur != null && last != null && Math.abs(cur - last) / (last || 1) < 0.02) return;
+    lastSentSigRef.current = cur;
+    try {
+      const r = await fetch("/api/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screen: screenFrameRef.current }),
+      });
+      const d = await r.json();
+      if (d?.reply) {
+        stickBottom.current = true;
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
+      }
+    } catch {
+      /* ignore */
+    }
   }
   async function toggleScreenShare() {
     if (screenShareOn) {
@@ -2293,6 +2326,7 @@ function FindTab({
       v.srcObject = new MediaStream(track ? [track] : []);
       v.play().catch(() => {});
       const canvas = document.createElement("canvas");
+      const sigCanvas = document.createElement("canvas");
       const grab = () => {
         const vw = v.videoWidth;
         const vh = v.videoHeight;
@@ -2305,9 +2339,25 @@ function FindTab({
         if (!ctx) return;
         ctx.drawImage(v, 0, 0, W, H);
         screenFrameRef.current = canvas.toDataURL("image/jpeg", 0.6);
+        // 粗签名：缩到 24×24 求像素和，用来判断屏幕变没变（很便宜）。
+        sigCanvas.width = 24;
+        sigCanvas.height = 24;
+        const sctx = sigCanvas.getContext("2d");
+        if (sctx) {
+          sctx.drawImage(v, 0, 0, 24, 24);
+          try {
+            const dd = sctx.getImageData(0, 0, 24, 24).data;
+            let s = 0;
+            for (let i = 0; i < dd.length; i += 4) s += dd[i] + dd[i + 1] + dd[i + 2];
+            screenSigRef.current = s;
+          } catch {
+            /* getImageData 失败就不做变化检测 */
+          }
+        }
       };
       setTimeout(grab, 300); // 等视频有尺寸先抓一张
       screenShareTimerRef.current = setInterval(grab, 2000);
+      watchLoopRef.current = setInterval(() => void watchTick(), 40000); // el 每 40s 看一眼（变了才真发）
       setScreenShareOn(true);
     } catch {
       /* 取消了 / 不支持，忽略 */
@@ -3122,7 +3172,7 @@ function FindTab({
       {screenShareOn && (
         <div className="screenshare-bar">
           <span className="screenshare-dot" />
-          el 正在看你的屏幕 · 打字就行
+          el 正在看你的屏幕 · 他想说就会冒一句
           <button type="button" className="screenshare-stop" onClick={stopScreenShare}>
             停止
           </button>

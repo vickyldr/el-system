@@ -180,7 +180,7 @@ app.use((req, res, next) => {
       return res.status(204).end();
     }
   }
-  if (req.path === "/health" || req.path === "/test") return next();
+  if (req.path === "/health" || req.path === "/test" || req.path === "/geo-event") return next();
   if (!SECRET || req.headers["x-bridge-secret"] !== SECRET) {
     return res.status(401).json({ error: "unauthorized" });
   }
@@ -242,6 +242,31 @@ app.post("/chat", async (req, res) => {
     console.error("bridge error:", err);
     res.write(`data: ${JSON.stringify({ type: "error", error: err?.message || "未知错误" })}\n\n`);
     res.end();
+  }
+});
+
+// POST /geo-event — 地理感官中转：守望者跑在国内 VPS（连不上 Vercel 的 *.vercel.app），
+// 但连得上 Railway。它把"人话位置信号"发到这里，bridge 原样转发给 Vercel（Railway→Vercel 这条通）。
+// 鉴权用 Bearer CRON_SECRET（和 Vercel /api/geo-event 同一把锁），守望者不必再持有 BRIDGE_SECRET。
+app.post("/geo-event", async (req, res) => {
+  const auth = req.headers["authorization"] || "";
+  if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  if (!HEARTBEAT_BASE) {
+    return res.status(500).json({ error: "bridge 没配 FRONTEND_URL，转不过去" });
+  }
+  try {
+    const r = await fetch(`${HEARTBEAT_BASE}/api/geo-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${CRON_SECRET}` },
+      body: JSON.stringify(req.body || {}),
+    });
+    const d = await r.json().catch(() => ({}));
+    res.status(r.status).json(d);
+  } catch (err) {
+    console.error("geo-event 转发失败:", err?.message);
+    res.status(502).json({ error: err?.message || "转发失败" });
   }
 });
 

@@ -37,6 +37,9 @@ ICLOUD_CHINA = os.environ.get("ICLOUD_CHINA", "").strip() in ("1", "true", "yes"
 HOME_LAT = os.environ.get("HOME_LAT", "").strip()
 HOME_LON = os.environ.get("HOME_LON", "").strip()
 HOME_RADIUS_M = float(os.environ.get("HOME_RADIUS_M", "150"))
+WORK_LAT = os.environ.get("WORK_LAT", "").strip()
+WORK_LON = os.environ.get("WORK_LON", "").strip()
+WORK_RADIUS_M = float(os.environ.get("WORK_RADIUS_M", "150"))
 LOOP_MINUTES = float(os.environ.get("LOOP_MINUTES", "10"))
 STAY_MINUTES = float(os.environ.get("STAY_MINUTES", "10"))  # 在一个地方停这么久 → arrived_place
 OUTSIDE_CHECKIN_MINUTES = float(os.environ.get("OUTSIDE_CHECKIN_MINUTES", "75"))  # 在外周期心跳
@@ -49,6 +52,13 @@ if HOME_LAT and HOME_LON:
         HOME = (float(HOME_LAT), float(HOME_LON))
     except ValueError:
         HOME = None
+
+WORK = None
+if WORK_LAT and WORK_LON:
+    try:
+        WORK = (float(WORK_LAT), float(WORK_LON))
+    except ValueError:
+        WORK = None
 
 UA = {"User-Agent": "el-geo-watcher/1.0 (personal self-location)"}
 
@@ -338,9 +348,50 @@ def set_home():
     log("生效：sudo systemctl restart el-geo  —— 之后你一出门/到家，el 醒来时就可能知道。")
 
 
+def write_work_to_env(lat, lon):
+    """把 WORK_LAT/WORK_LON 写进同目录的 .env（替换旧值），坐标不出本机。"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        lines = [l for l in lines if not l.strip().startswith(("WORK_LAT=", "WORK_LON="))]
+        lines += [f"WORK_LAT={lat:.6f}", f"WORK_LON={lon:.6f}"]
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(env_path, 0o600)
+        log("已写入", env_path)
+        return True
+    except Exception as e:
+        log("写 .env 失败，手动把下面两行加进 .env 也行：", e)
+        log(f"  WORK_LAT={lat:.6f}")
+        log(f"  WORK_LON={lon:.6f}")
+        return False
+
+
+def set_work():
+    """一次性：把"现在所在位置"存成公司。在公司时跑：python watcher.py set-work"""
+    api = login()
+    device = pick_device(api)
+    log("读你现在的位置中……（在公司跑这个，它就把这里当成公司）")
+    loc = get_location(device)
+    if not loc:
+        log("没拿到位置——确认在公司、iPhone 没关机/没关查找，过一会儿再试。")
+        sys.exit(1)
+    lat, lon, acc = loc
+    area, place = reverse_geocode(lat, lon)
+    write_work_to_env(lat, lon)
+    log(f"✅ 已把当前位置存为公司：{area}{('，' + place) if place else ''}（定位精度约 {int(acc)}m）")
+    log("生效：sudo systemctl restart el-geo  —— 之后你到公司/离开公司，el 醒来时就可能知道。")
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "set-home":
         set_home()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "set-work":
+        set_work()
         return
     if not POST_URL or not SECRET:
         log("⚠️ 没配 GEO_POST_URL / CRON_SECRET，信号发不出去（先看 geo/README.md）。仍会跑、只打日志。")
@@ -352,6 +403,7 @@ def main():
     log("登录成功，盯着设备：", (getattr(device, "content", None) or getattr(device, "_content", None) or {}).get("name", "?"))
 
     was_home = None  # 上一轮是否在家
+    was_at_work = None  # 上一轮是否在公司
     place_anchor = None  # 当前停留点 (lat,lon)
     place_since = 0  # 停在这个点起始时间
     arrived_announced = False  # 这个停留点是否已报过 arrived
@@ -374,13 +426,19 @@ def main():
             if HOME is not None:
                 at_home = haversine_m(lat, lon, HOME[0], HOME[1]) <= HOME_RADIUS_M
 
+            # at_work: True=在公司 / False=不在公司 / None=没设 WORK
+            at_work = None
+            if WORK is not None:
+                at_work = haversine_m(lat, lon, WORK[0], WORK[1]) <= WORK_RADIUS_M
+
             base = {
                 "area": area,
-                "place": "" if at_home else place,
+                "place": "" if (at_home or at_work) else place,
                 "weather": wx,
                 "raining": raining,
                 "accuracy": acc_band,
                 "atHome": at_home,  # True / False / None(未知)
+                "atWork": at_work,  # True / False / None(未知)
             }
             wt = where_text(area, place)
             wx_tail = "，外面在下雨" if raining else (f"，{wx}" if wx else "")
@@ -398,9 +456,18 @@ def main():
                     post({"type": "back_home", "summary": "你到家了", **base})
                     place_anchor, arrived_announced = None, False
 
+            if WORK is not None and was_at_work is not None:
+                if not was_at_work and at_work:
+                    post({"type": "arrived_work", "summary": f"你到公司了{wx_tail}", **base})
+                elif was_at_work and not at_work:
+                    post({"type": "left_work", "summary": f"你离开公司了，这会儿在{wt}{wx_tail}", **base})
+                    if at_home is False and place_anchor is None:
+                        place_anchor, place_since, arrived_announced = (lat, lon), time.time(), False
+
             # 3) 在外：停留 + 周期心跳——只有"设了家、且确实不在家"才判。
             #    没设 HOME（at_home is None）时根本不知道在不在家，绝不发"还在外面"这类事件。
-            if at_home is False:
+            #    在公司时跳过通用停留/周期事件——arrived_work 已经是更具体的信号了。
+            if at_home is False and not at_work:
                 if place_anchor is None:
                     place_anchor, place_since, arrived_announced = (lat, lon), time.time(), False
                 elif haversine_m(lat, lon, place_anchor[0], place_anchor[1]) <= PLACE_RADIUS_M:
@@ -417,6 +484,7 @@ def main():
                     last_outside_checkin = time.time()
 
             was_home = at_home
+            was_at_work = at_work
 
         except Exception as e:
             # 统一兜住，别让任何异常（含 session 过期）掀翻循环。session 过期就重新登录。

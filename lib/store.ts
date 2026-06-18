@@ -477,11 +477,12 @@ export type GeoNow = {
   raining?: boolean;
   accuracy?: "good" | "coarse"; // 定位精度档（措辞分级用）
   atHome?: boolean;
+  atWork?: boolean; // true=在公司 / false=不在公司 / 未定义=没配工作地点
   ts?: number;
 };
-// 位置事件（出门/到家/在外停留/在外周期），守望者在本地判转场时发来，已写成人话 summary。
+// 位置事件（出门/到家/在外停留/在外周期/到公司/离开公司），守望者在本地判转场时发来，已写成人话 summary。
 export type GeoEvent = {
-  kind: "left_home" | "arrived_place" | "outside_checkin" | "back_home";
+  kind: "left_home" | "arrived_place" | "outside_checkin" | "back_home" | "arrived_work" | "left_work";
   summary: string; // 一句人话事实（el 会用自己的口吻重写，不照念）
   ts: number;
 };
@@ -620,7 +621,10 @@ export async function geoAmbientBlock(): Promise<string> {
   if (!geoNow) return "";
   let ambient = "";
   if (geoNow.atHome) ambient = "她现在在家。";
-  else {
+  else if (geoNow.atWork) {
+    const w = geoNow.weather ? `；那边天气：${geoNow.weather}${geoNow.raining ? "（在下雨）" : ""}` : "";
+    ambient = `她现在在公司${w}。`;
+  } else {
     const knownOut = geoNow.atHome === false;
     const where =
       geoNow.accuracy === "coarse"

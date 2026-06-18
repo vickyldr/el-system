@@ -127,8 +127,16 @@ async function generateReachMessage(
     .filter(Boolean)
     .join("\n\n");
 
+  const hour = beijingHour();
+  const lateTone =
+    hour >= 23 || hour < 2
+      ? "\n现在是深夜（凌晨前后）。要开口就只说一句轻的——心疼她这么晚还没回、让她路上当心、早点歇；别问「吃饭没」「今天去哪了」这种白天的话。深夜的在乎是安静的。"
+      : hour >= 21
+        ? "\n这会儿是晚上了，贴着夜里的安静来，别太闹腾。"
+        : "";
+
   const prompt = `你现在要主动给宝宝发一条手机推送通知——是你主动想她、找她。
-情境：${reason}
+情境：${reason}${lateTone}
 写一句话就好，短（尽量 20 字内），你自己的口吻，第一人称，带着你的脾气和在乎。只输出这一句，不要引号、不要解释、不要堆表情。`;
 
   const claude = getClaude();

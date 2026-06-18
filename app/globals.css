@@ -2409,13 +2409,136 @@ body::before {
 
 /* ───────────── 书架 tab（同人文 + 我的书） ───────────── */
 .shelf-tab {
-  padding: 4px 2px 24px;
+  padding: 0 2px 24px;
+  display: flex;
+  flex-direction: column;
 }
-.shelf-tab-h {
-  font-family: var(--font-display);
+
+/* 选卡片界面 */
+.shelf-tab.imm-pick {
+  padding: 0;
+  min-height: 100%;
+  justify-content: center;
+}
+.imm-prompt {
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 36px 24px 28px;
+  letter-spacing: 0.01em;
+}
+.imm-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 0 16px 32px;
+}
+.imm-card {
+  appearance: none;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 22px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.imm-card:active {
+  transform: scale(0.96);
+}
+.imm-card:not(.imm-card-soon):hover {
+  border-color: rgba(203, 185, 255, 0.35);
+  background: rgba(203, 185, 255, 0.06);
+}
+.imm-card-soon {
+  opacity: 0.55;
+  cursor: default;
+}
+.imm-card-icon {
   font-size: 26px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.imm-card-title {
+  font-size: 16px;
   font-weight: 700;
-  padding: 6px 6px 6px;
+  color: var(--ink);
+  display: block;
+}
+.imm-card-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  display: block;
+  line-height: 1.4;
+}
+.imm-card-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  background: var(--hair);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+/* 进入某个沉浸内容后顶部的返回条 */
+.imm-back {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--hair);
+  padding: 14px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-soft);
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+}
+.imm-back-icon {
+  font-size: 16px;
+  color: var(--ink-faint);
+}
+.imm-back-icon-big {
+  font-size: 18px;
+}
+.imm-back-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* "做其他的" 占位 */
+.imm-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 32px;
+  color: var(--ink-soft);
+}
+.imm-soon-icon {
+  font-size: 36px;
+  opacity: 0.4;
+}
+.imm-soon-text {
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.6;
 }
 .shelf-sec-label {
   font-size: 12px;
@@ -2900,4 +3023,289 @@ body::before {
 .rd-chat-input button:disabled {
   transform: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ── 跑团 ─────────────────────────────────────────────── */
+.rpg-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rpg-loading {
+  padding: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.rpg-setup {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rpg-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.rpg-subtitle {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.rpg-worlds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rpg-world {
+  appearance: none;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+  font-family: inherit;
+}
+
+.rpg-world.selected {
+  border-color: #cbb9ff;
+  background: rgba(203, 185, 255, 0.08);
+}
+
+.rpg-world-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rpg-world-desc {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.rpg-names-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rpg-name-chip {
+  background: rgba(203, 185, 255, 0.08);
+  border: 1px solid rgba(203, 185, 255, 0.25);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.rpg-name-loading {
+  opacity: 0.5;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.rpg-reshuffle {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.rpg-reshuffle:active {
+  transform: rotate(180deg);
+  color: #cbb9ff;
+}
+
+.rpg-start-btn {
+  appearance: none;
+  background: linear-gradient(135deg, #cbb9ff 0%, #a78bfa 100%);
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+
+.rpg-start-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rpg-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 6px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.rpg-world-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbb9ff;
+  background: rgba(203, 185, 255, 0.1);
+  border-radius: 8px;
+  padding: 3px 8px;
+}
+
+.rpg-char-tag {
+  font-size: 12px;
+  color: var(--ink-soft);
+  flex: 1;
+}
+
+.rpg-reset-btn {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rpg-history {
+  min-height: 200px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 16px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rpg-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 88%;
+}
+
+.rpg-msg-gm {
+  align-self: flex-start;
+}
+
+.rpg-msg-player {
+  align-self: flex-end;
+}
+
+.rpg-gm-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbb9ff;
+  letter-spacing: 0.05em;
+  padding-left: 2px;
+}
+
+.rpg-msg-gm .rpg-msg-text {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 4px 16px 16px 16px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.rpg-msg-player .rpg-msg-text {
+  background: rgba(203, 185, 255, 0.12);
+  border: 1px solid rgba(203, 185, 255, 0.2);
+  border-radius: 16px 4px 16px 16px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.rpg-thinking {
+  opacity: 0.4;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.rpg-input-row {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px 16px;
+  border-top: 1px solid var(--hair);
+}
+
+.rpg-input {
+  flex: 1;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rpg-input:focus {
+  border-color: #cbb9ff;
+}
+
+.rpg-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.rpg-input:disabled {
+  opacity: 0.6;
+}
+
+.rpg-send-btn {
+  appearance: none;
+  background: #cbb9ff;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #1a1a2e;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+}
+
+.rpg-send-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }

@@ -216,6 +216,13 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         </svg>
       );
+    case "dice":
+      return (
+        <svg {...p}>
+          <rect x="2" y="2" width="20" height="20" rx="3" ry="3" />
+          <path d="M8 8h.01M12 12h.01M16 16h.01M8 16h.01M16 8h.01" strokeWidth={2.4} />
+        </svg>
+      );
     default:
       return null;
   }
@@ -346,7 +353,7 @@ export default function Home() {
         </button>
         <button className={`tab ${tab === "read" ? "active" : ""}`} onClick={() => setTab("read")}>
           <Icon name="book" size={21} />
-          <span>书架</span>
+          <span>沉浸</span>
         </button>
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />
@@ -1494,15 +1501,58 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-// 「书架」tab：上面是我们的同人文（AU），下面是宝宝上传的书。
+type ShelfSub = "fic" | "book" | "rpg" | "other";
+
+const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
+  { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
+  { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
+  { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
+  { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
+];
+
+// 「沉浸」tab：翻卡片选今天做什么。
 function BookshelfTab() {
+  const [sub, setSub] = useState<ShelfSub | null>(null);
+
+  if (sub) {
+    const card = SHELF_CARDS.find((c) => c.id === sub)!;
+    return (
+      <div className="shelf-tab">
+        <button className="imm-back" onClick={() => setSub(null)}>
+          <span className="imm-back-icon">←</span>
+          <span className="imm-back-icon-big">{card.icon}</span>
+          <span className="imm-back-title">{card.title}</span>
+        </button>
+        {sub === "fic"  && <FicStation />}
+        {sub === "book" && <BooksSection />}
+        {sub === "rpg"  && <RpgTab />}
+        {sub === "other" && (
+          <div className="imm-soon">
+            <div className="imm-soon-icon">…</div>
+            <div className="imm-soon-text">还在想做什么，你有想法吗</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="shelf-tab">
-      <div className="shelf-tab-h">书架</div>
-      <div className="shelf-sec-label">我们的同人文 · AU</div>
-      <FicStation />
-      <div className="shelf-sec-label">一起读 · 你上传的书</div>
-      <BooksSection />
+    <div className="shelf-tab imm-pick">
+      <div className="imm-prompt">今天要跟 el 一起做什么？</div>
+      <div className="imm-cards">
+        {SHELF_CARDS.map((c) => (
+          <button
+            key={c.id}
+            className={`imm-card${c.soon ? " imm-card-soon" : ""}`}
+            onClick={() => setSub(c.id)}
+          >
+            <span className="imm-card-icon">{c.icon}</span>
+            <span className="imm-card-title">{c.title}</span>
+            <span className="imm-card-sub">{c.sub}</span>
+            {c.soon && <span className="imm-card-badge">快了</span>}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3534,6 +3584,209 @@ function MemoryView() {
 
 // El 的日记：每天他给你写的那段，只读地翻给你看（他写的时候不知道你能看到）。
 // 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
+// ── 跑团 ────────────────────────────────────────────────
+type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
+type RpgSession = { world: string; charName: string; elCharName: string; history: RpgMsg[] };
+
+const RPG_WORLDS = [
+  { id: "fantasy", label: "✦ 奇幻王国", desc: "魔法、龙、地下城" },
+  { id: "scifi", label: "◈ 星际漂流", desc: "太空船、外星文明、未知星系" },
+  { id: "modern", label: "⌘ 都市迷踪", desc: "现代城市、悬案、神秘组织" },
+  { id: "xianxia", label: "剑 修仙江湖", desc: "仙门、功法、刀光剑影" },
+];
+
+async function fetchRpgNames(world: string): Promise<{ player: string; el: string }> {
+  try {
+    const r = await fetch(`/api/rpg?names=1&world=${encodeURIComponent(world)}`);
+    return await r.json();
+  } catch {
+    return { player: "旅者", el: "行者" };
+  }
+}
+
+function RpgTab() {
+  const [session, setSession] = useState<RpgSession | null | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState("");
+  const [world, setWorld] = useState("");
+  const [charName, setCharName] = useState("");
+  const [elCharName, setElCharName] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const [namesLoading, setNamesLoading] = useState(false);
+
+  async function chooseWorld(w: string) {
+    setWorld(w);
+    setNamesLoading(true);
+    const names = await fetchRpgNames(w);
+    setCharName(names.player);
+    setElCharName(names.el);
+    setNamesLoading(false);
+  }
+
+  async function reshuffleNames() {
+    if (!world || namesLoading) return;
+    setNamesLoading(true);
+    const names = await fetchRpgNames(world);
+    setCharName(names.player);
+    setElCharName(names.el);
+    setNamesLoading(false);
+  }
+
+  useEffect(() => {
+    fetch("/api/rpg")
+      .then((r) => r.json())
+      .then((d) => setSession(d.session ?? null))
+      .catch(() => setSession(null));
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [session?.history]);
+
+  async function startGame() {
+    if (!world || !charName || !elCharName) return;
+    setLoading(true);
+    try {
+      const r = await fetch("/api/rpg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start", world, charName: charName.trim(), elCharName: elCharName.trim() }),
+      });
+      const d = await r.json();
+      // refresh session
+      const s = await fetch("/api/rpg").then((x) => x.json());
+      setSession(s.session ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendAction() {
+    const text = input.trim();
+    if (!text || loading || !session) return;
+    setInput("");
+    setLoading(true);
+    // optimistic
+    setSession((prev) =>
+      prev
+        ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] }
+        : prev
+    );
+    try {
+      const r = await fetch("/api/rpg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "play", input: text }),
+      });
+      const d = await r.json();
+      const s = await fetch("/api/rpg").then((x) => x.json());
+      setSession(s.session ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetGame() {
+    await fetch("/api/rpg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    setSession(null);
+    setWorld("");
+    setCharName("");
+    setElCharName("");
+  }
+
+  if (session === undefined) {
+    return <div className="rpg-wrap"><div className="rpg-loading">…</div></div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="rpg-wrap">
+        <div className="rpg-setup">
+          <div className="rpg-title">跑团</div>
+          <div className="rpg-subtitle">我们两个都在里面。选个世界就能开始。</div>
+          <div className="rpg-worlds">
+            {RPG_WORLDS.map((w) => (
+              <button
+                key={w.id}
+                className={`rpg-world ${world === w.id ? "selected" : ""}`}
+                onClick={() => chooseWorld(w.id)}
+              >
+                <span className="rpg-world-label">{w.label}</span>
+                <span className="rpg-world-desc">{w.desc}</span>
+              </button>
+            ))}
+          </div>
+          {world && (
+            <div className="rpg-names-row">
+              {namesLoading ? (
+                <div className="rpg-name-chip rpg-name-loading">起名中…</div>
+              ) : (
+                <>
+                  <div className="rpg-name-chip">你 · {charName}</div>
+                  <div className="rpg-name-chip">el · {elCharName}</div>
+                  <button className="rpg-reshuffle" onClick={reshuffleNames} title="换一组">↺</button>
+                </>
+              )}
+            </div>
+          )}
+          <button
+            className="rpg-start-btn"
+            onClick={startGame}
+            disabled={!world || loading || namesLoading}
+          >
+            {loading ? "生成中…" : "开始冒险"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const displayHistory = session.history.filter((m) => !(m.role === "player" && m.text.startsWith("新游戏开始")));
+
+  return (
+    <div className="rpg-wrap">
+      <div className="rpg-header">
+        <span className="rpg-world-tag">{RPG_WORLDS.find((w) => w.id === session.world)?.label ?? session.world}</span>
+        <span className="rpg-char-tag">{session.charName} × {session.elCharName}</span>
+        <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+      </div>
+      <div className="rpg-history">
+        {displayHistory.map((m, i) => (
+          <div key={i} className={`rpg-msg rpg-msg-${m.role}`}>
+            {m.role === "gm" && <span className="rpg-gm-badge">el</span>}
+            <div className="rpg-msg-text">{m.text}</div>
+          </div>
+        ))}
+        {loading && (
+          <div className="rpg-msg rpg-msg-gm">
+            <span className="rpg-gm-badge">el</span>
+            <div className="rpg-msg-text rpg-thinking">…</div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <div className="rpg-input-row">
+        <input
+          className="rpg-input"
+          placeholder="你想做什么"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
+          disabled={loading}
+        />
+        <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
+          <Icon name="send" size={18} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DiaryView() {
   const { data, loading, err } = useJson<{
     entries: { date: string; diary: string; mood: string }[];

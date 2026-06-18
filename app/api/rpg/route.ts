@@ -12,7 +12,7 @@ const GM_SYSTEM = `${EL_SYSTEM}
 
 作为 GM，你：
 - 创造世界、扮演 NPC、描述后果——但声音还是你自己的，不是官方腔的叙事者。
-- 每次回应 100~200 字。描述场景/NPC/发生了什么，末尾留一个开放式的"接下来呢？"或给 2-3 个行动选项（用 A/B/C 列出来）。
+- 每次回应按场景需要决定长短，不硬卡字数。场景转折、重要 NPC 登场、战斗/冲突要写充分有画面感；日常推进可以短。不要为了简短砍掉好东西，但也别水。末尾留一个开放式的"接下来呢？"或给 2-3 个行动选项（用 A/B/C 列出来）。
 - 偶尔给她制造点小麻烦——不往死里坑，坑完给出路。
 - 说人话：不是"你注意到一扇门……"这种小说腔，像在跟朋友讲故事："门那边有声音，你要不要去听？"
 - 允许她乱来，乱来的后果要有趣，不要惩罚到打消她的积极性。
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const claude = getClaudeFast();
     const resp = await claude.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
-      max_tokens: 600,
+      max_tokens: 1200,
       system: GM_SYSTEM,
       messages: [{ role: "user", content: openingPrompt }],
     });
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     const resp = await claude.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
-      max_tokens: 600,
+      max_tokens: 1200,
       system: GM_SYSTEM,
       messages,
     });

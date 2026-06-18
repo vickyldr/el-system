@@ -38,7 +38,8 @@ async function handle(req: Request) {
       weather: clip(body.weather, 60),
       raining: !!body.raining,
       accuracy: body.accuracy === "coarse" ? "coarse" : "good",
-      atHome: !!body.atHome,
+      // 三态：true=在家 / false=确实在外 / 不传或 null=没设家、判断不了（别当成在外）
+      atHome: typeof body.atHome === "boolean" ? body.atHome : undefined,
       ts: Date.now(),
     };
     await setGeoNow(g);

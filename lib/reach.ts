@@ -82,12 +82,17 @@ function decideReason(
 function geoToLine(g: Awaited<ReturnType<typeof getGeoNow>>): string {
   if (!g) return "";
   if (g.atHome) return "她现在在家。";
+  // atHome===false 才是"确实在外"；为 null/undefined 是没设家、判断不了，只当"大概在哪"说，绝不断言她在外面。
+  const knownOut = g.atHome === false;
   const where =
     g.accuracy === "coarse"
       ? g.area
         ? `她这会儿大概在${g.area}一带（只是个大概，别说得太死）`
-        : "她这会儿在外面（具体在哪不太确定）"
-      : [g.area, g.place].filter(Boolean).join("，") || "她在外面";
+        : knownOut
+          ? "她这会儿在外面（具体在哪不太确定）"
+          : ""
+      : [g.area, g.place].filter(Boolean).join("，") || (knownOut ? "她在外面" : "");
+  if (!where) return "";
   const w = g.weather ? `；那边天气：${g.weather}${g.raining ? "（在下雨）" : ""}` : "";
   return `${where}${w}。`;
 }

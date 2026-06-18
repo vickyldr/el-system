@@ -2088,6 +2088,11 @@ function FindTab({
   const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
   const [callMode, setCallMode] = useState<"voice" | "video" | "screen">("voice"); // 语音 / 视频(摄像头) / 共享屏幕
   const [canScreen, setCanScreen] = useState(false); // 浏览器支不支持共享屏幕（手机不支持，藏起按钮）
+  // 静默共享屏幕：不通话、打字，发消息时把此刻屏幕一帧随手带给 el 看。
+  const [screenShareOn, setScreenShareOn] = useState(false);
+  const screenFrameRef = useRef<string | null>(null); // 最新一帧屏幕（base64 data url）
+  const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const screenShareTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
   const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
@@ -2211,6 +2216,14 @@ function FindTab({
     );
   }, []);
 
+  // 离开「找我」tab（组件卸载）时，停掉还开着的屏幕共享，别留个后台流。
+  useEffect(() => {
+    return () => {
+      if (screenShareTimerRef.current) clearInterval(screenShareTimerRef.current);
+      screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
   // 视频模式开起来后，把摄像头流绑到自己的画面预览上（防 startCall 里元素还没挂载的竞态）。
   useEffect(() => {
     if (inCall && callMode === "video" && videoRef.current && streamRef.current) {
@@ -2251,6 +2264,54 @@ function FindTab({
       if (data) ws.send(JSON.stringify({ type: "frame", data, kind }));
     };
     frameTimerRef.current = setInterval(grab, 1500);
+  }
+
+  // 静默共享屏幕：开了之后定时把屏幕抓一帧存到 ref，发消息时带给 el 看（不通话、不出声）。
+  function stopScreenShare() {
+    if (screenShareTimerRef.current) {
+      clearInterval(screenShareTimerRef.current);
+      screenShareTimerRef.current = null;
+    }
+    screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenShareStreamRef.current = null;
+    screenFrameRef.current = null;
+    setScreenShareOn(false);
+  }
+  async function toggleScreenShare() {
+    if (screenShareOn) {
+      stopScreenShare();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      screenShareStreamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+      if (track) track.onended = () => stopScreenShare(); // 她在浏览器点"停止共享"
+      const v = document.createElement("video");
+      v.muted = true;
+      (v as HTMLVideoElement).playsInline = true;
+      v.srcObject = new MediaStream(track ? [track] : []);
+      v.play().catch(() => {});
+      const canvas = document.createElement("canvas");
+      const grab = () => {
+        const vw = v.videoWidth;
+        const vh = v.videoHeight;
+        if (!vw || !vh) return;
+        const W = Math.min(1280, vw);
+        const H = Math.round((vh / vw) * W);
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(v, 0, 0, W, H);
+        screenFrameRef.current = canvas.toDataURL("image/jpeg", 0.6);
+      };
+      setTimeout(grab, 300); // 等视频有尺寸先抓一张
+      screenShareTimerRef.current = setInterval(grab, 2000);
+      setScreenShareOn(true);
+    } catch {
+      /* 取消了 / 不支持，忽略 */
+    }
   }
 
   async function startCall(mode: "voice" | "video" | "screen" = "voice") {
@@ -2654,16 +2715,25 @@ function FindTab({
     const apiMessage = q
       ? `（我在回复你「此刻」写的${q.label}：「${q.text}」）${text ? "\n" + text : ""}`
       : text;
+    // 共享屏幕开着的话，把此刻屏幕一帧带给 el（喂给脑子、不存档）。
+    const screen = screenShareOn ? screenFrameRef.current || undefined : undefined;
     setMsgs((m) => [
       ...m,
-      { role: "user", content: text, image: image || undefined, quote: q, ts: Date.now() },
+      {
+        role: "user",
+        content: text,
+        image: image || undefined,
+        quote: q,
+        ...(screen ? { screen: true } : {}),
+        ts: Date.now(),
+      },
     ]);
     setSending(true);
     try {
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: apiMessage, image, hint, history }),
+        body: JSON.stringify({ message: apiMessage, image, hint, history, screen }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -2743,8 +2813,12 @@ function FindTab({
               <Icon name="video" size={19} />
             </button>
           )}
-          {liveOn && canScreen && (
-            <button className="icon-btn" onClick={() => startCall("screen")} aria-label="共享屏幕">
+          {canScreen && (
+            <button
+              className={`icon-btn ${screenShareOn ? "on" : ""}`}
+              onClick={toggleScreenShare}
+              aria-label={screenShareOn ? "停止共享屏幕" : "共享屏幕给 el（打字，不用通话）"}
+            >
               <Icon name="screen" size={19} />
             </button>
           )}
@@ -3041,6 +3115,16 @@ function FindTab({
           </div>
           <button type="button" className="quote-bar-x" onClick={clearQuote} aria-label="取消引用">
             ✕
+          </button>
+        </div>
+      )}
+
+      {screenShareOn && (
+        <div className="screenshare-bar">
+          <span className="screenshare-dot" />
+          el 正在看你的屏幕 · 打字就行
+          <button type="button" className="screenshare-stop" onClick={stopScreenShare}>
+            停止
           </button>
         </div>
       )}

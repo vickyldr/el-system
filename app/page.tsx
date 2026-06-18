@@ -65,7 +65,7 @@ function base64ToPCMFloat32(b64: string): Float32Array {
   return f32;
 }
 
-type Tab = "now" | "find" | "read" | "us" | "rpg";
+type Tab = "now" | "find" | "read" | "us";
 
 // 从「此刻」引用一条去聊天里回复 el（他会知道自己被回复了什么）。
 type Quote = { label: string; text: string };
@@ -336,8 +336,6 @@ export default function Home() {
             />
           ) : tab === "read" ? (
             <BookshelfTab key={refreshKey} />
-          ) : tab === "rpg" ? (
-            <RpgTab key={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -360,10 +358,6 @@ export default function Home() {
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />
           <span>我们</span>
-        </button>
-        <button className={`tab ${tab === "rpg" ? "active" : ""}`} onClick={() => setTab("rpg")}>
-          <Icon name="dice" size={21} />
-          <span>跑团</span>
         </button>
       </nav>
     </div>
@@ -1507,15 +1501,28 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-// 「书架」tab：上面是我们的同人文（AU），下面是宝宝上传的书。
+type ShelfSub = "fic" | "book" | "rpg";
+
+// 「书架」tab：同人文 / 一起读 / 跑团，三格沉浸内容。
 function BookshelfTab() {
+  const [sub, setSub] = useState<ShelfSub>("fic");
+  const subLabels: Record<ShelfSub, string> = { fic: "同人", book: "读书", rpg: "跑团" };
   return (
     <div className="shelf-tab">
-      <div className="shelf-tab-h">书架</div>
-      <div className="shelf-sec-label">我们的同人文 · AU</div>
-      <FicStation />
-      <div className="shelf-sec-label">一起读 · 你上传的书</div>
-      <BooksSection />
+      <div className="shelf-subtabs">
+        {(Object.keys(subLabels) as ShelfSub[]).map((k) => (
+          <button
+            key={k}
+            className={`shelf-subtab ${sub === k ? "active" : ""}`}
+            onClick={() => setSub(k)}
+          >
+            {subLabels[k]}
+          </button>
+        ))}
+      </div>
+      {sub === "fic" && <FicStation />}
+      {sub === "book" && <BooksSection />}
+      {sub === "rpg" && <RpgTab />}
     </div>
   );
 }

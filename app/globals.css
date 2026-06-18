@@ -4,12 +4,6 @@
   --panel: rgba(255, 255, 255, 0.05);
   --glass: rgba(30, 34, 54, 0.66);
   --hair: rgba(255, 255, 255, 0.07);
-  /* 磨砂颗粒：极淡的灰度噪点，叠在半透底上才有"磨砂"的哑光质感，
-     不然深色背景上只是单纯透明，看不出玻璃。 */
-  --frost-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.09'/%3E%3C/svg%3E");
-  /* 卡片磨砂玻璃：哑光颗粒 + 一道斜向高光 + 半透底，边缘轻（不靠大投影）。 */
-  --frost-bg: var(--frost-grain),
-    linear-gradient(150deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.02) 64%);
   --ink: #e8e4dc;
   --ink-soft: rgba(255, 255, 255, 0.42);
   --accent: #534ab7;
@@ -329,8 +323,8 @@ body::before {
   gap: 14px;
   margin-bottom: 18px;
 }
-/* 磨砂玻璃卡：哑光颗粒 + 极淡高光 + 半透底，边缘很轻（只一道细线 + 顶光，
-   不再加大投影），背景模糊。全 app 卡片共用这套。 */
+/* 卡片统一照搬「沉浸」.imm-card 的玻璃质感：半透底 + 一道发丝边 + 轻模糊，
+   不加阴影、不加噪点/高光——这样最轻。全 app 卡片共用这套。 */
 .duo-mini,
 .card,
 .wish,
@@ -338,12 +332,10 @@ body::before {
 .call-card,
 .quote-bar,
 .msg.el .bubble {
-  background-color: rgba(255, 255, 255, 0.055);
-  background-image: var(--frost-bg);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(22px) saturate(1.6);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .duo-mini {
   appearance: none;

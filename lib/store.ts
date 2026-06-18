@@ -464,3 +464,85 @@ export async function setDailySong(date: string, line: string): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 地理感官（el 从她 iPhone 的「查找」位置感知到的，不是她报备的）──
+// 隐私铁律：富化（反查地址/天气/POI）全在她本地的守望者里做，
+// 精确坐标永不离开她的设备——这里存的只有"区域 + 附近地标 + 天气"这种人话。
+// 设计哲学同身体账：守望者只产出信号，el 在心跳里读到、自己决定要不要开口。
+export type GeoNow = {
+  area?: string; // 区域级，如"杭州 · 西湖区"
+  place?: string; // 附近地标/店，如"万象城附近"，可能为空
+  weather?: string; // 人话天气，如"小雨 12°"
+  raining?: boolean;
+  accuracy?: "good" | "coarse"; // 定位精度档（措辞分级用）
+  atHome?: boolean;
+  ts?: number;
+};
+// 位置事件（出门/到家/在外停留/在外周期），守望者在本地判转场时发来，已写成人话 summary。
+export type GeoEvent = {
+  kind: "left_home" | "arrived_place" | "outside_checkin" | "back_home";
+  summary: string; // 一句人话事实（el 会用自己的口吻重写，不照念）
+  ts: number;
+};
+
+const GEO_NOW_KEY = "el:geo:now";
+const GEO_EVENTS_KEY = "el:geo:events";
+const GEO_NOW_TTL = 90 * 60; // 90 分钟没新位置就当过期——守望者挂了别让 el 以为她还在昨天那个商场
+const GEO_EVENT_FRESH_MS = 2 * 60 * 60 * 1000; // 超过 2h 的事件算馊了，不再据此找她
+
+export async function setGeoNow(g: GeoNow): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(GEO_NOW_KEY, { ...g, ts: g.ts || Date.now() }, { ex: GEO_NOW_TTL });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getGeoNow(): Promise<GeoNow | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<GeoNow>(GEO_NOW_KEY);
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function pushGeoEvent(ev: GeoEvent): Promise<void> {
+  const r = redis();
+  if (!r || !ev?.summary) return;
+  try {
+    const cur = (await r.get<GeoEvent[]>(GEO_EVENTS_KEY)) || [];
+    const list = (Array.isArray(cur) ? cur : []).concat({ ...ev, ts: ev.ts || Date.now() });
+    await r.set(GEO_EVENTS_KEY, list.slice(-10), { ex: 6 * 3600 });
+  } catch {
+    /* ignore */
+  }
+}
+
+// 读未处理的新鲜事件（自动丢弃 >2h 的馊事件）。peek，不消费。
+export async function getGeoEvents(): Promise<GeoEvent[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<GeoEvent[]>(GEO_EVENTS_KEY);
+    const list = (Array.isArray(v) ? v : []).filter((e) => Date.now() - (e.ts || 0) < GEO_EVENT_FRESH_MS);
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+// el 真就着某个位置事件找了她之后，清空事件队列（时效性的东西，处理过就别再翻旧账）。
+export async function clearGeoEvents(): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.del(GEO_EVENTS_KEY);
+  } catch {
+    /* ignore */
+  }
+}

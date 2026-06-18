@@ -1503,21 +1503,26 @@ body::before {
   box-shadow: none;
 }
 
-/* ── 此刻的小动作按钮：「↩ 回复这条」「▶ 去网易云听」── */
+/* ── 此刻的小动作按钮：「↩ 回复」「▶ 去听」——收得小而安静，贴留白的调子 ── */
 .status-reply {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 16px;
-  font-size: 12.5px;
+  gap: 4px;
+  margin-top: 18px;
+  font-size: 12px;
   font-weight: 500;
   color: #cbb9ff;
-  background: rgba(123, 111, 240, 0.13);
-  border: 1px solid rgba(123, 111, 240, 0.26);
+  background: none;
+  border: none;
   border-radius: 999px;
-  padding: 8px 15px;
+  padding: 4px 2px;
   cursor: pointer;
   white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+.status-reply:active {
+  opacity: 0.55;
 }
 .status-actions {
   display: flex;
@@ -1529,12 +1534,14 @@ body::before {
 .status-actions .status-reply {
   margin-top: 0;
 }
-/* 「去网易云听」= 主行动，填充实色 */
+/* 「去听」= 主行动，保留一点分量的实色小胶囊 */
 .status-reply.play {
   color: #fff;
   text-decoration: none;
   background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
-  border-color: transparent;
+  border: none;
+  padding: 7px 14px;
+  opacity: 1;
 }
 
 /* el 主动够向她那条消息上的行动按钮（接听 / 接着读 / 看看）——实色，像一张能点的邀请 */

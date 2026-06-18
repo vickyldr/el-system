@@ -519,7 +519,7 @@ function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quo
                 onQuote({ label: "心情", text: [mood, thought].filter(Boolean).join(" / ") })
               }
             >
-              ↩ 回复这条
+              ↩ 回复
             </button>
           )}
         </>
@@ -605,7 +605,7 @@ function WeatherMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) 
               })
             }
           >
-            ↩ 回复这条
+            ↩ 回复
           </button>
         </Sheet>
       )}
@@ -629,7 +629,7 @@ function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => 
           <div className="status-actions">
             {status.song_url && (
               <a className="status-reply play" href={status.song_url}>
-                ▶ 去网易云听
+                ▶ 去听
               </a>
             )}
             <button
@@ -642,7 +642,7 @@ function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => 
                 })
               }
             >
-              ↩ 回复这条
+              ↩ 回复
             </button>
           </div>
         </Sheet>

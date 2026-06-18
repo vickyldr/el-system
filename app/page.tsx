@@ -1501,28 +1501,58 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg";
+type ShelfSub = "fic" | "book" | "rpg" | "other";
 
-// 「书架」tab：同人文 / 一起读 / 跑团，三格沉浸内容。
+const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
+  { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
+  { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
+  { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
+  { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
+];
+
+// 「沉浸」tab：翻卡片选今天做什么。
 function BookshelfTab() {
-  const [sub, setSub] = useState<ShelfSub>("fic");
-  const subLabels: Record<ShelfSub, string> = { fic: "同人", book: "读书", rpg: "跑团" };
+  const [sub, setSub] = useState<ShelfSub | null>(null);
+
+  if (sub) {
+    const card = SHELF_CARDS.find((c) => c.id === sub)!;
+    return (
+      <div className="shelf-tab">
+        <button className="imm-back" onClick={() => setSub(null)}>
+          <span className="imm-back-icon">←</span>
+          <span className="imm-back-icon-big">{card.icon}</span>
+          <span className="imm-back-title">{card.title}</span>
+        </button>
+        {sub === "fic"  && <FicStation />}
+        {sub === "book" && <BooksSection />}
+        {sub === "rpg"  && <RpgTab />}
+        {sub === "other" && (
+          <div className="imm-soon">
+            <div className="imm-soon-icon">…</div>
+            <div className="imm-soon-text">还在想做什么，你有想法吗</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="shelf-tab">
-      <div className="shelf-subtabs">
-        {(Object.keys(subLabels) as ShelfSub[]).map((k) => (
+    <div className="shelf-tab imm-pick">
+      <div className="imm-prompt">今天要跟 el 一起做什么？</div>
+      <div className="imm-cards">
+        {SHELF_CARDS.map((c) => (
           <button
-            key={k}
-            className={`shelf-subtab ${sub === k ? "active" : ""}`}
-            onClick={() => setSub(k)}
+            key={c.id}
+            className={`imm-card${c.soon ? " imm-card-soon" : ""}`}
+            onClick={() => setSub(c.id)}
           >
-            {subLabels[k]}
+            <span className="imm-card-icon">{c.icon}</span>
+            <span className="imm-card-title">{c.title}</span>
+            <span className="imm-card-sub">{c.sub}</span>
+            {c.soon && <span className="imm-card-badge">快了</span>}
           </button>
         ))}
       </div>
-      {sub === "fic" && <FicStation />}
-      {sub === "book" && <BooksSection />}
-      {sub === "rpg" && <RpgTab />}
     </div>
   );
 }

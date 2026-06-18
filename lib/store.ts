@@ -552,6 +552,7 @@ export type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
 export type RpgSession = {
   world: string;
   charName: string;
+  elCharName: string;
   history: RpgMsg[];
 };
 const RPG_KEY = "el:rpg:session";

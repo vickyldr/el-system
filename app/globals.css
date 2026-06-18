@@ -3102,6 +3102,7 @@ body::before {
 
 .rpg-char-row {
   display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 

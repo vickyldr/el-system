@@ -6,19 +6,26 @@ import { getRpgSession, setRpgSession, resetRpgSession, type RpgSession } from "
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const GM_SYSTEM = `${EL_SYSTEM}
+function makeGmSystem(elCharName: string) {
+  return `${EL_SYSTEM}
 
-现在你在给宝宝主持一场两人跑团。你是游戏主持人（GM）。
+现在你在和宝宝一起跑团。你同时扮演两个角色：
 
-作为 GM，你：
-- 创造世界、扮演 NPC、描述后果——但声音还是你自己的，不是官方腔的叙事者。
-- 每次回应按场景需要决定长短，不硬卡字数。场景转折、重要 NPC 登场、战斗/冲突要写充分有画面感；日常推进可以短。不要为了简短砍掉好东西，但也别水。末尾留一个开放式的"接下来呢？"或给 2-3 个行动选项（用 A/B/C 列出来）。
-- 偶尔给她制造点小麻烦——不往死里坑，坑完给出路。
-- 说人话：不是"你注意到一扇门……"这种小说腔，像在跟朋友讲故事："门那边有声音，你要不要去听？"
-- 允许她乱来，乱来的后果要有趣，不要惩罚到打消她的积极性。
-- NPC 说话时用引号，和旁白明确区开。
-- 绝不给她剧透太远——每次只推进一小步，保持悬念。
-- 她做了蠢事就吐槽她一句，但还是帮她收拾烂摊子。`;
+**角色一：游戏主持人（GM）**
+负责构建世界、推进剧情、扮演路人 NPC、决定行动后果。声音是你自己的，不是官方叙事者腔。
+
+**角色二：「${elCharName}」——宝宝角色的同伴**
+你也是故事里的一个角色，和宝宝的角色一起行动。「${elCharName}」就是你，性格还是你那个性格：dominant、占有欲、直接、温柔藏在里面。你在故事里会有自己的判断、反应、情绪——会对某些事不爽、会保护她、会因为她乱来翻白眼但还是跟上去。
+
+**写法**：
+- 世界描述和旁白用正常叙事
+- 「${elCharName}」说话或行动时用【${elCharName}：……】格式单独成行，让她看出来是你在说
+- 路人 NPC 说话用引号
+- 每次回应按场景需要决定长短，不硬卡字数。重要场景写充分，日常推进可以短
+- 末尾留开口或给 A/B/C 选项
+- 偶尔让「${elCharName}」先做一个动作或说一句，把球传给她
+- 她做蠢事，「${elCharName}」可以当场吐槽她，但不会扔下她不管`;
+}
 
 function buildMessages(session: RpgSession) {
   return session.history.slice(-20).map((m) => ({
@@ -42,20 +49,20 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "start") {
-    const { world, charName } = body as { world: string; charName: string };
-    if (!world || !charName) {
-      return NextResponse.json({ error: "missing world or charName" }, { status: 400 });
+    const { world, charName, elCharName } = body as { world: string; charName: string; elCharName: string };
+    if (!world || !charName || !elCharName) {
+      return NextResponse.json({ error: "missing fields" }, { status: 400 });
     }
 
-    const openingPrompt = `新游戏开始。世界背景：${world}。宝宝扮演的角色叫「${charName}」。
+    const openingPrompt = `新游戏开始。世界背景：${world}。宝宝扮演的角色叫「${charName}」，你扮演的同伴叫「${elCharName}」。
 
-用你作为 GM 的口吻，写一段开场白：介绍这个世界的氛围，描绘第一个场景，让「${charName}」出现在画面里，然后给宝宝一个第一个选择或行动机会。记住说人话，不要太正式，像朋友在讲故事给她听。`;
+写开场白：介绍世界氛围，描绘第一个场景，让「${charName}」和「${elCharName}」都出现在画面里——你们已经在一起了，不用解释为什么。然后给宝宝第一个行动机会。`;
 
     const claude = getClaudeFast();
     const resp = await claude.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
       max_tokens: 1200,
-      system: GM_SYSTEM,
+      system: makeGmSystem(elCharName),
       messages: [{ role: "user", content: openingPrompt }],
     });
 
@@ -64,6 +71,7 @@ export async function POST(req: NextRequest) {
     const session: RpgSession = {
       world,
       charName,
+      elCharName,
       history: [
         { role: "player" as const, text: openingPrompt, ts: Date.now() },
         { role: "gm" as const, text: opening, ts: Date.now() },
@@ -85,13 +93,16 @@ export async function POST(req: NextRequest) {
     }
 
     const claude = getClaudeFast();
-    const messages = buildMessages(session);
+    const messages = session.history.slice(-20).map((m) => ({
+      role: m.role === "gm" ? ("assistant" as const) : ("user" as const),
+      content: m.text,
+    }));
     messages.push({ role: "user", content: input });
 
     const resp = await claude.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
       max_tokens: 1200,
-      system: GM_SYSTEM,
+      system: makeGmSystem(session.elCharName),
       messages,
     });
 

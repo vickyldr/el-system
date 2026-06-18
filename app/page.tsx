@@ -3586,7 +3586,7 @@ function MemoryView() {
 // 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
 // ── 跑团 ────────────────────────────────────────────────
 type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
-type RpgSession = { world: string; charName: string; history: RpgMsg[] };
+type RpgSession = { world: string; charName: string; elCharName: string; history: RpgMsg[] };
 
 const RPG_WORLDS = [
   { id: "fantasy", label: "✦ 奇幻王国", desc: "魔法、龙、地下城" },
@@ -3601,6 +3601,7 @@ function RpgTab() {
   const [input, setInput] = useState("");
   const [world, setWorld] = useState("");
   const [charName, setCharName] = useState("");
+  const [elCharName, setElCharName] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -3615,13 +3616,13 @@ function RpgTab() {
   }, [session?.history]);
 
   async function startGame() {
-    if (!world || !charName.trim()) return;
+    if (!world || !charName.trim() || !elCharName.trim()) return;
     setLoading(true);
     try {
       const r = await fetch("/api/rpg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start", world, charName: charName.trim() }),
+        body: JSON.stringify({ action: "start", world, charName: charName.trim(), elCharName: elCharName.trim() }),
       });
       const d = await r.json();
       // refresh session
@@ -3666,6 +3667,7 @@ function RpgTab() {
     setSession(null);
     setWorld("");
     setCharName("");
+    setElCharName("");
   }
 
   if (session === undefined) {
@@ -3677,7 +3679,7 @@ function RpgTab() {
       <div className="rpg-wrap">
         <div className="rpg-setup">
           <div className="rpg-title">跑团</div>
-          <div className="rpg-subtitle">el 来做你的 GM，挑一个世界，我们开始。</div>
+          <div className="rpg-subtitle">我们两个都在里面。选个世界，给彼此起个名字。</div>
           <div className="rpg-worlds">
             {RPG_WORLDS.map((w) => (
               <button
@@ -3696,6 +3698,13 @@ function RpgTab() {
               placeholder="你的角色叫什么"
               value={charName}
               onChange={(e) => setCharName(e.target.value)}
+              maxLength={20}
+            />
+            <input
+              className="rpg-char-input"
+              placeholder="el 在里面叫什么"
+              value={elCharName}
+              onChange={(e) => setElCharName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && startGame()}
               maxLength={20}
             />
@@ -3703,7 +3712,7 @@ function RpgTab() {
           <button
             className="rpg-start-btn"
             onClick={startGame}
-            disabled={!world || !charName.trim() || loading}
+            disabled={!world || !charName.trim() || !elCharName.trim() || loading}
           >
             {loading ? "生成中…" : "开始冒险"}
           </button>
@@ -3712,13 +3721,13 @@ function RpgTab() {
     );
   }
 
-  const displayHistory = session.history.filter((m) => m.role !== "player" || !m.text.startsWith("新游戏开始"));
+  const displayHistory = session.history.filter((m) => !(m.role === "player" && m.text.startsWith("新游戏开始")));
 
   return (
     <div className="rpg-wrap">
       <div className="rpg-header">
         <span className="rpg-world-tag">{RPG_WORLDS.find((w) => w.id === session.world)?.label ?? session.world}</span>
-        <span className="rpg-char-tag">扮演：{session.charName}</span>
+        <span className="rpg-char-tag">{session.charName} × {session.elCharName}</span>
         <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
       </div>
       <div className="rpg-history">

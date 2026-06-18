@@ -103,6 +103,40 @@ export async function doubanList(
     : "movie";
   const page = Math.max(1, Number(pageRaw) || 1);
   const start = (page - 1) * PAGE_SIZE;
+  const lbl = `${kind === "book" ? "书" : kind === "music" ? "音乐" : "电影"}·${STATUS_CN[status]}`;
+
+  // ① 先走 frodo 移动 API（和「此刻·电影」推荐同一条路，不撞登录墙——网页人页对未登录访问会弹登录墙）。
+  try {
+    const frodoStatus = ({ wish: "mark", collect: "done", do: "doing" } as any)[status];
+    const j = await frodo(
+      `user/${id}/interests`,
+      `type=${kind}&status=${frodoStatus}&count=${PAGE_SIZE}&start=${start}`,
+    );
+    const list = j?.interests;
+    if (Array.isArray(list)) {
+      if (!list.length) return page > 1 ? "这页没有了（翻过头了）。" : "这类还没有标记。";
+      const items = list.map((it: any) => {
+        const s = it.subject || {};
+        const year = s.year ? ` (${s.year})` : "";
+        const myStars =
+          typeof it.rating?.value === "number" && it.rating.value > 0
+            ? ` ${"★".repeat(it.rating.value)}（${it.rating.value}星）`
+            : "";
+        const db = s.rating?.value ? ` 豆${s.rating.value}` : "";
+        const date = typeof it.create_time === "string" ? ` · ${it.create_time.slice(0, 10)}` : "";
+        const comment = it.comment ? `\n　短评：${String(it.comment).replace(/\s+/g, " ")}` : "";
+        return `《${s.title || "?"}》${year}${myStars}${db}${date}${comment}`;
+      });
+      const total = Number(j.total) || items.length;
+      const head = `（共 ${total}，第 ${page} 页/每页${PAGE_SIZE}、新的在前）`;
+      const more = total > start + items.length ? `\n…还有更多，下一页用 page=${page + 1}。` : "";
+      return `「她豆瓣 ${lbl}」${head}：\n${items.join("\n")}${more}`;
+    }
+  } catch {
+    /* frodo 挂了，退回下面的网页解析 */
+  }
+
+  // ② 退回网页人页解析（frodo 不行时的兜底；要登录态时会被挡）。
   const url = `https://${KIND_HOST[kind]}/people/${id}/${status}?sort=time&start=${start}&mode=grid`;
   let resp: RelayResp;
   try {
@@ -121,7 +155,6 @@ export async function doubanList(
   }
   const body = resp.body || "";
   const items = parsePeopleList(body);
-  const lbl = `${kind === "book" ? "书" : kind === "music" ? "音乐" : "电影"}·${STATUS_CN[status]}`;
   if (!items.length) {
     // 真没条目时才看是不是登录墙（导航里的"登录"链接会误判，所以放到这里、且要没条目）。
     if (/accounts\.douban\.com\/passport\/login/.test(body)) {

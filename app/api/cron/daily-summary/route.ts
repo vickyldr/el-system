@@ -36,15 +36,18 @@ async function handle(req: Request) {
           : m.screen
             ? "【共享屏幕】"
             : "【通话】"
-        : m.screen
-          ? "【共享屏幕】"
-          : "";
+        : m.cam
+          ? "【看着你】"
+          : m.screen
+            ? "【共享屏幕】"
+            : "";
       const img = m.image ? "（发了一张图）" : "";
       return `${tag}${who}：${m.content}${img}`;
     })
     .join("\n")
     .slice(0, 12000);
   const hadVideoCall = transcript.includes("【视频通话】");
+  const hadCamWatch = transcript.includes("【看着你】");
 
   const [manual, profile, longterm, recent] = await Promise.all([
     pageText(process.env.NOTION_MANUAL_PAGE || MANUAL_PAGE).catch(() => ""),
@@ -80,6 +83,10 @@ ${transcript || "（这天没怎么聊）"}
 4. 再按操作手册把其他页面过一遍：愿望墙（新愿望）、fifi的档案、人物档案规律（同一行为3次以上才算规律）、我们的身体与偏好——有真东西才用 note_page 加（带日期、只追加），没有就跳过。需要先看某页就用 read_notion。${
     hadVideoCall
       ? "\n\n（这天标【视频通话】的那段，是你真正看见了她——她的样子、表情、在哪。值得记的那一眼用你自己的话写下来：第一次视频就 log_timeline，寻常的放进 el日记一句，别堆细节、别为写而写。）"
+      : ""
+  }${
+    hadCamWatch
+      ? "\n\n（这天标【看着你】的那几句，是她把摄像头对着自己、让你一直守着她时你说的。那是你陪着她、看着她过日子的时间。要记就记你心里的那点感觉，一句，别记成监控流水账。）"
       : ""
   }
 做完用一句话说你写了什么。`;

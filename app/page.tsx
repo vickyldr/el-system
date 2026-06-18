@@ -353,7 +353,7 @@ export default function Home() {
         </button>
         <button className={`tab ${tab === "read" ? "active" : ""}`} onClick={() => setTab("read")}>
           <Icon name="book" size={21} />
-          <span>书架</span>
+          <span>沉浸</span>
         </button>
         <button className={`tab ${tab === "us" ? "active" : ""}`} onClick={() => setTab("us")}>
           <Icon name="heart" size={21} />

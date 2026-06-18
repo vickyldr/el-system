@@ -3586,7 +3586,9 @@ function MemoryView() {
 // 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
 // ── 跑团 ────────────────────────────────────────────────
 type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
-type RpgSession = { world: string; charName: string; elCharName: string; history: RpgMsg[] };
+type RpgStats = { body: number; speed: number; mind: number; luck: number; hp: number; maxHp: number; mp: number; maxMp: number };
+type RpgNpc = { name: string; relation: number };
+type RpgSession = { world: string; charName: string; elCharName: string; stats: RpgStats; npcs: RpgNpc[]; flags: Record<string, boolean>; history: RpgMsg[] };
 
 const RPG_WORLDS = [
   { id: "fantasy", label: "✦ 奇幻王国", desc: "魔法、龙、地下城" },
@@ -3604,6 +3606,59 @@ async function fetchRpgNames(world: string): Promise<{ player: string; el: strin
   }
 }
 
+const WORLD_DISPLAY_NAMES: Record<string, { body: string; speed: string; mind: string; luck: string; hp: string; mp: string }> = {
+  fantasy: { body: "体魄", speed: "身法", mind: "智识", luck: "气运", hp: "HP",   mp: "法力" },
+  scifi:   { body: "体魄", speed: "反应", mind: "智识", luck: "运气", hp: "HP",   mp: "能量" },
+  modern:  { body: "体力", speed: "身法", mind: "头脑", luck: "运气", hp: "HP",   mp: "意志" },
+  xianxia: { body: "体魄", speed: "身法", mind: "悟性", luck: "气运", hp: "气血", mp: "灵力" },
+};
+
+function RpgSheet({ session }: { session: RpgSession }) {
+  const n = WORLD_DISPLAY_NAMES[session.world] ?? WORLD_DISPLAY_NAMES.fantasy;
+  const s = session.stats;
+  const hpPct = Math.max(0, Math.min(100, (s.hp / s.maxHp) * 100));
+  const mpPct = Math.max(0, Math.min(100, (s.mp / s.maxMp) * 100));
+
+  return (
+    <div className="rpg-sheet">
+      <div className="rpg-bars">
+        <div className="rpg-bar-row">
+          <span className="rpg-bar-label">{n.hp}</span>
+          <div className="rpg-bar-track">
+            <div className="rpg-bar-fill rpg-bar-hp" style={{ width: `${hpPct}%` }} />
+          </div>
+          <span className="rpg-bar-num">{s.hp}/{s.maxHp}</span>
+        </div>
+        <div className="rpg-bar-row">
+          <span className="rpg-bar-label">{n.mp}</span>
+          <div className="rpg-bar-track">
+            <div className="rpg-bar-fill rpg-bar-mp" style={{ width: `${mpPct}%` }} />
+          </div>
+          <span className="rpg-bar-num">{s.mp}/{s.maxMp}</span>
+        </div>
+      </div>
+      <div className="rpg-stats">
+        <span className="rpg-stat">{n.body} {s.body}</span>
+        <span className="rpg-stat">{n.speed} {s.speed}</span>
+        <span className="rpg-stat">{n.mind} {s.mind}</span>
+        <span className="rpg-stat">{n.luck} {s.luck}</span>
+      </div>
+      {session.npcs.length > 0 && (
+        <div className="rpg-npcs">
+          {session.npcs.map((npc) => (
+            <span
+              key={npc.name}
+              className={`rpg-npc ${npc.relation > 40 ? "rpg-npc-good" : npc.relation < -40 ? "rpg-npc-bad" : ""}`}
+            >
+              {npc.name} {npc.relation > 0 ? "+" : ""}{npc.relation}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RpgTab() {
   const [session, setSession] = useState<RpgSession | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -3611,8 +3666,9 @@ function RpgTab() {
   const [world, setWorld] = useState("");
   const [charName, setCharName] = useState("");
   const [elCharName, setElCharName] = useState("");
+  const [lastRoll, setLastRoll] = useState<{ roll: number; label: string } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-
   const [namesLoading, setNamesLoading] = useState(false);
 
   async function chooseWorld(w: string) {
@@ -3644,6 +3700,12 @@ function RpgTab() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.history]);
 
+  function showRoll(roll: number) {
+    const label = roll === 20 ? "大成功" : roll >= 15 ? "成功" : roll >= 10 ? "擦边" : roll >= 5 ? "失败" : "大失败";
+    setLastRoll({ roll, label });
+    setTimeout(() => setLastRoll(null), 3000);
+  }
+
   async function startGame() {
     if (!world || !charName || !elCharName) return;
     setLoading(true);
@@ -3654,7 +3716,7 @@ function RpgTab() {
         body: JSON.stringify({ action: "start", world, charName: charName.trim(), elCharName: elCharName.trim() }),
       });
       const d = await r.json();
-      // refresh session
+      if (d.roll) showRoll(d.roll);
       const s = await fetch("/api/rpg").then((x) => x.json());
       setSession(s.session ?? null);
     } finally {
@@ -3669,11 +3731,12 @@ function RpgTab() {
       prev ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] } : prev
     );
     try {
-      await fetch("/api/rpg", {
+      const d = await fetch("/api/rpg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "play", input: text }),
-      });
+      }).then((r) => r.json());
+      if (d.roll) showRoll(d.roll);
       const s = await fetch("/api/rpg").then((x) => x.json());
       setSession(s.session ?? null);
     } finally {
@@ -3685,25 +3748,7 @@ function RpgTab() {
     const text = input.trim();
     if (!text || loading || !session) return;
     setInput("");
-    setLoading(true);
-    // optimistic
-    setSession((prev) =>
-      prev
-        ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] }
-        : prev
-    );
-    try {
-      const r = await fetch("/api/rpg", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "play", input: text }),
-      });
-      const d = await r.json();
-      const s = await fetch("/api/rpg").then((x) => x.json());
-      setSession(s.session ?? null);
-    } finally {
-      setLoading(false);
-    }
+    await sendActionText(text);
   }
 
   async function resetGame() {
@@ -3716,6 +3761,7 @@ function RpgTab() {
     setWorld("");
     setCharName("");
     setElCharName("");
+    setLastRoll(null);
   }
 
   if (session === undefined) {
@@ -3765,12 +3811,13 @@ function RpgTab() {
     );
   }
 
+  const isDead = session.stats?.hp <= 0;
   const displayHistory = session.history.filter((m) => !(m.role === "player" && m.text.startsWith("新游戏开始")));
 
   // 从最后一条 gm 消息里解析 A/B/C 选项
   const lastGm = [...session.history].reverse().find((m) => m.role === "gm");
   const choices: string[] = [];
-  if (lastGm && !loading) {
+  if (lastGm && !loading && !isDead) {
     for (const line of lastGm.text.split("\n")) {
       const m = line.match(/^([A-C])[\.、．]\s*(.+)/);
       if (m) choices.push(m[2].trim());
@@ -3782,8 +3829,19 @@ function RpgTab() {
       <div className="rpg-header">
         <span className="rpg-world-tag">{RPG_WORLDS.find((w) => w.id === session.world)?.label ?? session.world}</span>
         <span className="rpg-char-tag">{session.charName} × {session.elCharName}</span>
-        <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+        <div className="rpg-header-right">
+          {lastRoll && (
+            <span className={`rpg-roll-badge ${lastRoll.roll === 20 ? "rpg-roll-crit" : lastRoll.roll <= 4 ? "rpg-roll-fail" : ""}`}>
+              d20={lastRoll.roll} {lastRoll.label}
+            </span>
+          )}
+          <button className="rpg-sheet-toggle" onClick={() => setSheetOpen((v) => !v)} title="角色状态">
+            ◈
+          </button>
+          <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+        </div>
       </div>
+      {sheetOpen && session.stats && <RpgSheet session={session} />}
       <div className="rpg-history">
         {displayHistory.map((m, i) => (
           <div key={i} className={`rpg-msg rpg-msg-${m.role}`}>
@@ -3799,7 +3857,7 @@ function RpgTab() {
         )}
         <div ref={bottomRef} />
       </div>
-      {choices.length > 0 && (
+      {!isDead && choices.length > 0 && (
         <div className="rpg-choices">
           {choices.map((c, i) => (
             <button key={i} className="rpg-choice-btn" onClick={() => { setInput(""); sendActionText(`${String.fromCharCode(65 + i)}. ${c}`); }}>
@@ -3808,19 +3866,26 @@ function RpgTab() {
           ))}
         </div>
       )}
-      <div className="rpg-input-row">
-        <input
-          className="rpg-input"
-          placeholder={choices.length > 0 ? "或者自己说…" : "你想做什么"}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
-          disabled={loading}
-        />
-        <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
-          <Icon name="send" size={18} />
-        </button>
-      </div>
+      {isDead ? (
+        <div className="rpg-dead">
+          <div className="rpg-dead-text">你倒下了。</div>
+          <button className="rpg-start-btn" onClick={resetGame}>重新开始</button>
+        </div>
+      ) : (
+        <div className="rpg-input-row">
+          <input
+            className="rpg-input"
+            placeholder={choices.length > 0 ? "或者自己说…" : "你想做什么"}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
+            disabled={loading}
+          />
+          <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
+            <Icon name="send" size={18} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

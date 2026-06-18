@@ -549,10 +549,24 @@ export async function clearGeoEvents(): Promise<void> {
 
 // ── 跑团游戏 ──────────────────────────────────────────────
 export type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
+export type RpgStats = {
+  body: number;   // 体魄
+  speed: number;  // 身法
+  mind: number;   // 智识
+  luck: number;   // 气运
+  hp: number;
+  maxHp: number;
+  mp: number;
+  maxMp: number;
+};
+export type RpgNpc = { name: string; relation: number }; // -100..100
 export type RpgSession = {
   world: string;
   charName: string;
   elCharName: string;
+  stats: RpgStats;
+  npcs: RpgNpc[];
+  flags: Record<string, boolean>;
   history: RpgMsg[];
 };
 const RPG_KEY = "el:rpg:session";

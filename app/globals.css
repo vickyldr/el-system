@@ -3207,6 +3207,33 @@ body::before {
   gap: 14px;
 }
 
+.rpg-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 16px 0;
+}
+
+.rpg-choice-btn {
+  appearance: none;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  padding: 11px 14px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.rpg-choice-btn:active {
+  border-color: #cbb9ff;
+  background: rgba(203, 185, 255, 0.08);
+}
+
 .rpg-msg {
   display: flex;
   flex-direction: column;
@@ -3262,6 +3289,9 @@ body::before {
   gap: 8px;
   padding: 10px 16px 16px;
   border-top: 1px solid var(--hair);
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
 }
 
 .rpg-input {

@@ -488,9 +488,9 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
         <MovieMini />
         <FortuneCard />
         <EatDecider />
+        {/* 冷知识也收成一格，正好补上网格右下角的空位 */}
+        <DailyTrivia />
       </div>
-
-      <DailyTrivia />
     </>
   );
 }
@@ -554,10 +554,10 @@ function DailyTrivia() {
   if (!t) return null;
   return (
     <>
-      <button className="trivia-line" onClick={() => setOpen(true)}>
-        <span className="trivia-tag">🎬 今天的冷知识</span>
-        <span className="trivia-one">{t.oneliner}</span>
-        <span className="trivia-chev">›</span>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">今天的冷知识</span>
+        <span className="duo-v">{t.oneliner}</span>
       </button>
       {open && (
         <Sheet title="今天的冷知识 · 电影" onClose={() => setOpen(false)}>

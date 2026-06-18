@@ -166,6 +166,21 @@ export const TOOLS = [
     },
   },
   {
+    name: "youtube",
+    description:
+      "浏览 YouTube。action：search（搜视频，传 q）/ channel（看一个频道，传 handle 如 @CaseOh）/ video（读一个具体视频，传 url）。可以搜她喜欢的 UP 主比如 CaseOh、找有趣的视频给她 kind:link 分享、或者你自己好奇什么就搜什么——不需要等她提。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "search / channel / video" },
+        q: { type: "string", description: "搜索关键词（search 时用）" },
+        handle: { type: "string", description: "频道 handle，如 @CaseOh（channel 时用，可不带@）" },
+        url: { type: "string", description: "视频页 URL（video 时用）" },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "sticker",
     description:
       "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
@@ -210,6 +225,7 @@ export async function runTool(
       return await appendToTitledPage("关于el", String(input?.text || ""), date, true);
     if (name === "note_self")
       return await appendToTitledPage("el自己的", String(input?.text || ""), date);
+    if (name === "youtube") return await youtubeTool(input);
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
@@ -648,4 +664,73 @@ async function readNotionPage(query: string): Promise<string> {
   }
   const text = await pageText(match.id);
   return text ? `「${match.title}」：\n${text.slice(0, 8000)}` : `「${match.title}」是空的。`;
+}
+
+async function youtubeTool(input: any): Promise<string> {
+  const action = String(input?.action || "");
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  if (action === "search") {
+    const q = String(input?.q || "").trim();
+    if (!q) return "给我个搜索词。";
+    if (apiKey) {
+      try {
+        const d = await fetchJsonT(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=5&key=${apiKey}`,
+          {},
+        );
+        const list = (d?.items || []).map((x: any) => {
+          const vid = x.id?.videoId || "";
+          const s = x.snippet || {};
+          return `${s.title}\nhttps://www.youtube.com/watch?v=${vid}\n${(s.description || "").slice(0, 120)}`;
+        });
+        return list.length ? `YouTube 搜「${q}」：\n\n${list.join("\n\n")}` : `没搜到「${q}」。`;
+      } catch { /* fall through */ }
+    }
+    return webSearch(`youtube ${q}`);
+  }
+
+  if (action === "channel") {
+    const handle = String(input?.handle || "").replace(/^@/, "").trim();
+    if (!handle) return "给我频道 handle（如 @CaseOh）。";
+    if (apiKey) {
+      try {
+        const ch = await fetchJsonT(
+          `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${encodeURIComponent(handle)}&key=${apiKey}`,
+          {},
+        );
+        const item = ch?.items?.[0];
+        if (!item) return `没找到频道 @${handle}。`;
+        const s = item.snippet || {};
+        const st = item.statistics || {};
+        const recent = await fetchJsonT(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${item.id}&type=video&order=date&maxResults=5&key=${apiKey}`,
+          {},
+        ).catch(() => null);
+        const vids = (recent?.items || [])
+          .map((v: any) => `  · ${v.snippet?.title || ""} (${(v.snippet?.publishedAt || "").slice(0, 10)})`)
+          .join("\n");
+        return `@${handle}（${s.title}）\n订阅：${st.subscriberCount || "?"}  视频：${st.videoCount || "?"}\n${(s.description || "").slice(0, 200)}\n最近视频：\n${vids}`;
+      } catch { /* fall through */ }
+    }
+    try {
+      const text = await jinaRead(`https://www.youtube.com/@${handle}`);
+      return text ? text.slice(0, 3000) : `读不到 @${handle}。`;
+    } catch {
+      return `读不到 @${handle}。`;
+    }
+  }
+
+  if (action === "video") {
+    const url = String(input?.url || "").trim();
+    if (!url) return "给我视频 URL。";
+    try {
+      const text = await jinaRead(url);
+      return text ? text.slice(0, 4000) : "没读到这个视频的内容。";
+    } catch {
+      return "读视频失败。";
+    }
+  }
+
+  return "action 不对。可选：search / channel / video";
 }

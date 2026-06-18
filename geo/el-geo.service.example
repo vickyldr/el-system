@@ -1,0 +1,28 @@
+# systemd 服务模板：让守望者在 VPS 上开机自启、崩了自动拉起。
+# 用法：把下面 /home/USER/el-system/geo 换成你 VPS 上的真实路径和用户名，
+# 复制到 /etc/systemd/system/el-geo.service，然后：
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now el-geo
+# 看日志：journalctl -u el-geo -f
+#
+# 注意：第一次登录（过 2FA）要先手动 SSH 跑一次（见 README），有了信任 cookie 再起这个服务，
+# 因为 systemd 没有 stdin，没法在服务里输验证码。
+
+[Unit]
+Description=el geo watcher (reads own iPhone location, posts human signals)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER
+WorkingDirectory=/home/USER/el-system/geo
+# .env 同时当 systemd 的环境文件用（KEY=VALUE，别加引号/别留行内空格）
+EnvironmentFile=/home/USER/el-system/geo/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/USER/el-system/geo/.venv/bin/python /home/USER/el-system/geo/watcher.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

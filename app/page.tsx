@@ -335,7 +335,9 @@ export default function Home() {
               }}
             />
           ) : tab === "read" ? (
-            <BookshelfTab key={refreshKey} />
+            // 不按 refreshKey 整体重挂——那会把沉浸的二级页打回选卡片首页（被误当成"返回上一级"）。
+            // 改成只刷新当前打开的内容，停留在原地。
+            <BookshelfTab refreshKey={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -1452,7 +1454,7 @@ const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soo
 ];
 
 // 「沉浸」tab：翻卡片选今天做什么。
-function BookshelfTab() {
+function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
   const [sub, setSub] = useState<ShelfSub | null>(null);
 
   if (sub) {
@@ -1464,9 +1466,10 @@ function BookshelfTab() {
           <span className="imm-back-icon-big">{card.icon}</span>
           <span className="imm-back-title">{card.title}</span>
         </button>
-        {sub === "fic"  && <FicStation />}
-        {sub === "book" && <BooksSection />}
-        {sub === "rpg"  && <RpgTab />}
+        {/* 下拉刷新只重挂内容、保留所在的二级页（sub 不丢） */}
+        {sub === "fic"  && <FicStation key={refreshKey} />}
+        {sub === "book" && <BooksSection key={refreshKey} />}
+        {sub === "rpg"  && <RpgTab key={refreshKey} />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>

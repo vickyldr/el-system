@@ -36,7 +36,9 @@ async function handle(req: Request) {
           : m.screen
             ? "【共享屏幕】"
             : "【通话】"
-        : "";
+        : m.screen
+          ? "【共享屏幕】"
+          : "";
       const img = m.image ? "（发了一张图）" : "";
       return `${tag}${who}：${m.content}${img}`;
     })

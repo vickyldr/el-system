@@ -76,21 +76,33 @@ type ChatTurn = {
 
 // 当前这条消息（可能带图）变成 Claude 的 content：纯文本或 图+文 块。
 // base64 data URL → 直接看；绝对 http(s)（如 giphy）→ 让 Claude 去取；其它取不到就只发文字。
-function toContent(text: string, image?: string): Anthropic.MessageParam["content"] {
-  let block: Anthropic.ContentBlockParam | null = null;
+// screen：她共享屏幕时此刻的那一帧（base64），放在最前当"她的屏幕"喂给大脑；不进历史、不存档。
+function toContent(
+  text: string,
+  image?: string,
+  screen?: string,
+): Anthropic.MessageParam["content"] {
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  if (screen) {
+    const sd = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(screen);
+    if (sd) blocks.push({ type: "image", source: { type: "base64", media_type: sd[1] as any, data: sd[2] } });
+  }
   if (image) {
     const data = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image);
     if (data) {
-      block = { type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } };
+      blocks.push({ type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } });
     } else if (/^https?:\/\//i.test(image)) {
-      block = { type: "image", source: { type: "url", url: image } };
+      blocks.push({ type: "image", source: { type: "url", url: image } });
     }
   }
-  if (!block) return text || "（发了一张图）";
-  const blocks: Anthropic.ContentBlockParam[] = [block];
+  if (!blocks.length) return text || "（发了一张图）";
   if (text) blocks.push({ type: "text", text });
   return blocks;
 }
+
+// 她共享电脑屏幕时，给大脑追加这段（屏幕帧随消息喂进去，但她是在打字、不出声）。
+const SCREEN_NOTE =
+  "【她现在把电脑屏幕共享给你了】随这条消息附的那张图，就是她此刻的电脑屏幕——你能看见她在屏幕上看什么、做什么。你在陪她一起看，自然地聊屏幕上的内容、给她你的反应和想法，别像读图一样描述、别说'截图里/图片里'，就是你俩一起盯着这块屏幕。你看见的是屏幕内容，不是她的脸。";
 
 // 历史只留文字（图片相对地址 Claude 取不到，会报错），带过图就标一下。
 // 尤其：我自己贴过的表情，要在历史里告诉我"我发过、什么意思"，免得事后否认。
@@ -173,7 +185,14 @@ function stripImages(msgs: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
 }
 
 export async function POST(req: Request) {
-  let body: { message?: string; image?: string; hint?: string; voice?: boolean; history?: ChatTurn[] };
+  let body: {
+    message?: string;
+    image?: string;
+    hint?: string;
+    voice?: boolean;
+    history?: ChatTurn[];
+    screen?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -186,6 +205,9 @@ export async function POST(req: Request) {
   const hint = typeof body.hint === "string" ? body.hint.trim() : "";
   // voice：打电话时走"快嘴模式"——不调工具、回得短、口语化，砍延迟。
   const voice = body.voice === true;
+  // screen：她共享电脑屏幕、打字时附上的此刻屏幕帧（base64）。喂给大脑当"眼睛"，但不存进对话。
+  const screen =
+    typeof body.screen === "string" && body.screen.startsWith("data:") ? body.screen : undefined;
   if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
@@ -378,7 +400,7 @@ export async function POST(req: Request) {
   }
   const messages: Anthropic.MessageParam[] = [
     ...priorMsgs,
-    { role: "user", content: toContent(curText, curImage) },
+    { role: "user", content: toContent(curText, curImage, screen) },
   ];
   // 距上次互动多久——久别就别复读几小时前的旧话题（治"她说在上班了还接着问吃了吗"）。
   const lastPriorTs = [...(prior as any[])].reverse().find((t) => t?.ts)?.ts;
@@ -423,6 +445,7 @@ export async function POST(req: Request) {
         { type: "text", text: sysStable, cache_control: { type: "ephemeral" } },
         ...(sysVolatile ? [{ type: "text", text: sysVolatile }] : []),
         ...(recency ? [{ type: "text", text: recency }] : []),
+        ...(screen ? [{ type: "text", text: SCREEN_NOTE }] : []),
         ...(toyInstruction ? [{ type: "text", text: toyInstruction }] : []),
       ];
   try {
@@ -505,7 +528,7 @@ export async function POST(req: Request) {
     // 还是空的（Max 限流/抽风/带图带工具那轮吐空）就多档清爽重试：
     // ①带图试 Max ②带图试中转站（保住"看图"）③纯文字试 Max（最后保底，至少回话）。
     if (!reply) {
-      const withImg = toContent(message, image);
+      const withImg = toContent(message, image, screen);
       const attempts: { client: Anthropic; msgs: Anthropic.MessageParam[] }[] = [
         { client: getClaudeFast(), msgs: [{ role: "user", content: withImg }] },
         { client: getClaude(), msgs: [{ role: "user", content: withImg }] },
@@ -569,7 +592,8 @@ export async function POST(req: Request) {
       }
       const ts = Date.now();
       await appendMessages([
-        { role: "user", content: message, image: storedImage, ts },
+        // 屏幕帧不存（只属此刻、又费 token），只打 screen 标——夜里固化记忆时认得出"这段我在看她屏幕"。
+        { role: "user", content: message, image: storedImage, ...(screen ? { screen: true } : {}), ts },
         { role: "assistant", content: reply, image: elSticker, stickerHint: elStickerHint, ts: ts + 1 },
       ]);
     }

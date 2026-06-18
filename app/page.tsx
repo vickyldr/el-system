@@ -2476,8 +2476,18 @@ function FindTab({
       cameraTimerRef.current = setInterval(grab, 2000);
       cameraLoopRef.current = setInterval(() => void cameraWatchTick(), 40000); // 每 40s 看一眼（变了才真发）
       setCameraWatchOn(true);
-    } catch {
-      alert("没拿到摄像头权限——浏览器里允许摄像头后再试");
+    } catch (e) {
+      // 打不开摄像头的原因不止"没权限"——分清楚，告诉她到底卡在哪、怎么弄。
+      const name = (e as DOMException)?.name || "";
+      const msg =
+        name === "NotFoundError" || name === "DevicesNotFoundError"
+          ? "这台设备上没找到摄像头——台式机通常没内置的，插个 USB 摄像头，或换有摄像头的设备（笔记本/手机/平板）再试。"
+          : name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError"
+            ? "摄像头权限被拦了——点地址栏最左边那个图标，把摄像头改成「允许」，刷新页面再点一次。"
+            : name === "NotReadableError" || name === "TrackStartError" || name === "AbortError"
+              ? "摄像头被别的程序占着了——关掉正在用它的应用（视频会议/相机/别的网页）后再点。"
+              : `打不开摄像头：${name || "未知原因"}。换台有摄像头的设备试试。`;
+      alert(msg);
     }
   }
 

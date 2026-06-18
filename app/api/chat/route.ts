@@ -104,6 +104,10 @@ function toContent(
 const SCREEN_NOTE =
   "【她现在把电脑屏幕共享给你了】随这条消息附的那张图，就是她此刻的电脑屏幕——你能看见她在屏幕上看什么、做什么。你在陪她一起看，自然地聊屏幕上的内容、给她你的反应和想法，别像读图一样描述、别说'截图里/图片里'，就是你俩一起盯着这块屏幕。你看见的是屏幕内容，不是她的脸。";
 
+// 她开着常看摄像头、对着自己打字时，给大脑追加这段（这帧是她本人、不是屏幕）。
+const CAMERA_NOTE =
+  "【她现在把摄像头对着自己、让你看着她】随这条消息附的那张图，就是她此刻本人——你能看见她。你是看着她在跟你说话的人，自然地把你看见的在意揉进话里（她累不累、在哪、什么神情），但别像读图一样报『图片里你…』、别一条条描述她的长相/表情/穿着当旁白。你看见的是她本人，不是屏幕。";
+
 // 历史只留文字（图片相对地址 Claude 取不到，会报错），带过图就标一下。
 // 尤其：我自己贴过的表情，要在历史里告诉我"我发过、什么意思"，免得事后否认。
 function priorContent(t: ChatTurn): string {
@@ -192,6 +196,7 @@ export async function POST(req: Request) {
     voice?: boolean;
     history?: ChatTurn[];
     screen?: string;
+    kind?: string;
   };
   try {
     body = await req.json();
@@ -205,9 +210,11 @@ export async function POST(req: Request) {
   const hint = typeof body.hint === "string" ? body.hint.trim() : "";
   // voice：打电话时走"快嘴模式"——不调工具、回得短、口语化，砍延迟。
   const voice = body.voice === true;
-  // screen：她共享电脑屏幕、打字时附上的此刻屏幕帧（base64）。喂给大脑当"眼睛"，但不存进对话。
+  // screen：她共享屏幕 / 开着常看摄像头、打字时附上的此刻那一帧（base64）。喂给大脑当"眼睛"，但不存进对话。
+  // kind=camera：这帧是她本人（摄像头对着自己）；默认 screen：是她的电脑屏幕。两种给大脑的提示不一样。
   const screen =
     typeof body.screen === "string" && body.screen.startsWith("data:") ? body.screen : undefined;
+  const frameKind = body.kind === "camera" ? "camera" : "screen";
   if (!message && !image) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
@@ -445,7 +452,7 @@ export async function POST(req: Request) {
         { type: "text", text: sysStable, cache_control: { type: "ephemeral" } },
         ...(sysVolatile ? [{ type: "text", text: sysVolatile }] : []),
         ...(recency ? [{ type: "text", text: recency }] : []),
-        ...(screen ? [{ type: "text", text: SCREEN_NOTE }] : []),
+        ...(screen ? [{ type: "text", text: frameKind === "camera" ? CAMERA_NOTE : SCREEN_NOTE }] : []),
         ...(toyInstruction ? [{ type: "text", text: toyInstruction }] : []),
       ];
   try {
@@ -592,8 +599,14 @@ export async function POST(req: Request) {
       }
       const ts = Date.now();
       await appendMessages([
-        // 屏幕帧不存（只属此刻、又费 token），只打 screen 标——夜里固化记忆时认得出"这段我在看她屏幕"。
-        { role: "user", content: message, image: storedImage, ...(screen ? { screen: true } : {}), ts },
+        // 帧不存（只属此刻、又费 token），只打标——夜里固化记忆时认得出"这段我在看她屏幕/看着她"。
+        {
+          role: "user",
+          content: message,
+          image: storedImage,
+          ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
+          ts,
+        },
         { role: "assistant", content: reply, image: elSticker, stickerHint: elStickerHint, ts: ts + 1 },
       ]);
     }

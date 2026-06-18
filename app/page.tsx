@@ -1850,6 +1850,7 @@ type Msg = {
   call?: boolean;
   video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
   screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
+  cam?: boolean; // 这条是不是 el 透过常看摄像头看着她时的（卡片显示成"看着你"）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
@@ -2881,8 +2882,14 @@ function FindTab({
     const apiMessage = q
       ? `（我在回复你「此刻」写的${q.label}：「${q.text}」）${text ? "\n" + text : ""}`
       : text;
-    // 共享屏幕开着的话，把此刻屏幕一帧带给 el（喂给脑子、不存档）。
-    const screen = screenShareOn ? screenFrameRef.current || undefined : undefined;
+    // 共享屏幕 / 常看摄像头开着的话，把此刻那一帧带给 el（喂给脑子、不存档）。
+    // 屏幕优先（她要是同时开着，多半在看屏幕）；摄像头帧带 kind=camera 让大脑知道这是她本人。
+    const frameKind = screenShareOn ? "screen" : cameraWatchOn ? "camera" : undefined;
+    const screen = screenShareOn
+      ? screenFrameRef.current || undefined
+      : cameraWatchOn
+        ? cameraFrameRef.current || undefined
+        : undefined;
     setMsgs((m) => [
       ...m,
       {
@@ -2890,7 +2897,7 @@ function FindTab({
         content: text,
         image: image || undefined,
         quote: q,
-        ...(screen ? { screen: true } : {}),
+        ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
         ts: Date.now(),
       },
     ]);
@@ -2899,7 +2906,7 @@ function FindTab({
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: apiMessage, image, hint, history, screen }),
+        body: JSON.stringify({ message: apiMessage, image, hint, history, screen, kind: frameKind }),
       });
       const d = await r.json();
       setMsgs((m) => [

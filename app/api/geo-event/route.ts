@@ -40,13 +40,15 @@ async function handle(req: Request) {
       accuracy: body.accuracy === "coarse" ? "coarse" : "good",
       // 三态：true=在家 / false=确实在外 / 不传或 null=没设家、判断不了（别当成在外）
       atHome: typeof body.atHome === "boolean" ? body.atHome : undefined,
+      // 三态：true=在公司 / false=不在公司 / 不传或 null=没设工作地点
+      atWork: typeof body.atWork === "boolean" ? body.atWork : undefined,
       ts: Date.now(),
     };
     await setGeoNow(g);
     return NextResponse.json({ ok: true, stored: "snapshot" });
   }
 
-  const kinds = ["left_home", "arrived_place", "outside_checkin", "back_home"] as const;
+  const kinds = ["left_home", "arrived_place", "outside_checkin", "back_home", "arrived_work", "left_work"] as const;
   if ((kinds as readonly string[]).includes(type)) {
     const summary = clip(body.summary, 200);
     if (!summary) return NextResponse.json({ error: "summary required" }, { status: 400 });
@@ -60,7 +62,8 @@ async function handle(req: Request) {
         weather: clip(body.weather, 60),
         raining: !!body.raining,
         accuracy: body.accuracy === "coarse" ? "coarse" : "good",
-        atHome: type === "back_home",
+        atHome: typeof body.atHome === "boolean" ? body.atHome : type === "back_home",
+        atWork: typeof body.atWork === "boolean" ? body.atWork : type === "arrived_work" ? true : type === "left_work" ? false : undefined,
         ts: Date.now(),
       });
     }

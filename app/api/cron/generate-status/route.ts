@@ -176,7 +176,10 @@ async function handle(req: Request) {
   let geoAmbient = "";
   if (geoNow) {
     if (geoNow.atHome) geoAmbient = "她现在在家。";
-    else {
+    else if (geoNow.atWork) {
+      const w = geoNow.weather ? `；那边天气：${geoNow.weather}${geoNow.raining ? "（在下雨）" : ""}` : "";
+      geoAmbient = `她现在在公司${w}。`;
+    } else {
       // atHome===false 才是确实在外；null/undefined 是没设家、判断不了，只说"大概在哪"，别断言她在外面。
       const knownOut = geoNow.atHome === false;
       const where =

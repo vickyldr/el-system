@@ -189,12 +189,20 @@ def reverse_geocode(lat, lon):
                 district = item.get("name", "")
                 break
         area = " · ".join([x for x in (city, district) if x]) or city
+        # place：取真正具体的地名。informative 数组从大到小排（洲/国/省…→具体），
+        # 所以倒着找最具体的；跳过洲/国/省/市这种太粗、和已知重复、或明显垃圾的。
         place = ""
-        for item in ((d.get("localityInfo") or {}).get("informative") or []):
-            n = item.get("name", "")
-            if n and n != city:
-                place = f"{n}附近"
-                break
+        JUNK = {"亚洲", "中国", "asia", "china"}
+        BROAD = ("continent", "sovereign", "country", "state", "province", "first-level", "second-level administrative")
+        for item in reversed((d.get("localityInfo") or {}).get("informative") or []):
+            n = (item.get("name") or "").strip()
+            desc = (item.get("description") or "").lower()
+            if not n or n in (city, district) or n.lower() in JUNK:
+                continue
+            if any(b in desc for b in BROAD):
+                continue
+            place = f"{n}附近"
+            break
         if area:
             return area, place
     except Exception:

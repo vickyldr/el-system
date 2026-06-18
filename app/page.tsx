@@ -2428,13 +2428,12 @@ function FindTab({
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        } as MediaTrackConstraints,
-      });
+      // 约束尽量松（笔记本单摄像头不需要 facingMode，省得某些驱动挑刺）；分辨率只给 ideal、不会因不满足报错。
+      const stream = await navigator.mediaDevices
+        .getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } } as MediaTrackConstraints,
+        })
+        .catch(() => navigator.mediaDevices.getUserMedia({ video: true })); // 再兜底：什么都不挑，只要一路摄像头
       cameraStreamRef.current = stream;
       const track = stream.getVideoTracks()[0];
       if (track) track.onended = () => stopCameraWatch();

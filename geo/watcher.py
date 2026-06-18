@@ -361,7 +361,8 @@ def main():
             wx, raining = weather(lat, lon)
             acc_band = accuracy_band(acc)
 
-            at_home = False
+            # at_home: True=在家 / False=确实在外 / None=没设 HOME，判断不了（别瞎说她在外面）
+            at_home = None
             if HOME is not None:
                 at_home = haversine_m(lat, lon, HOME[0], HOME[1]) <= HOME_RADIUS_M
 
@@ -371,7 +372,7 @@ def main():
                 "weather": wx,
                 "raining": raining,
                 "accuracy": acc_band,
-                "atHome": at_home,
+                "atHome": at_home,  # True / False / None(未知)
             }
             wt = where_text(area, place)
             wx_tail = "，外面在下雨" if raining else (f"，{wx}" if wx else "")
@@ -389,8 +390,9 @@ def main():
                     post({"type": "back_home", "summary": "你到家了", **base})
                     place_anchor, arrived_announced = None, False
 
-            # 3) 在外：停留 + 周期心跳
-            if not at_home:
+            # 3) 在外：停留 + 周期心跳——只有"设了家、且确实不在家"才判。
+            #    没设 HOME（at_home is None）时根本不知道在不在家，绝不发"还在外面"这类事件。
+            if at_home is False:
                 if place_anchor is None:
                     place_anchor, place_since, arrived_announced = (lat, lon), time.time(), False
                 elif haversine_m(lat, lon, place_anchor[0], place_anchor[1]) <= PLACE_RADIUS_M:

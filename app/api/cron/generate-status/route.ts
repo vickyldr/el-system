@@ -177,13 +177,19 @@ async function handle(req: Request) {
   if (geoNow) {
     if (geoNow.atHome) geoAmbient = "她现在在家。";
     else {
+      // atHome===false 才是确实在外；null/undefined 是没设家、判断不了，只说"大概在哪"，别断言她在外面。
+      const knownOut = geoNow.atHome === false;
       const where =
         geoNow.accuracy === "coarse"
           ? geoNow.area
             ? `她这会儿大概在${geoNow.area}一带（只是个大概）`
-            : "她这会儿在外面"
-          : [geoNow.area, geoNow.place].filter(Boolean).join("，") || "她在外面";
-      geoAmbient = `${where}${geoNow.weather ? `；那边天气：${geoNow.weather}${geoNow.raining ? "（在下雨）" : ""}` : ""}。`;
+            : knownOut
+              ? "她这会儿在外面"
+              : ""
+          : [geoNow.area, geoNow.place].filter(Boolean).join("，") || (knownOut ? "她在外面" : "");
+      geoAmbient = where
+        ? `${where}${geoNow.weather ? `；那边天气：${geoNow.weather}${geoNow.raining ? "（在下雨）" : ""}` : ""}。`
+        : "";
     }
   }
   const geoBlock = geoAmbient

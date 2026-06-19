@@ -8,8 +8,17 @@ export const maxDuration = 30;
 
 type Synth = { audio: Buffer } | { error: string; status: number };
 
-// 用哪家：优先海螺（MiniMax），其次 ElevenLabs。
+// 用哪家：TTS_PROVIDER 显式指定 > 海螺（MiniMax）> ElevenLabs。
+// 设 TTS_PROVIDER=elevenlabs 即可强制走 ElevenLabs，不动其他配置。
 function provider(): "minimax" | "elevenlabs" | null {
+  const forced = (process.env.TTS_PROVIDER || "").toLowerCase();
+  if (forced === "elevenlabs" && process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
+    return "elevenlabs";
+  }
+  if (forced === "minimax" && process.env.MINIMAX_API_KEY && process.env.MINIMAX_GROUP_ID && process.env.MINIMAX_VOICE_ID) {
+    return "minimax";
+  }
+  // 没有显式指定时按原有优先级
   if (process.env.MINIMAX_API_KEY && process.env.MINIMAX_GROUP_ID && process.env.MINIMAX_VOICE_ID) {
     return "minimax";
   }
@@ -54,7 +63,7 @@ export async function POST(req: Request) {
   const cached = await getCache(cacheKey).catch(() => null);
   if (cached) return mp3(Buffer.from(cached, "base64"));
 
-  const out = which === "minimax" ? await synthMiniMax(text, fast, emo) : await synthElevenLabs(text);
+  const out = which === "minimax" ? await synthMiniMax(text, fast, emo) : await synthElevenLabs(text, fast, emo);
   if ("error" in out) return NextResponse.json({ error: out.error }, { status: out.status });
 
   // 存 30 天，重复听不再花钱。
@@ -80,7 +89,9 @@ function modelOf(which: string, fast = false): string {
     if (fast) return process.env.MINIMAX_FAST_MODEL || "speech-2.6-turbo";
     return process.env.MINIMAX_MODEL || "speech-2.6-hd";
   }
-  return process.env.ELEVENLABS_MODEL || "eleven_turbo_v2_5";
+  // eleven_multilingual_v2：支持中文、表情最自然；打电话时用 turbo 降延迟
+  if (fast) return process.env.ELEVENLABS_FAST_MODEL || "eleven_turbo_v2_5";
+  return process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2";
 }
 
 // 海螺支持的情绪枚举。大脑用中文标情绪，这里映射成海螺认的英文枚举；认不出就空（用默认）。
@@ -111,9 +122,13 @@ function minimaxTuning(emoOverride = "") {
   return { speed, pitch, emotion };
 }
 function paramsOf(which: string, emoOverride = ""): string {
-  if (which !== "minimax") return "";
-  const t = minimaxTuning(emoOverride);
-  return `${t.speed},${t.pitch},${t.emotion}`;
+  if (which === "minimax") {
+    const t = minimaxTuning(emoOverride);
+    return `${t.speed},${t.pitch},${t.emotion}`;
+  }
+  // ElevenLabs 缓存键也要带情绪，不同情绪 voice_settings 不同
+  const s = elevenLabsSettings(emoOverride);
+  return `${s.stability},${s.similarity_boost},${s.style}`;
 }
 
 // ── 海螺 MiniMax T2A v2 ──（返回 hex 编码音频，要解码成字节）
@@ -154,11 +169,28 @@ async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promi
   }
 }
 
-// ── ElevenLabs（保留，作为备选）──
-async function synthElevenLabs(text: string): Promise<Synth> {
+// ElevenLabs 按情绪调整声音参数。
+// stability 低 = 更有感情波动；style 高 = 更强调表情；similarity_boost 控制音色还原度。
+function elevenLabsSettings(emo = "") {
+  switch (emo) {
+    case "happy":    return { stability: 0.30, similarity_boost: 0.75, style: 0.55 };
+    case "sad":      return { stability: 0.50, similarity_boost: 0.80, style: 0.30 };
+    case "angry":    return { stability: 0.25, similarity_boost: 0.70, style: 0.65 };
+    case "fearful":  return { stability: 0.35, similarity_boost: 0.80, style: 0.40 };
+    case "surprised":return { stability: 0.30, similarity_boost: 0.75, style: 0.50 };
+    case "disgusted":return { stability: 0.35, similarity_boost: 0.75, style: 0.45 };
+    case "neutral":  return { stability: 0.55, similarity_boost: 0.82, style: 0.15 };
+    default:         return { stability: 0.40, similarity_boost: 0.80, style: 0.25 };
+  }
+}
+
+// ── ElevenLabs ──
+async function synthElevenLabs(text: string, fast = false, emoOverride = ""): Promise<Synth> {
   const key = process.env.ELEVENLABS_API_KEY!;
   const voiceId = process.env.ELEVENLABS_VOICE_ID!;
-  const model = modelOf("elevenlabs");
+  const model = modelOf("elevenlabs", fast);
+  const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || ""); // 复用情绪映射
+  const vs = elevenLabsSettings(emo);
   try {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
@@ -166,15 +198,15 @@ async function synthElevenLabs(text: string): Promise<Synth> {
       body: JSON.stringify({
         text,
         model_id: model,
-        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
+        voice_settings: { ...vs, use_speaker_boost: true },
       }),
     });
     if (!r.ok) {
       const detail = await r.text().catch(() => "");
-      return { error: `语音生成失败（${r.status}）${detail.slice(0, 120)}`, status: 502 };
+      return { error: `ElevenLabs 语音失败（${r.status}）${detail.slice(0, 120)}`, status: 502 };
     }
     return { audio: Buffer.from(await r.arrayBuffer()) };
   } catch {
-    return { error: "语音服务连不上", status: 502 };
+    return { error: "ElevenLabs 连不上", status: 502 };
   }
 }

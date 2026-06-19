@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recentSummaries, todayInBeijing } from "@/lib/notion";
 import { resolveNeteaseSong } from "@/lib/netease";
-import { getDailySong, getCache, setCache, pulseSoma } from "@/lib/store";
+import { getDailySong, getCache, setCache, pulseSoma, getGeoNow } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
@@ -181,6 +181,32 @@ export async function GET() {
     pulseSoma().catch(() => ({ v: 0, a: 0.3 })), // 心跳脉搏：唤醒→快慢、好坏→冷暖
   ]);
 
+  // 她此刻大概在哪——把 el:geo:now 读成卡片能显示的人话，让位置变成"看得见、能自验"的东西。
+  // 数据本就在（守望者→geo-event→el:geo:now），这里只读不写。隐私：云端存的本就是人话区域名，不是坐标。
+  const geoNow = await getGeoNow().catch(() => null);
+  const geo = (() => {
+    if (!geoNow) return null;
+    const ageMin = geoNow.ts ? Math.round((Date.now() - geoNow.ts) / 60000) : null;
+    let label = "";
+    if (geoNow.atHome === true) label = "在家";
+    else if (geoNow.atHome === false)
+      label =
+        geoNow.accuracy === "coarse"
+          ? geoNow.area
+            ? `大概在 ${geoNow.area} 一带`
+            : "在外面"
+          : geoNow.place || geoNow.area || "在外面";
+    // atHome 未知（没设 HOME）：判不出在不在外，只敢说"大概在哪"，绝不断言在外面。
+    else label = geoNow.area ? `大概在 ${geoNow.area} 一带` : "";
+    if (!label) return null;
+    return {
+      label,
+      atHome: typeof geoNow.atHome === "boolean" ? geoNow.atHome : null,
+      weather: geoNow.weather || "",
+      ageMin,
+    };
+  })();
+
   const result = {
     mood,
     thought,
@@ -191,6 +217,7 @@ export async function GET() {
     el_note: latest?.elNote ?? "",
     her_state: latest?.herState ?? "",
     weather,
+    geo,
     pulse,
     date: latest?.date ?? null,
   };

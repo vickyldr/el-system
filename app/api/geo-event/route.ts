@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { setGeoNow, pushGeoEvent, type GeoNow, type GeoEvent } from "@/lib/store";
+import {
+  setGeoNow,
+  pushGeoEvent,
+  getGeoNow,
+  getGeoEvents,
+  geoAmbientBlock,
+  type GeoNow,
+  type GeoEvent,
+} from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,4 +80,33 @@ async function handle(req: Request) {
 
 export async function POST(req: Request) {
   return handle(req);
+}
+
+// 只读诊断：看 el 此刻到底"知道你在哪"——快照有没有、多新、细到哪层、转场队列里有什么、
+// 以及最终喂进 el prompt 的那句人话。鉴权同上（Bearer CRON_SECRET 或 ?key=）。
+// 用法：浏览器开 https://<域名>/api/geo-event?key=<CRON_SECRET>
+//   - now=null  → 守望者没在发数据（没跑/掉线/session 过期），el 只能回落整城天气，所以"只知道城市"。
+//   - now.atHome=null → 守望者在发，但没设 HOME_LAT/LON，判不出在家/在外（去 watcher 跑 set-home）。
+//   - now.area 只有城市没有区/地标 → 反查地址只到市级，看 ageMin 是否在更新。
+export async function GET(req: Request) {
+  const secret = process.env.CRON_SECRET;
+  const url = new URL(req.url);
+  const authed =
+    req.headers.get("authorization") === `Bearer ${secret}` ||
+    url.searchParams.get("key") === secret;
+  if (!secret || !authed) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const now = await getGeoNow().catch(() => null);
+  const events = await getGeoEvents().catch(() => []);
+  const ambient = await geoAmbientBlock().catch(() => "");
+  const ageMin = now?.ts ? Math.round((Date.now() - now.ts) / 60000) : null;
+  return NextResponse.json({
+    alive: !!now, // 有快照 = 守望者最近发过数据
+    ageMin, // 快照多少分钟前的（>90 会过期、被当作没有）
+    homeKnown: typeof now?.atHome === "boolean", // 是否设了 HOME、判得出在家/在外
+    now,
+    events, // 还没被消费的转场（出门/到家/到某地/在外）
+    feedsToEl: ambient || "(空——el 此刻读不到任何位置，只会用整城天气)",
+  });
 }

@@ -665,3 +665,56 @@ export async function getQaRecent(): Promise<number[]> {
     return [];
   }
 }
+
+// ── 你画我猜（el:draw）：当前这一局（el 画的词对你保密，存服务端）+ 最近画过的词。──
+export type DrawRound = { word: string; hint: string; strokes: string[]; guesses: number; ts: number };
+const DRAW_ROUND_KEY = "el:draw:current";
+const DRAW_RECENT_KEY = "el:draw:recent";
+
+export async function setDrawRound(round: DrawRound): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(DRAW_ROUND_KEY, round);
+    const recent = (await r.get<string[]>(DRAW_RECENT_KEY)) || [];
+    await r.set(DRAW_RECENT_KEY, [...recent, round.word].slice(-15));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getDrawRound(): Promise<DrawRound | null> {
+  const r = redis();
+  if (!r) return null;
+  try {
+    const v = await r.get<DrawRound>(DRAW_ROUND_KEY);
+    return v && typeof v === "object" && Array.isArray(v.strokes) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getDrawRecent(): Promise<string[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<string[]>(DRAW_RECENT_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function bumpDrawGuesses(): Promise<number> {
+  const r = redis();
+  if (!r) return 0;
+  try {
+    const cur = await r.get<DrawRound>(DRAW_ROUND_KEY);
+    if (!cur) return 0;
+    const guesses = (cur.guesses || 0) + 1;
+    await r.set(DRAW_ROUND_KEY, { ...cur, guesses });
+    return guesses;
+  } catch {
+    return 0;
+  }
+}

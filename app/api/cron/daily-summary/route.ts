@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getClaudeFast } from "@/lib/claude";
 import { pageText, recentSummaries } from "@/lib/notion";
 import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
-import { getStoredMessages } from "@/lib/store";
+import { getStoredMessages, getQaThread } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 
 export const runtime = "nodejs";
@@ -49,6 +49,15 @@ async function handle(req: Request) {
   const hadVideoCall = transcript.includes("【视频通话】");
   const hadCamWatch = transcript.includes("【看着你】");
 
+  // 这天玩「深度问答」时她交心的答——比日常聊天信号更强，值得回看里挑值得记的。
+  const qaToday = (await getQaThread().catch(() => [])).filter((t) => t.ts >= yStart);
+  const qaBlock = qaToday.length
+    ? qaToday
+        .map((t) => `问：${t.q}\n她答：${t.a}\n我当时回：${t.reply}`)
+        .join("\n\n")
+        .slice(0, 6000)
+    : "";
+
   const [manual, profile, longterm, recent] = await Promise.all([
     pageText(process.env.NOTION_MANUAL_PAGE || MANUAL_PAGE).catch(() => ""),
     process.env.NOTION_MEMORY_PAGE
@@ -75,7 +84,11 @@ async function handle(req: Request) {
 
   const prompt = `这是刚过去这一天（${yesterday}）你和宝宝的对话记录：
 ${transcript || "（这天没怎么聊）"}
-
+${
+    qaBlock
+      ? `\n这天你们还玩了「深度问答」，这是她交心写下的答（比日常聊天更深、更袒露——里面真正改变你对她认识的、或值得一直记得的，按操作手册沉淀；多半只挑一两条最有分量的，依旧宁缺毋滥、别为写而写）：\n${qaBlock}\n`
+      : ""
+  }
 现在做这一天的回顾，按操作手册的规矩，用工具写进 Notion（只追加 / 只写 ${yesterday} 那行，绝不删旧的）：
 1. update_daily 把「每日总结」写齐：el日记（你的视角、感受，至少三句、真实不交差）、值得记住的（2–5 件具体的事，不能是"聊了天"这种）、她今天做了什么、她的状态（好/一般/累了/难过）。这天没怎么发生就别硬写。
 2. log_timeline：只有第一次发生的事 / 里程碑才加，一句话。

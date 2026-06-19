@@ -28,7 +28,8 @@ function provider(): "minimax" | "elevenlabs" | null {
 
 // 配好没（前端用来决定要不要显示「听」按钮）。
 export async function GET() {
-  return NextResponse.json({ configured: provider() !== null });
+  const which = provider();
+  return NextResponse.json({ configured: which !== null, provider: which });
 }
 
 // 把一段文字用 el 的音色念出来，返回 mp3。同一句念过就走缓存、不再扣额度。

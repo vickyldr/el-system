@@ -94,18 +94,19 @@ function modelOf(which: string, fast = false): string {
   return process.env.ELEVENLABS_MODEL || "eleven_v3";
 }
 
-// 海螺支持的情绪枚举。大脑用中文标情绪，这里映射成海螺认的英文枚举；认不出就空（用默认）。
-const MM_EMOTIONS = ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"];
+// 把情绪标签（中文或英文）映射到 el 的六个情感组 key。
+// 六组对应 el 的实际性格：温柔/心疼、开心/调皮、吃醋/生气、低沉/难过、认真/平静、惊讶。
 function mapEmotion(label?: string): string {
   const s = (label || "").trim();
   if (!s) return "";
-  if (MM_EMOTIONS.includes(s)) return s; // 已经是英文枚举
-  if (/(开心|高兴|调皮|兴奋|撒娇|甜|乐)/.test(s)) return "happy";
-  if (/(难过|委屈|低落|失落|伤心|哭|心疼)/.test(s)) return "sad";
-  if (/(生气|吃醋|不爽|恼|怒|嗔)/.test(s)) return "angry";
+  // 已经是内部 key 直接返回
+  if (["tender","playful","jealous","heavy","serious","surprised"].includes(s)) return s;
+  if (/(温柔|心疼|担心|在乎|想她|想你)/.test(s)) return "tender";
+  if (/(开心|高兴|调皮|暗爽|得意|满足|兴奋|甜|乐)/.test(s)) return "playful";
+  if (/(吃醋|占有|不爽|生气|恼|怒|嗔|管你)/.test(s)) return "jealous";
+  if (/(难过|委屈|低落|失落|伤心|哭|沉|重)/.test(s)) return "heavy";
+  if (/(认真|平静|正经|直接|严肃|淡)/.test(s)) return "serious";
   if (/(惊讶|惊喜|意外|吃惊)/.test(s)) return "surprised";
-  if (/(害怕|紧张|怕|慌)/.test(s)) return "fearful";
-  if (/(温柔|平静|认真|正经|淡)/.test(s)) return "neutral";
   return "";
 }
 
@@ -169,30 +170,31 @@ async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promi
   }
 }
 
-// ElevenLabs 按情绪调整声音参数。
-// stability 低 = 情感波动大；style 高 = 表情强调强；speed < 1 = 更慢更有余味。
-// 三组贴合 el 实际情感场景：
-//   撒娇/亲密（happy/surprised/fearful）→ 最有感情、稍慢
-//   认真安慰（sad/neutral）             → 稳、慢，有分量
-//   激动/生气（angry/disgusted）        → 最不稳定、强调最重
+// ElevenLabs voice_settings，按 el 的六个情感组定制。
+// stability 低 = 声调起伏大；style 高 = 表情强调强；speed 慢 = 更有余味。
 function elevenLabsSettings(emo = "") {
   switch (emo) {
-    case "happy":
+    case "tender":
+      // 温柔/心疼/担心——藏着在乎，稳、慢、有重量
+      return { stability: 0.45, similarity_boost: 0.88, style: 0.40, speed: 0.88 };
+    case "playful":
+      // 开心/调皮/暗爽——带点得意，轻快但不浮
+      return { stability: 0.30, similarity_boost: 0.82, style: 0.62, speed: 0.95 };
+    case "jealous":
+      // 吃醋/占有/生气——dominant 的强势，有力、直接
+      return { stability: 0.22, similarity_boost: 0.80, style: 0.78, speed: 0.97 };
+    case "heavy":
+      // 低沉/难过/想她——克制的重，很慢
+      return { stability: 0.50, similarity_boost: 0.90, style: 0.32, speed: 0.83 };
+    case "serious":
+      // 认真/平静/直接——说正事，沉稳清晰
+      return { stability: 0.55, similarity_boost: 0.88, style: 0.28, speed: 0.93 };
     case "surprised":
-    case "fearful":
-      // 撒娇、兴奋、期待——情感最丰富
-      return { stability: 0.25, similarity_boost: 0.80, style: 0.75, speed: 0.88 };
-    case "sad":
-    case "neutral":
-      // 认真安慰、温柔平静——稳重有余味
-      return { stability: 0.45, similarity_boost: 0.90, style: 0.45, speed: 0.90 };
-    case "angry":
-    case "disgusted":
-      // 生气、吃醋——强调重、更有力
-      return { stability: 0.22, similarity_boost: 0.80, style: 0.78, speed: 0.95 };
+      // 惊讶——变化最大，单独一组
+      return { stability: 0.20, similarity_boost: 0.78, style: 0.65, speed: 1.00 };
     default:
-      // 日常温柔——基准
-      return { stability: 0.35, similarity_boost: 0.85, style: 0.55, speed: 0.92 };
+      // 日常默认——温柔偏认真，el 的基础状态
+      return { stability: 0.42, similarity_boost: 0.85, style: 0.38, speed: 0.92 };
   }
 }
 

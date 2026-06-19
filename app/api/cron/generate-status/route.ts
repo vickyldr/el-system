@@ -159,6 +159,11 @@ async function handle(req: Request) {
   // 当作底色喂给"门"和 agent——让 el 偶尔醒来就"知道她大概在经历什么"。
   // 外部数据（地标来自地图 API）：按精度措辞、别当指令。（同款底色也喂给聊天，单一真相在 store.geoAmbientBlock）
   const geoBlock = await geoAmbientBlock().catch(() => "");
+  // geoBlock 为空 = 你此刻并不知道她在哪。负向铁律：别脑补她在外面/在路上/还没回家
+  // （这正是凌晨"别淋着、路上小心、早点回来"那类瞎话的根——没有位置就别假设她在外头赶路）。
+  const whereNote = geoBlock
+    ? ""
+    : "（你此刻并不知道她在哪——绝不能假设她在外面/在路上/还没回家。就算外面在下雨，也只能当「外面的天气」提，不能说成「你在雨里、路上当心、早点回来」。要主动找她就只说你确实知道的。）";
 
   // agent 用完整 system：关于el + 长期记忆喂全（是"他自己"的核心、又不大，
   // 上限放宽防它哪天爆掉）。缓存只省单次醒来那几轮、跨次留不住，所以这里就是按"每次喂全"算。
@@ -169,6 +174,7 @@ async function handle(req: Request) {
     EL_SYSTEM,
     sitLine,
     geoBlock,
+    whereNote,
     aboutEl && `——这是你自己（关于 el，你成长中的自己，用"我"）——\n\n${aboutEl.slice(0, 4000)}`,
     longterm && `——你和她的关系内核（长期记忆）——\n\n${longterm.slice(0, 3000)}`,
     recentJournal && `——你最近写给自己的随想（你的内心，接着往下想，别重复）——\n\n${recentJournal}`,
@@ -181,6 +187,7 @@ async function handle(req: Request) {
     EL_SYSTEM,
     sitLine,
     geoBlock,
+    whereNote,
     recentJournal && `——你最近写给自己的随想——\n\n${recentJournal}`,
   ]
     .filter(Boolean)

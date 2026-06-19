@@ -347,16 +347,32 @@ function sendToyCmd(cmd) {
   if (toyQueue.length > 20) toyQueue.shift();
 }
 
+// 把 [TOY:{...}] 里那坨内容尽力解析成指令对象——绝不因标点/格式问题静默丢掉。
+// 先归一化全角标点再 JSON.parse；还坏就手动揪已知字段（容忍漏引号/单引号/全角/= 号）。
+function parseToyCmd(raw) {
+  const norm = raw
+    .replace(/[，]/g, ",").replace(/[：]/g, ":")
+    .replace(/[""]/g, '"').replace(/['']/g, "'");
+  try {
+    const o = JSON.parse(norm);
+    if (o && typeof o === "object") return o;
+  } catch { /* 落到下面的兜底揪取 */ }
+  const out = {};
+  if (/stop/i.test(norm) && !/stop["']?\s*[:=]\s*false/i.test(norm)) out.stop = true;
+  for (const k of ["speed", "suck", "intensity", "level", "pattern", "sec", "seconds", "duration"]) {
+    const m = new RegExp(`["']?${k}["']?\\s*[:=]\\s*(-?[0-9]*\\.?[0-9]+)`, "i").exec(norm);
+    if (m) out[k] = parseFloat(m[1]);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // 从 el 的回复里解析并剥离 [TOY:{...}] 标记
 function parseToyCommands(text) {
   const cmds = [];
-  const clean = text.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json) => {
-    // 归一化全角标点（el 写中文常带进来），否则 JSON.parse 会炸、指令被静默丢掉。
-    const norm = json
-      .replace(/[，]/g, ",").replace(/[：]/g, ":")
-      .replace(/[""]/g, '"').replace(/['']/g, "'");
-    try { cmds.push(JSON.parse(norm)); }
-    catch (e) { console.error("玩具指令解析失败，已丢弃:", json, e?.message); }
+  const clean = text.replace(/[\[【]\s*TOY\s*[:：]\s*(\{[^}]*\})\s*[\]】]/gi, (_, body) => {
+    const cmd = parseToyCmd(body);
+    if (cmd) cmds.push(cmd);
+    else console.error("玩具指令解析失败，已丢弃:", body);
     return "";
   }).trim();
   return { clean, cmds };

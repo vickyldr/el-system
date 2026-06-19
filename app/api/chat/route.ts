@@ -578,7 +578,9 @@ export async function POST(req: Request) {
       reply = "在呢，刚卡了一下，你再说一遍？";
     }
 
-    // 防漏：万一大脑在打字回复里也吐了语音用的情绪标签 [e:xxx]，剥掉，别显示在气泡里。
+    // 防漏：万一大脑在打字回复里也吐了语音用的情绪标签 [e:xxx]，先提取再剥掉，别显示在气泡里。
+    const emoMatch = /^\s*\[e:\s*([^\]]*)\]\s*/i.exec(reply);
+    const replyEmotion = emoMatch ? emoMatch[1].trim() : "";
     reply = reply.replace(/^\s*\[e:\s*[^\]]*\]\s*/i, "").trim();
 
     // 玩具指令：剥离 [TOY:{...}] 标记，转发给本地桥
@@ -632,7 +634,7 @@ export async function POST(req: Request) {
     }
 
     console.log(`聊天回复 via=${via || "?"}`);
-    return NextResponse.json({ reply, cloud, sticker: elSticker, via });
+    return NextResponse.json({ reply, emotion: replyEmotion, cloud, sticker: elSticker, via });
   } catch (err) {
     // 配置类错误（key 不对/没权限）才把硬报错抛给前端，好让她知道要去修。
     if (err instanceof Anthropic.APIError && (err.status === 401 || err.status === 403)) {

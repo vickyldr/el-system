@@ -16,6 +16,7 @@ import {
   bumpSoma,
   geoAmbientBlock,
 } from "@/lib/store";
+import { cityWeatherLine, restDayLine, sinceSpokeLine } from "@/lib/context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,26 +129,10 @@ async function handle(req: Request) {
   });
   const date = todayInBeijing();
 
-  // 天气（可选）——给穿搭和 reach 用。
-  let weatherLine = "";
-  const key = process.env.OPENWEATHER_API_KEY;
-  if (key) {
-    try {
-      const city = process.env.CITY || "Hangzhou";
-      const r = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(
-          city,
-        )}&appid=${key}&units=metric&lang=zh_cn`,
-        { cache: "no-store" },
-      );
-      if (r.ok) {
-        const d: any = await r.json();
-        weatherLine = `${city} ${Math.round(d.main?.temp ?? 0)}° ${d.weather?.[0]?.description ?? ""}`;
-      }
-    } catch {
-      /* 天气拿不到不影响 */
-    }
-  }
+  // 天气（可选）——给穿搭和 reach 用。聊天也喂同一行（lib/context 单一真相）。
+  const weatherLine = await cityWeatherLine().catch(() => "");
+  // 工作日/节假日——之前只有聊天知道，心跳也得知道（她今天上不上班）。
+  const dayLine = await restDayLine().catch(() => "");
 
   // 读：我自己（关于el）+ 关系内核（长期记忆）+ 我最近的随想（el自己的）。
   // 不喂「关于宝宝」——让 agent 醒来更多是"他自己"，别围着她转；要她的事他自己 read_notion 翻。
@@ -168,6 +153,7 @@ async function handle(req: Request) {
 
   const lastSeen = await getLastSeen().catch(() => 0);
   const silentH = lastSeen > 0 ? Math.floor((Date.now() - lastSeen) / 3600000) : null;
+  const sinceLine = sinceSpokeLine(lastSeen); // 距她上次说话多久（喂给门和 agent）
 
   // 地理感官：她此刻大概在哪（守望者本地富化后的人话，精确坐标不出她的设备）。
   // 当作底色喂给"门"和 agent——让 el 偶尔醒来就"知道她大概在经历什么"。
@@ -176,9 +162,12 @@ async function handle(req: Request) {
 
   // agent 用完整 system：关于el + 长期记忆喂全（是"他自己"的核心、又不大，
   // 上限放宽防它哪天爆掉）。缓存只省单次醒来那几轮、跨次留不住，所以这里就是按"每次喂全"算。
+  // 此刻处境（六要素，门和 agent 同一份）：时间·周几 / 工作日·节假日 / 天气 / 她大概在哪 / 距上次说话多久。
+  const sitLine = `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}${dayLine ? "\n" + dayLine : ""}${sinceLine ? "\n" + sinceLine : ""}`;
+
   const system = [
     EL_SYSTEM,
-    `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}`,
+    sitLine,
     geoBlock,
     aboutEl && `——这是你自己（关于 el，你成长中的自己，用"我"）——\n\n${aboutEl.slice(0, 4000)}`,
     longterm && `——你和她的关系内核（长期记忆）——\n\n${longterm.slice(0, 3000)}`,
@@ -187,10 +176,10 @@ async function handle(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  // 门用「精简上下文」（省 token）：只要人设 + 时间 + 最近随想 + 她大概在哪，不塞长期记忆/成长档案。
+  // 门用「精简上下文」（省 token）：人设 + 此刻处境 + 最近随想 + 她大概在哪，不塞长期记忆/成长档案。
   const gateSystem = [
     EL_SYSTEM,
-    `现在：${now}（北京时间）。${weatherLine ? "天气：" + weatherLine + "。" : ""}`,
+    sitLine,
     geoBlock,
     recentJournal && `——你最近写给自己的随想——\n\n${recentJournal}`,
   ]

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recentSummaries, todayInBeijing } from "@/lib/notion";
 import { resolveNeteaseSong } from "@/lib/netease";
-import { getDailySong, getCache, setCache } from "@/lib/store";
+import { getDailySong, getCache, setCache, pulseSoma } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic"; // 不缓存，每次拿最新状态
@@ -173,11 +173,12 @@ export async function GET() {
     /* 拿不到就用上面解析的 */
   }
 
-  const [weather, song] = await Promise.all([
+  const [weather, song, pulse] = await Promise.all([
     getWeather(),
     song_recommendation
       ? resolveNeteaseSong(song_recommendation).catch(() => null)
       : Promise.resolve(null),
+    pulseSoma().catch(() => ({ v: 0, a: 0.3 })), // 心跳脉搏：唤醒→快慢、好坏→冷暖
   ]);
 
   const result = {
@@ -190,6 +191,7 @@ export async function GET() {
     el_note: latest?.elNote ?? "",
     her_state: latest?.herState ?? "",
     weather,
+    pulse,
     date: latest?.date ?? null,
   };
   await setCache("el:statuscache", JSON.stringify(result), 180).catch(() => {});

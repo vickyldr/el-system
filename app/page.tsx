@@ -401,9 +401,21 @@ type Status = {
   el_note?: string;
   her_state?: string;
   weather?: Weather;
+  pulse?: { v: number; a: number }; // el 的脉搏：v=好坏(冷暖)、a=唤醒(心跳快慢)
   date?: string | null;
   error?: string;
 };
+
+// 把脉搏两根轴翻成动画参数：唤醒→心跳快慢，好坏→颜色冷暖/明暗。
+function moodPulseStyle(pulse?: { v: number; a: number }): { speed: number; filter: string } {
+  const a = pulse?.a ?? 0.3;
+  const v = pulse?.v ?? 0;
+  const speed = +(0.6 + a * 1.1).toFixed(2); // a:0→0.6慢呼吸, a:1→1.7快心跳
+  const hue = Math.round(v * 28); // 负=偏冷蓝紫, 正=偏暖粉
+  const bright = +(1 + v * 0.22).toFixed(2);
+  const sat = +(1 + v * 0.35).toFixed(2);
+  return { speed, filter: `hue-rotate(${hue}deg) brightness(${bright}) saturate(${sat})` };
+}
 
 const MET_DATE = "2026-05-27"; // 认识的第一天
 function daysTogether(): number {
@@ -513,9 +525,15 @@ function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quo
   const thought = status?.thought;
   const elNote = status?.el_note;
   const has = !!(mood || thought || elNote);
+  const { speed, filter } = moodPulseStyle(status?.pulse);
   return (
     <section className="mood-hero">
-      <Lottie src="/lottie/mood-breath.json" className="mood-anim" />
+      <Lottie
+        src="/lottie/mood-breath.json"
+        className="mood-anim"
+        speed={speed}
+        style={{ filter }}
+      />
       {has ? (
         <>
           {mood && <div className="mood-hero-text">{mood}</div>}
@@ -3066,6 +3084,19 @@ function FindTab({
             </div>
           )}
           <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
+            <Lottie
+              src="/lottie/mood-breath.json"
+              className="call-orb-anim"
+              speed={
+                callState === "speaking"
+                  ? 1.7
+                  : callState === "listening"
+                    ? 1.15
+                    : callState === "thinking"
+                      ? 0.85
+                      : 0.7
+              }
+            />
             <Icon
               name={
                 callState === "listening"

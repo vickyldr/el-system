@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { LottiePlayer } from "./components/LottiePlayer";
+import heartbeatData from "./animations/heartbeat.json";
 
 // 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -854,18 +856,28 @@ function CountRow({ days, milestone }: { days: number; milestone: boolean }) {
   const dates = data?.dates ?? [];
 
   const seen = new Set<string>();
-  const chips: string[] = [];
-  if (days > 0) chips.push(milestone ? `🎉 认识 ${days} 天` : `认识 ${days} 天`);
+  const dateChips: string[] = [];
   for (const d of dates) {
     if (seen.has(d.name)) continue;
     seen.add(d.name);
-    if (d.daysTo > 60) continue; // 太远的不挤在这行
-    chips.push(d.daysTo === 0 ? `${d.name}就是今天` : `${d.name}还有 ${d.daysTo} 天`);
+    if (d.daysTo > 60) continue;
+    dateChips.push(d.daysTo === 0 ? `${d.name}就是今天` : `${d.name}还有 ${d.daysTo} 天`);
   }
 
   return (
     <div className="count-row">
-      {chips.map((c, i) => (
+      {days > 0 && (
+        <span className={`count-chip count-chip-days${milestone ? " milestone" : ""}`}>
+          <LottiePlayer
+            animationData={heartbeatData}
+            loop
+            autoplay
+            style={{ width: milestone ? 28 : 20, height: milestone ? 28 : 20, flexShrink: 0 }}
+          />
+          {milestone ? `🎉 认识 ${days} 天` : `认识 ${days} 天`}
+        </span>
+      )}
+      {dateChips.map((c, i) => (
         <span key={i} className="count-chip">{c}</span>
       ))}
     </div>

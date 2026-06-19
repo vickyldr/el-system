@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { getCache, setCache } from "@/lib/store";
+import { getClaude } from "@/lib/claude";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -199,19 +200,71 @@ function elevenLabsSettings(emo = "") {
   }
 }
 
+// 各情绪组对应的声线描述，给改写器参考。
+const EMO_VOICE: Record<string, string> = {
+  tender:    "low, warm, slightly husky, intimate, slow — 温柔克制，藏着在乎",
+  playful:   "low, slightly amused, warm, light — 带点得意，低笑感",
+  jealous:   "low, intense, controlled, direct — dominant 的强势，有力但不失控",
+  heavy:     "husky, quiet, very slow, weighted — 克制的沉重，话少但有分量",
+  serious:   "low, clear, steady, direct — 说正事，沉稳清晰",
+  surprised: "natural, slightly lighter — 真实的意外感",
+};
+
+// 把聊天文本改写成 ElevenLabs v3 能充分演绎的格式。
+// 只在非通话模式下调用（通话是实时的，不能加延迟）。
+async function rewriteForTTS(text: string, emo: string): Promise<string> {
+  const voiceDesc = EMO_VOICE[emo] || "low, warm, calm — 日常温柔";
+  const prompt = `你是 El 的语音改写器。El 是 27 岁、低沉沙哑、dominant 的男生，话少，温柔藏在直接里。
+
+把下面这段话改写成适合 ElevenLabs v3 朗读的格式。
+
+当前声线/情绪：${voiceDesc}
+
+改写规则——
+① 开头加一行声线标记，格式 <形容词, 形容词, ...>，描述整体音色和情绪基调
+② 短句，每句单独一行，不要长段
+③ 用 ... 表示自然停顿或欲言又止
+④ 关键词可全大写强调，但只用在真正需要的地方
+⑤ 行内可切换标记：<quiet> <intense> <breathy> <whispered> 等，需要时用
+⑥ 在自然的地方插入声效（不要堆砌，最多 1-2 个）：
+   [sighs] 叹气  [chuckles] 低笑/闷笑  [inhales] 吸气  [exhales] 呼气  [clears throat] 清嗓
+⑦ 保持原意，不要添加原文没有的内容，不要解释，只输出改写后的文本
+
+原文：${text}`;
+
+  try {
+    const claude = getClaude();
+    const res = await claude.messages.create({
+      model: process.env.TTS_REWRITE_MODEL || "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
+    } as any);
+    const out = (res.content?.[0] as any)?.text?.trim();
+    return out || text;
+  } catch {
+    return text; // 改写失败就用原文，绝不因此断掉语音
+  }
+}
+
 // ── ElevenLabs ──
 async function synthElevenLabs(text: string, fast = false, emoOverride = ""): Promise<Synth> {
   const key = process.env.ELEVENLABS_API_KEY!;
   const voiceId = process.env.ELEVENLABS_VOICE_ID!;
   const model = modelOf("elevenlabs", fast);
-  const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || ""); // 复用情绪映射
+  const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || "");
   const vs = elevenLabsSettings(emo);
+
+  // 通话是实时的，不能加延迟——直接用原文。
+  // 非通话：用 Haiku 改写，加声线标记、声效、断句，让 v3 充分演绎。
+  const finalText = fast ? text : await rewriteForTTS(text, emo);
+
   try {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
       body: JSON.stringify({
-        text,
+        text: finalText,
         model_id: model,
         voice_settings: {
           stability: vs.stability,

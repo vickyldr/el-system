@@ -89,9 +89,9 @@ function modelOf(which: string, fast = false): string {
     if (fast) return process.env.MINIMAX_FAST_MODEL || "speech-2.6-turbo";
     return process.env.MINIMAX_MODEL || "speech-2.6-hd";
   }
-  // eleven_multilingual_v2：支持中文、表情最自然；打电话时用 turbo 降延迟
-  if (fast) return process.env.ELEVENLABS_FAST_MODEL || "eleven_turbo_v2_5";
-  return process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2";
+  // v3 表情最自然；conversational 专为实时对话低延迟优化，打电话用
+  if (fast) return process.env.ELEVENLABS_FAST_MODEL || "eleven_v3_conversational";
+  return process.env.ELEVENLABS_MODEL || "eleven_v3";
 }
 
 // 海螺支持的情绪枚举。大脑用中文标情绪，这里映射成海螺认的英文枚举；认不出就空（用默认）。

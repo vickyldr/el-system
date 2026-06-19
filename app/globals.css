@@ -2425,6 +2425,111 @@ body::before {
   text-align: center;
   line-height: 1.6;
 }
+
+/* ── 深度问答 ── */
+.qa {
+  padding: 8px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.qa-card {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 22px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeInUp 0.42s ease both;
+}
+.qa-q {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.qa-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+.qa-input::placeholder {
+  color: var(--ink-soft);
+}
+.qa-send,
+.qa-next {
+  appearance: none;
+  align-self: flex-start;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  cursor: pointer;
+}
+.qa-next {
+  align-self: center;
+}
+.qa-send:disabled,
+.qa-next:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.qa-turn {
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.qa-turn-latest {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: fadeInUp 0.42s ease both;
+}
+.qa-t-q {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.qa-t-a {
+  font-size: 14.5px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.qa-t-reply {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+.qa-past {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.qa-past-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  padding: 4px 2px;
+}
 .shelf-sec-label {
   font-size: 12px;
   color: var(--ink-soft);

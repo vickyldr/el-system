@@ -215,35 +215,35 @@ body::before {
   text-align: right;
 }
 
-/* 心情：el 第一人称的话——字本来就大，不套卡片，居中敞开放着 */
+/* 心情：中间一团会呼吸的动画当主角，不套卡片、居中；文字小小地落在动画下面 */
 .mood-hero {
-  padding: 8px 6px 4px;
+  padding: 10px 6px 6px;
   margin: 6px 0 28px;
   text-align: center;
   animation: fadeInUp 0.42s ease both;
 }
-.mood-hero .now-panel-label {
-  margin-bottom: 14px;
+/* 动画主角：居中的一团光 */
+.mood-anim {
+  width: 132px;
+  height: 132px;
+  margin: 2px auto 12px;
 }
 .mood-hero .meta {
   margin-left: auto;
   margin-right: auto;
   max-width: 30ch;
 }
+/* mood 这句话：小而温，落在动画下面 */
 .mood-hero-text {
   font-family: var(--font-hand);
-  font-size: 27px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.55;
+  line-height: 1.6;
+  color: var(--ink);
   word-break: break-word;
 }
-
-.now-panel-label {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-  margin-bottom: 16px;
+.mood-thought {
+  margin-top: 6px;
 }
 
 /* 抽屉里：推歌曲名 */

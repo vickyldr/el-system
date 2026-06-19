@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Lottie from "./Lottie";
 
 // 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -473,9 +474,8 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 
       {loading ? (
         <div className="mood-hero">
-          <div className="now-panel-label">心情</div>
-          <div className="skel skel-line lg" />
-          <div className="skel skel-line md" />
+          <Lottie src="/lottie/mood-breath.json" className="mood-anim" />
+          <div className="meta mood-thought">想想…</div>
         </div>
       ) : (
         <MoodHero status={status} onQuote={onQuote} />
@@ -495,7 +495,7 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
   );
 }
 
-/* ───────────── 心情：el 第一人称的话，敞开当主角 ───────────── */
+/* ───────────── 心情：中间一团会呼吸的动画当主角，文字小小地落在下面 ───────────── */
 function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quote) => void }) {
   const mood = status?.mood;
   const thought = status?.thought;
@@ -503,13 +503,13 @@ function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quo
   const has = !!(mood || thought || elNote);
   return (
     <section className="mood-hero">
-      <div className="now-panel-label">心情</div>
+      <Lottie src="/lottie/mood-breath.json" className="mood-anim" />
       {has ? (
         <>
-          <div className="mood-hero-text">{mood || <span className="muted">—</span>}</div>
-          {thought && <div className="meta">{thought}</div>}
+          {mood && <div className="mood-hero-text">{mood}</div>}
+          {thought && <div className="meta mood-thought">{thought}</div>}
           {elNote && (
-            <div className="meta" style={{ color: "var(--ink)" }}>
+            <div className="meta mood-thought" style={{ color: "var(--ink)" }}>
               {elNote}
             </div>
           )}
@@ -526,7 +526,7 @@ function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quo
           )}
         </>
       ) : (
-        <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
+        <div className="meta mood-thought">el 这会儿还没说话，过会儿再来看看～</div>
       )}
     </section>
   );

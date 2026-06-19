@@ -288,6 +288,25 @@ body::before {
   word-break: break-word;
 }
 
+/* 心情面板：呼吸动画居中，文字小小放底部 */
+.mood-orb-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0 4px;
+}
+.mood-text-foot {
+  text-align: center;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.mood-text-main {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .now-panel-big {
   font-size: 52px;
   font-weight: 600;

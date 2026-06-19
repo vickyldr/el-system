@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LottiePlayer } from "./components/LottiePlayer";
 import heartbeatData from "./animations/heartbeat.json";
+import breatheData from "./animations/breathe.json";
 
 // 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -564,9 +565,19 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
       node: (
         <div className="now-panel mood-pane-breathe">
           <div className="now-panel-label">心情</div>
-          <div className="now-panel-mood">{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta">{status.thought}</div>}
-          {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
+          <div className="mood-orb-wrap">
+            <LottiePlayer
+              animationData={breatheData}
+              loop
+              autoplay
+              style={{ width: 110, height: 110 }}
+            />
+          </div>
+          <div className="mood-text-foot">
+            {status.mood && <div className="mood-text-main">{status.mood}</div>}
+            {status.thought && <div className="meta">{status.thought}</div>}
+            {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
+          </div>
           {(status.mood || status.thought) && (
             <button
               type="button"

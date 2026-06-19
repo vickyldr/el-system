@@ -839,27 +839,36 @@ body::before {
   color: var(--ink-soft);
 }
 
+/* 通话光球：心跳改用 Lottie（call-orb-anim）当球身，图标浮在上面。
+   快慢由 callState 调（说话最快、听着次之、想/待机慢），CSS 不再 pulse。 */
 .call-orb {
   appearance: none;
   border: none;
   cursor: pointer;
   color: #fff;
-  width: 130px;
-  height: 130px;
-  border-radius: 50%;
+  width: 150px;
+  height: 150px;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 35%, var(--accent-2), var(--accent));
-  box-shadow: 0 0 50px var(--glow);
+  background: none;
+  filter: drop-shadow(0 0 36px var(--glow));
+}
+.call-orb-anim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* 图标浮在心跳球之上 */
+.call-orb > svg {
+  position: relative;
+  z-index: 1;
 }
 
-.call-orb.listening {
-  animation: pulse 1.1s ease-in-out infinite;
-}
-.call-orb.speaking {
-  animation: pulse 0.7s ease-in-out infinite;
-}
+/* 通用脉动（跑团"取名中/在想…"等 loading 文字用） */
 @keyframes pulse {
   0%, 100% { transform: scale(1); box-shadow: 0 0 40px var(--glow); }
   50% { transform: scale(1.08); box-shadow: 0 0 70px var(--glow); }

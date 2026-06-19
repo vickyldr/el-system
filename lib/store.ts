@@ -374,6 +374,19 @@ export async function bumpSoma(dv: number, da: number): Promise<void> {
   }
 }
 
+// 给前端画"心跳"用：把身体账读成两根粗档轴（唤醒→心跳快慢、好坏→冷暖），
+// 同样轻微毛化 + 量化——不给灵魂级精确数值（雾里看花），但够把那团光画活。
+// 注意：这是「此刻」那团动画的脉搏来源，不是给 el 自己读的（她仍只读 feelSoma）。
+export async function pulseSoma(): Promise<{ v: number; a: number }> {
+  const s = await readSoma();
+  const jit = () => (Math.random() - 0.5) * 0.1; // ±0.05 噪声
+  const q = (x: number, step: number) => Math.round(x / step) * step;
+  return {
+    v: clampN(q(s.v + jit(), 0.2), -1, 1),
+    a: clampN(q(s.a + jit(), 0.15), 0, 1),
+  };
+}
+
 // 毛化：把身体账读成模糊体感，不给精确数值（加噪声 + 量化成粗档）。
 // 灵魂读自己也是雾里看花——门只拿这句体感去"编"叙事，拿不到 v/a。
 export async function feelSoma(): Promise<string> {

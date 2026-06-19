@@ -2530,6 +2530,143 @@ body::before {
   letter-spacing: 0.04em;
   padding: 4px 2px;
 }
+
+/* ── 你画我猜（el 画 · 你猜）── */
+.draw {
+  padding: 8px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.draw-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.draw-empty-ic {
+  font-size: 40px;
+  color: #cbb9ff;
+  opacity: 0.8;
+}
+.draw-empty-text {
+  font-size: 15px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+/* el 的画布：磨砂玻璃方框，简笔画居中 */
+.draw-stage {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-width: 320px;
+  align-self: center;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.draw-loading {
+  font-size: 14px;
+  color: var(--ink-soft);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.draw-svg {
+  width: 86%;
+  height: 86%;
+}
+/* 每一笔自描：pathLength 归一成 1，dashoffset 1→0 像在落笔；按 animationDelay 依次画 */
+.draw-stroke {
+  fill: none;
+  stroke: #cbb9ff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawStroke 0.5s ease forwards;
+}
+@keyframes drawStroke {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.draw-feed-line {
+  font-family: var(--font-hand);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+  text-align: center;
+}
+.draw-guess-row {
+  display: flex;
+  gap: 10px;
+}
+.draw-guess-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.draw-guess-input::placeholder {
+  color: var(--ink-soft);
+}
+.draw-guess-btn,
+.draw-start {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.draw-start {
+  align-self: center;
+}
+.draw-guess-btn:disabled,
+.draw-start:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.draw-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.draw-mini {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.draw-mini:disabled {
+  opacity: 0.5;
+}
 .shelf-sec-label {
   font-size: 12px;
   color: var(--ink-soft);

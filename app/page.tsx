@@ -1489,13 +1489,14 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg" | "qa" | "other";
+type ShelfSub = "fic" | "book" | "rpg" | "qa" | "draw" | "other";
 
 const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
   { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
   { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
   { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
   { id: "qa",    icon: "♡", title: "深度问答", sub: "一题一题，越答越近" },
+  { id: "draw",  icon: "✎", title: "你画我猜", sub: "我画，你来猜" },
   { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
 ];
 
@@ -1517,6 +1518,7 @@ function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
         {sub === "book" && <BooksSection key={refreshKey} />}
         {sub === "rpg"  && <RpgTab key={refreshKey} />}
         {sub === "qa"   && <QaDeck key={refreshKey} />}
+        {sub === "draw" && <DrawGuess key={refreshKey} />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>
@@ -1638,6 +1640,150 @@ function QaDeck() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// 你画我猜：el 挑词（对你保密）→ 画成简笔 SVG → 一笔笔显现给你看 → 你猜。
+function DrawGuess() {
+  const [strokes, setStrokes] = useState<string[]>([]);
+  const [round, setRound] = useState(0); // 换张就 +1，给 <svg> 当 key 强制重放"画"的动画
+  const [loading, setLoading] = useState(false);
+  const [guess, setGuess] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]); // el 的反馈短句
+  const [word, setWord] = useState(""); // 揭晓后的词
+  const [done, setDone] = useState(false); // 猜对 / 看了答案
+
+  async function newRound() {
+    setLoading(true);
+    setStrokes([]);
+    setLog([]);
+    setWord("");
+    setDone(false);
+    setGuess("");
+    try {
+      const d = await fetch("/api/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "new" }),
+      }).then((r) => r.json());
+      if (Array.isArray(d.strokes) && d.strokes.length) {
+        setStrokes(d.strokes);
+        setRound((n) => n + 1);
+      } else {
+        setLog([d.error || "el 没画好，再点一次～"]);
+      }
+    } catch {
+      setLog(["连不上，等下再试～"]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function act(action: string, extra?: Record<string, unknown>) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await fetch("/api/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      }).then((r) => r.json());
+      if (d.reply) setLog((l) => [...l.slice(-2), d.reply]);
+      if (d.correct || (action === "reveal" && d.word)) {
+        if (d.word) setWord(d.word);
+        setDone(true);
+      }
+    } catch {
+      setLog((l) => [...l, "连不上，等下再试～"]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function submitGuess() {
+    const g = guess.trim();
+    if (!g || done || busy) return;
+    setGuess("");
+    act("guess", { guess: g });
+  }
+
+  if (strokes.length === 0 && !loading) {
+    return (
+      <div className="draw">
+        <div className="draw-empty">
+          <div className="draw-empty-ic">✎</div>
+          <div className="draw-empty-text">我来画，你来猜——准备好了吗？</div>
+          <button className="draw-start" onClick={newRound}>
+            让 el 画一张
+          </button>
+          {log.length > 0 && <div className="draw-feed-line">{log[log.length - 1]}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="draw">
+      <div className="draw-stage">
+        {loading ? (
+          <div className="draw-loading">el 正在想画什么…</div>
+        ) : (
+          <svg key={round} viewBox="0 0 100 100" className="draw-svg" aria-label="el 画的">
+            {strokes.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                pathLength={1}
+                className="draw-stroke"
+                style={{ animationDelay: `${(i * 0.4).toFixed(2)}s` }}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <div className="draw-feed">
+          {log.map((t, i) => (
+            <div className="draw-feed-line" key={i}>
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!done ? (
+        <>
+          <div className="draw-guess-row">
+            <input
+              className="draw-guess-input"
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitGuess();
+              }}
+              placeholder="猜猜 el 画的是什么…"
+            />
+            <button className="draw-guess-btn" disabled={!guess.trim() || busy} onClick={submitGuess}>
+              猜
+            </button>
+          </div>
+          <div className="draw-actions">
+            <button className="draw-mini" disabled={busy || loading} onClick={() => act("hint")}>
+              要个提示
+            </button>
+            <button className="draw-mini" disabled={busy || loading} onClick={() => act("reveal")}>
+              不猜了，看答案
+            </button>
+          </div>
+        </>
+      ) : (
+        <button className="draw-start" disabled={loading} onClick={newRound}>
+          再来一张
+        </button>
       )}
     </div>
   );

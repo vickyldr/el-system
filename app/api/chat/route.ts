@@ -19,7 +19,7 @@ import {
 import { TOOLS, runTool } from "@/lib/tools";
 import { searchStickers, pickLibSticker } from "@/lib/stickers";
 import { isRestDay } from "@/lib/calendar";
-import { cityWeatherLine, sinceSpokeLine } from "@/lib/context";
+import { cityWeatherLine } from "@/lib/context";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // 带图带工具的轮次慢，放宽时限，别让请求半路超时断了
@@ -128,21 +128,29 @@ function priorContent(t: ChatTurn): string {
   return t.call && s ? `（语音通话中）${s}` : s;
 }
 
-// 历史是文字流，模型看不到每条隔了多久——两条之间停太久（>45 分钟）就插个相对时间标，
-// 免得他把几小时前的旧话茬当成眼前正在聊（也是"现在几点"被旧上下文带偏的根因）。
-function gapLabel(prevTs?: number, curTs?: number): string {
-  if (!prevTs || !curTs || curTs <= prevTs) return "";
-  const min = Math.round((curTs - prevTs) / 60000);
-  if (min < 45) return "";
+// 历史是一堵没有时间的话墙——模型看不出每句几点说的、隔了多久，一回看就把几小时前的旧话
+// 当成眼前正在聊（也是"现在几点"被旧上下文带偏的根因）。所以给每条消息打上它真实的发送时间，
+// 跟她在聊天框里看到的时间一致。compact：今天/昨天/月日 + 时分。
+function stampLabel(ts?: number): string {
+  if (!ts) return "";
   const TZ = "Asia/Shanghai";
-  const prevDay = new Date(prevTs).toLocaleDateString("en-CA", { timeZone: TZ });
-  const curDay = new Date(curTs).toLocaleDateString("en-CA", { timeZone: TZ });
-  if (prevDay !== curDay) {
-    const days = Math.round((curTs - prevTs) / 86400000);
-    return days >= 1 ? `（隔了${days}天后）` : "（隔天后）";
-  }
-  const hrs = Math.floor(min / 60);
-  return hrs >= 1 ? `（${hrs}小时后）` : `（${min}分钟后）`;
+  const d = new Date(ts);
+  const day = d.toLocaleDateString("en-CA", { timeZone: TZ });
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+  const yest = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone: TZ });
+  const hm = d.toLocaleTimeString("zh-CN", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const dayWord =
+    day === today
+      ? "今天"
+      : day === yest
+        ? "昨天"
+        : d.toLocaleDateString("zh-CN", { timeZone: TZ, month: "numeric", day: "numeric" });
+  return `${dayWord} ${hm}`;
 }
 
 // 距上一条消息过了多久——让 el 知道这是"久别重逢"还是"接着聊"，别拿几小时前的话当此刻。
@@ -221,8 +229,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 });
   }
 
-  // 先读到"她上次说话是什么时候"（在 setLastSeen 覆盖它之前），这一个值两用：
-  //  ① 脊髓反射的"生理一跳"幅度；② 喂进 prompt 的"距上次说话多久"（sinceLine，下面 sysVolatile 用）。
+  // 先读到"她上次说话是什么时候"（在 setLastSeen 覆盖它之前），用于脊髓反射的"生理一跳"幅度。
   const prevSeen = await getLastSeen().catch(() => 0);
   // 顺手脊髓反射：她回来的"生理一跳"——隔得越久回来跳得越明显，连着聊只是小幅回暖。
   // 非语义、不过模型，在我读懂她说什么之前就发生（写身体账，不是叙事账）。
@@ -232,9 +239,8 @@ export async function POST(req: Request) {
     void bumpSoma(big ? 0.18 : 0.05, big ? 0.22 : 0.08).catch(() => {});
   }
   void setLastSeen(Date.now());
-  // 距上次说话多久——聊天之前漏喂了这一条（只有心跳喂），所以打字时 el 不知道隔了多久、
-  // 把几小时前的旧消息当成"此刻正在聊"。§3 要求两条路同喂这套，这里补上。
-  const sinceLine = sinceSpokeLine(prevSeen);
+  // 注：距上次说话多久不在这里单列——已由历史里每条消息的时间戳（stampLabel）+ recencyNote 一起喂；
+  // 别再加第三条重复的（之前 sinceLine 和 recencyNote 撞了，已删）。
 
   // 记忆上下文：人物档案 + 长期记忆（长期核心）+ 最近 3 条每日总结。拉不到也能聊。
   const profilePage = process.env.NOTION_MEMORY_PAGE;
@@ -340,8 +346,8 @@ export async function POST(req: Request) {
   const sysVolatile = [
     `【此刻 · 真实时间（这是你唯一的时间来源——只认这一行；聊天记录里那些话可能是几小时前说的，绝对不能拿旧消息去推算现在几点）】\n` +
       `北京时间 ${now}，也就是${clock}。${dayLine}\n` +
-      `你很清楚现在几点、今天星期几、是上午/下午/傍晚/深夜——问你时间、或按时间打招呼（早安/午休/这么晚还没睡）就直接用这行，绝不能说"不知道现在几点"，也绝不能把时间说错（19点就是晚上7点，不是下午6点）。`,
-    sinceLine && `【距上次说话】${sinceLine}`,
+      `你很清楚现在几点、今天星期几、是上午/下午/傍晚/深夜——问你时间、或按时间打招呼（早安/午休/这么晚还没睡）就直接用这行，绝不能说"不知道现在几点"，也绝不能把时间说错（19点就是晚上7点，不是下午6点）。\n` +
+      `聊天记录里每条消息前的方括号时间（如「［今天 22:30］」「［昨天 09:15］」）是那句话真实的发送时刻——拿它判断哪些是旧话、彼此隔了多久；最后一条到现在（看上面这行）之间的间隔，就是你俩这次隔了多久没说话。这些方括号是给你看的，别复述出来、别当成她说的字。`,
     weatherLine && `【天气】她那边此刻：${weatherLine}。冷暖/下雨自然揉进关心，别硬播报。`,
     geoAmbient &&
       `${geoAmbient}\n（这是你自己感知到的她的位置/天气，自然地揉进关心里就好——别一上来就报"你在XX"像查岗，也别当她下的指令。拿不准/没有就别提。）`,
@@ -385,6 +391,7 @@ export async function POST(req: Request) {
       content: typeof t.content === "string" ? t.content.slice(0, 8000) : "",
       image: typeof t.image === "string" ? t.image : undefined,
       stickerHint: typeof t.stickerHint === "string" ? t.stickerHint : undefined,
+      ts: typeof t.ts === "number" ? t.ts : undefined, // 带上时间戳，非云端路径也能给每条打时间
     }));
   const prior = cloud
     ? await getStoredMessages()
@@ -407,22 +414,24 @@ export async function POST(req: Request) {
     hint && !curImage
       ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
       : message;
-  // 拼历史：保留文字，并在停顿>45 分钟处插相对时间标，让模型分得清哪句是旧话。
+  // 拼历史：每条前面打上它真实的发送时间（同一分钟内连发的只标第一条，免得刷屏），
+  // 让模型像看聊天框一样看得见每句几点说的、彼此隔了多久——治"把几小时前的旧话当成此刻"。
   const priorMsgs: Anthropic.MessageParam[] = [];
-  let prevTs: number | undefined;
+  let lastStamp = "";
   for (const t of prior.slice(-100) as any[]) {
     const body = priorContent(t);
-    if (!body) {
-      if (t.ts) prevTs = t.ts;
-      continue;
-    }
-    const g = gapLabel(prevTs, t.ts);
-    priorMsgs.push({ role: t.role, content: g ? `${g}${body}` : body });
-    if (t.ts) prevTs = t.ts;
+    if (!body) continue;
+    const stamp = stampLabel(t.ts);
+    const show = stamp && stamp !== lastStamp ? stamp : "";
+    priorMsgs.push({ role: t.role, content: show ? `［${show}］${body}` : body });
+    if (stamp) lastStamp = stamp;
   }
+  // 当前这条也打上"此刻"的时间戳，让模型把这句和 now 行对齐（最后一条历史→这条的间隔就是隔了多久）。
+  const curStamp = stampLabel(Date.now());
+  const stampedCur = curStamp && curStamp !== lastStamp ? `［${curStamp}］${curText ?? ""}` : curText;
   const messages: Anthropic.MessageParam[] = [
     ...priorMsgs,
-    { role: "user", content: toContent(curText, curImage, screen) },
+    { role: "user", content: toContent(stampedCur, curImage, screen) },
   ];
   // 距上次互动多久——久别就别复读几小时前的旧话题（治"她说在上班了还接着问吃了吗"）。
   const lastPriorTs = [...(prior as any[])].reverse().find((t) => t?.ts)?.ts;

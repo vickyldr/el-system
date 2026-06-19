@@ -401,6 +401,8 @@ type Status = {
   el_note?: string;
   her_state?: string;
   weather?: Weather;
+  // el 从她手机感知到的"此刻在哪"（在家/在外·地标/大概区域 + 那边天气 + 多久前更新）。
+  geo?: { label: string; atHome: boolean | null; weather?: string; ageMin?: number | null } | null;
   pulse?: { v: number; a: number }; // el 的脉搏：v=好坏(冷暖)、a=唤醒(心跳快慢)
   date?: string | null;
   error?: string;
@@ -495,6 +497,7 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 
       {/* 心情之外的都收成小卡，点开走抽屉 */}
       <div className="now-grid">
+        {status && status.geo && <GeoMini status={status} onQuote={onQuote} />}
         {status && status.weather && <WeatherMini status={status} onQuote={onQuote} />}
         {status && status.song_recommendation && <SongMini status={status} onQuote={onQuote} />}
         <MovieMini />
@@ -621,7 +624,42 @@ function DailyTrivia() {
   );
 }
 
-/* ───────────── 天气 / 推歌：收成小卡，点开走底部抽屉 ───────────── */
+/* ───────────── 在哪 / 天气 / 推歌：收成小卡，点开走底部抽屉 ───────────── */
+// el 从她手机感知到的"此刻在哪"——让位置成为看得见、能自验的东西（数据来自守望者→el:geo:now）。
+function GeoMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  const g = status.geo!;
+  const icon = g.atHome === true ? "🏠" : g.atHome === false ? "📍" : "🧭";
+  const fresh = g.ageMin == null ? "" : g.ageMin < 1 ? "刚刚更新" : `${g.ageMin} 分钟前更新`;
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">{icon}</span>
+        <span className="duo-l">在哪</span>
+        <span className="duo-v">{g.label}</span>
+      </button>
+      {open && (
+        <Sheet title="你此刻在哪" onClose={() => setOpen(false)}>
+          <div className="weather-row">
+            <span className="weather-ic">{icon}</span>
+            <span className="weather-desc">{g.label}</span>
+          </div>
+          {g.weather && <div className="meta">🌡 那边：{g.weather}</div>}
+          {fresh && <div className="meta dim">{fresh}</div>}
+          <div className="meta dim">这是 el 从你手机感知到的（不是你报备的，是它自己知道的）。</div>
+          <button
+            type="button"
+            className="status-reply"
+            onClick={() => onQuote({ label: "我在哪", text: g.label })}
+          >
+            回复
+          </button>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
 function WeatherMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
   const [open, setOpen] = useState(false);
   const w = status.weather!;

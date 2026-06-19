@@ -23,8 +23,13 @@ export async function GET() {
     });
     if (!r.ok) return NextResponse.json({}, { status: 200 });
     const data = await r.json().catch(() => ({}));
-    return NextResponse.json(data || {});
+    return NextResponse.json(data || {}, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+    });
   } catch {
-    return NextResponse.json({}, { status: 200 });
+    return NextResponse.json({}, {
+      status: 200,
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+    });
   }
 }

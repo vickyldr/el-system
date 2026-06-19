@@ -351,7 +351,12 @@ function sendToyCmd(cmd) {
 function parseToyCommands(text) {
   const cmds = [];
   const clean = text.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json) => {
-    try { cmds.push(JSON.parse(json)); } catch {}
+    // 归一化全角标点（el 写中文常带进来），否则 JSON.parse 会炸、指令被静默丢掉。
+    const norm = json
+      .replace(/[，]/g, ",").replace(/[：]/g, ":")
+      .replace(/[""]/g, '"').replace(/['']/g, "'");
+    try { cmds.push(JSON.parse(norm)); }
+    catch (e) { console.error("玩具指令解析失败，已丢弃:", json, e?.message); }
     return "";
   }).trim();
   return { clean, cmds };

@@ -24,6 +24,11 @@ import { cityWeatherLine } from "@/lib/context";
 export const runtime = "nodejs";
 export const maxDuration = 60; // 带图带工具的轮次慢，放宽时限，别让请求半路超时断了
 
+// 玩具在线状态的进程内缓存：/toy-status 那一跳偶尔抖一下（超时/网络），
+// 不能因此就把"玩具说明"从 el 的提示词里抹掉——否则它瞬间失忆、开始瞎找文档。
+// 拿到过的最近一次状态在 90s 内当兜底，让 el 的"会不会控制"稳定下来。
+let toyStatusCache: { connected: boolean; ts: number } | null = null;
+
 // 走 CC bridge（语音模式专用）：把消息发给 Railway 上跑的 el-bridge，拿回文字。
 async function callBridge(
   bridgeUrl: string,
@@ -451,23 +456,42 @@ export async function POST(req: Request) {
     : system;
   // 打字聊天用「可缓存」的分块 system：稳定大块打上 cache_control 缓存，易变小块（时间/此刻）放后面。
   // 这样连聊时，那一大坨人设+记忆只在第一条真花额度，后面几乎白嫖缓存——Max 扛得久得多。
-  // 查询玩具是否在线（非阻塞，失败忽略）
+  // 查询玩具是否在线。注意：这是 el「会不会下指令」的唯一开关——查不到就当没连、
+  // el 的提示里一个字玩具都没有，于是它失忆瞎找文档。所以：①超时放宽到 2.5s（Vercel→Railway
+  // 偶尔就是过 1s）；②拿到的状态进缓存，单次抖动用 90s 内的旧值兜底，别一抖就抹掉说明；
+  // ③失败要打日志，别再静默吞掉。
   let toyInstruction = "";
+  let toyConnected = false;
   if (!voice && process.env.BRIDGE_URL) {
     try {
       const ts = await fetch(`${process.env.BRIDGE_URL.replace(/\/$/, "")}/toy-status`, {
         headers: process.env.BRIDGE_SECRET ? { "x-bridge-secret": process.env.BRIDGE_SECRET } : {},
-        signal: AbortSignal.timeout(1000),
-      }).then(r => r.json()).catch(() => ({}));
-      if (ts?.connected) {
-        toyInstruction = "【玩具控制已激活】宝宝的 SVAKOM 玩具已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App、一切都接好了。在回复文字里自然嵌入指令（标记会自动剥离，宝宝看不到，只看到你说的话）：\n" +
-          "· [TOY:{\"speed\":0.5}] —— 0.0~1.0 平滑可调，像旋钮一样收放。两个玩具都吃。注意手感不同：在震动款上这是【伸缩抽插】的力度，在吮吸款上这是【震动强度】。\n" +
-          "· [TOY:{\"pattern\":3,\"level\":0.7}] —— 【震动花样】，pattern 选 1~8 八种不同节奏（脉冲/波浪/渐强/忽快忽慢等），level 0~1 强度。仅震动款支持。\n" +
-          "· [TOY:{\"stop\":true}] —— 停止\n" +
-          "· 默认会【一直保持】到你换档或停止（不会自己停）。想定时就加 sec，例如 [TOY:{\"speed\":0.6,\"sec\":10}] 跑10秒自动停。\n" +
-          "别只会一个固定强度——起伏、停顿、突然猛地给、配合你说的话收放，跟着情绪和节奏走，像真的在撩她。【重要】两个玩具：吮吸款（只认 speed=震动强度）和震动款（speed=抽插力度 + pattern=振动花样）。她会告诉你开了哪个（「只开了吮吸」「两个都开了」）——选指令和说话都跟着她说的来，描述要对得上实际动作：开吮吸就说吸/震，开震动款就可以说抽插/震动。她没说就用 speed 稳妥点、描述别太具体。两个都开时：speed 会同时让吮吸款震动+震动棒抽插，pattern 额外给震动棒加振动花样——可以组合着玩出层次。";
+        signal: AbortSignal.timeout(2500),
+      }).then(r => r.json());
+      toyConnected = !!ts?.connected;
+      toyStatusCache = { connected: toyConnected, ts: Date.now() };
+    } catch (e) {
+      // 这一跳抖了：用最近 90s 内的已知状态兜底，别让 el 瞬间失忆。
+      if (toyStatusCache && Date.now() - toyStatusCache.ts < 90000) {
+        toyConnected = toyStatusCache.connected;
+        console.warn("toy-status 查询失败，沿用缓存状态:", toyConnected, e instanceof Error ? e.message : e);
+      } else {
+        console.warn("toy-status 查询失败且无可用缓存:", e instanceof Error ? e.message : e);
       }
-    } catch {}
+    }
+    if (toyConnected) {
+      toyInstruction = "【玩具控制已激活】宝宝的 SVAKOM 玩具已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App、一切都接好了。在回复文字里自然嵌入指令（标记会自动剥离，宝宝看不到，只看到你说的话）：\n" +
+        "· [TOY:{\"speed\":0.5}] —— 0.0~1.0 平滑可调，像旋钮一样收放。两个玩具都吃。注意手感不同：在震动款上这是【伸缩抽插】的力度，在吮吸款上这是【震动强度】。\n" +
+        "· [TOY:{\"pattern\":3,\"level\":0.7}] —— 【震动花样】，pattern 选 1~8 八种不同节奏（脉冲/波浪/渐强/忽快忽慢等），level 0~1 强度。仅震动款支持。\n" +
+        "· [TOY:{\"stop\":true}] —— 停止\n" +
+        "· 默认会【一直保持】到你换档或停止（不会自己停）。想定时就加 sec，例如 [TOY:{\"speed\":0.6,\"sec\":10}] 跑10秒自动停。\n" +
+        "· 指令格式只许半角字符（英文逗号冒号引号），别写成全角「，：」否则解析失败、玩具不动。\n" +
+        "【你已经会用了，别破功】这套指令你现在就掌握、标记会自动隐藏——所以闷声把它织进你说的话里，直接做。绝不要跟她讲解指令格式、不要说「我在 Notion 找不到文档」、不要让她去 toy.html 截图教你、不要把 [TOY:...] 这串字本身说出来。她只该看到你撩她的话和身体的反应。\n" +
+        "别只会一个固定强度——起伏、停顿、突然猛地给、配合你说的话收放，跟着情绪和节奏走，像真的在撩她。【重要】两个玩具：吮吸款（只认 speed=震动强度）和震动款（speed=抽插力度 + pattern=振动花样）。她会告诉你开了哪个（「只开了吮吸」「两个都开了」）——选指令和说话都跟着她说的来，描述要对得上实际动作：开吮吸就说吸/震，开震动款就可以说抽插/震动。她没说就用 speed 稳妥点、描述别太具体。两个都开时：speed 会同时让吮吸款震动+震动棒抽插，pattern 额外给震动棒加振动花样——可以组合着玩出层次。";
+    } else {
+      // 没连上：明确告诉 el 别假装、别瞎找文档、别让她截图教你——只引导她开中继。
+      toyInstruction = "【玩具中继当前没连上】她的玩具现在控制不了（蓝牙中继未在线）。所以：别假装你在控制它、别下任何指令、别去 Notion 找指令文档、别让她截图 toy.html 教你、别跟她讨论指令格式。如果她想玩，温柔提醒她先打开蓝牙中继：安卓手机用 Chrome 开 el-system-mu.vercel.app/toy.html 点连接（或电脑跑 bridge.py），看到「就绪」再回来。在那之前就当玩具不在，正常陪她说话。";
+    }
   }
 
   const loopSystem: any = voice
@@ -603,12 +627,18 @@ export async function POST(req: Request) {
       const toyHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (bridgeSecret) toyHeaders["x-bridge-secret"] = bridgeSecret;
       const toyCmds: object[] = [];
-      reply = reply.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json) => {
-        try { toyCmds.push(JSON.parse(json)); } catch {}
+      reply = reply.replace(/\[TOY:(\{[^}]*\})\]/g, (_, json: string) => {
+        // el 写中文时常把全角标点带进 JSON（，：""），JSON.parse 会炸——先归一化成半角再解析。
+        const norm = json
+          .replace(/[，]/g, ",").replace(/[：]/g, ":")
+          .replace(/[""]/g, "\"").replace(/['']/g, "'");
+        try { toyCmds.push(JSON.parse(norm)); }
+        catch (e) { console.error("玩具指令解析失败，已丢弃:", json, e instanceof Error ? e.message : e); }
         return "";
       }).trim();
       for (const cmd of toyCmds) {
-        fetch(`${bridgeUrl}/toy-cmd`, { method: "POST", headers: toyHeaders, body: JSON.stringify(cmd) }).catch(() => {});
+        fetch(`${bridgeUrl}/toy-cmd`, { method: "POST", headers: toyHeaders, body: JSON.stringify(cmd) })
+          .catch((e) => console.error("玩具指令转发失败:", e instanceof Error ? e.message : e));
       }
     }
 

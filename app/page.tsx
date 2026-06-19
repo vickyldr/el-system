@@ -495,9 +495,21 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
   );
 }
 
+/* 心情视觉已经交给中间那团动画——文字里就不留 emoji 了，只剩 el 说的话。 */
+function stripEmoji(s?: string): string {
+  if (!s) return "";
+  return s
+    .replace(
+      /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu,
+      "",
+    )
+    .replace(/^[\s·,，。、~～-]+/, "")
+    .trim();
+}
+
 /* ───────────── 心情：中间一团会呼吸的动画当主角，文字小小地落在下面 ───────────── */
 function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quote) => void }) {
-  const mood = status?.mood;
+  const mood = stripEmoji(status?.mood);
   const thought = status?.thought;
   const elNote = status?.el_note;
   const has = !!(mood || thought || elNote);

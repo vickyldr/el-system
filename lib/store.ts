@@ -625,3 +625,43 @@ export async function resetRpgSession(): Promise<void> {
     /* ignore */
   }
 }
+
+// ── 深度问答（el:qa）：一题一答攒下来，板块里可回看；挑题避开最近问过的。──
+export type QaTurn = { id: number; q: string; a: string; reply: string; ts: number };
+const QA_THREAD_KEY = "el:qa:thread";
+const QA_RECENT_KEY = "el:qa:recent";
+
+export async function getQaThread(): Promise<QaTurn[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<QaTurn[]>(QA_THREAD_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function pushQaTurn(turn: QaTurn): Promise<void> {
+  const r = redis();
+  if (!r) return;
+  try {
+    const cur = (await r.get<QaTurn[]>(QA_THREAD_KEY)) || [];
+    await r.set(QA_THREAD_KEY, [...cur, turn].slice(-100));
+    const recent = (await r.get<number[]>(QA_RECENT_KEY)) || [];
+    await r.set(QA_RECENT_KEY, [...recent, turn.id].slice(-12));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getQaRecent(): Promise<number[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<number[]>(QA_RECENT_KEY);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}

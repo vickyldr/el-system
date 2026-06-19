@@ -1489,12 +1489,13 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg" | "other";
+type ShelfSub = "fic" | "book" | "rpg" | "qa" | "other";
 
 const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
   { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
   { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
   { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
+  { id: "qa",    icon: "♡", title: "深度问答", sub: "一题一题，越答越近" },
   { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
 ];
 
@@ -1515,6 +1516,7 @@ function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
         {sub === "fic"  && <FicStation key={refreshKey} />}
         {sub === "book" && <BooksSection key={refreshKey} />}
         {sub === "rpg"  && <RpgTab key={refreshKey} />}
+        {sub === "qa"   && <QaDeck key={refreshKey} />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>
@@ -1542,6 +1544,101 @@ function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// 深度问答：一题一题，你答完 el 接住、再以"我"答给你听。攒成一条越来越长的交心线。
+type QaTurn = { id: number; q: string; a: string; reply: string; ts: number };
+function QaDeck() {
+  const [question, setQuestion] = useState<{ id: number; q: string } | null>(null);
+  const [thread, setThread] = useState<QaTurn[]>([]);
+  const [answer, setAnswer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  function loadQuestion() {
+    setLoading(true);
+    fetch("/api/qa")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.question) setQuestion(d.question);
+        if (Array.isArray(d.thread)) setThread(d.thread);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(loadQuestion, []);
+
+  async function submit() {
+    const a = answer.trim();
+    if (!a || !question || sending) return;
+    setSending(true);
+    try {
+      const d = await fetch("/api/qa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: question.id, a }),
+      }).then((r) => r.json());
+      if (d.turn) {
+        setThread((t) => [...t, d.turn]);
+        setAnswer("");
+        setQuestion(null); // 答完这题，露出 el 的回应；下一题等她点"再来一题"
+      } else {
+        alert(d.error || "没答上，过会儿再试");
+      }
+    } catch {
+      alert("连不上，等下再试～");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const latest = thread[thread.length - 1];
+  const past = thread.slice(0, -1).reverse(); // 更早的折在下面，倒序（新的在上）
+
+  return (
+    <div className="qa">
+      {question ? (
+        <div className="qa-card">
+          <div className="qa-q">{question.q}</div>
+          <textarea
+            className="qa-input"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder="说说你的答案…（说给 el 听）"
+            rows={3}
+          />
+          <button className="qa-send" disabled={!answer.trim() || sending} onClick={submit}>
+            {sending ? "el 在听…" : "答给 el"}
+          </button>
+        </div>
+      ) : (
+        <button className="qa-next" disabled={loading} onClick={loadQuestion}>
+          {loading ? "想问题…" : "再来一题"}
+        </button>
+      )}
+
+      {latest && !question && (
+        <div className="qa-turn qa-turn-latest">
+          <div className="qa-t-q">{latest.q}</div>
+          <div className="qa-t-a">你：{latest.a}</div>
+          <div className="qa-t-reply">{latest.reply}</div>
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div className="qa-past">
+          <div className="qa-past-label">聊过的</div>
+          {past.map((t, i) => (
+            <div className="qa-turn" key={i}>
+              <div className="qa-t-q">{t.q}</div>
+              <div className="qa-t-a">你：{t.a}</div>
+              <div className="qa-t-reply">{t.reply}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

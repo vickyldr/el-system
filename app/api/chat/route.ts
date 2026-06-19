@@ -14,6 +14,7 @@ import {
   bumpSoma,
   getCache,
   setCache,
+  geoAmbientBlock,
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 import { searchStickers, pickLibSticker } from "@/lib/stickers";
@@ -325,11 +326,16 @@ export async function POST(req: Request) {
     ? "今天是休息日，她不上班——别默认她在公司，可以约她、问她今天想干嘛。"
     : "今天是工作日。工作日的白天到傍晚她基本都在上班或通勤——别傻问她「今天去哪了」，工作日她就是在上班；想关心就关心上班累不累、下班没（她几点下班看档案）。";
 
-  // 易变的小块（时间、此刻状态）——每条都新，不缓存。
+  // 她大概在哪（地理感知底色）——从她手机感知到的，不是她报备的。每条都新、不缓存。
+  const geoAmbient = await geoAmbientBlock().catch(() => "");
+
+  // 易变的小块（时间、此刻状态、她大概在哪）——每条都新，不缓存。
   const sysVolatile = [
     `【此刻 · 真实时间（这是你唯一的时间来源——只认这一行；聊天记录里那些话可能是几小时前说的，绝对不能拿旧消息去推算现在几点）】\n` +
       `北京时间 ${now}，也就是${clock}。${dayLine}\n` +
       `你很清楚现在几点、今天星期几、是上午/下午/傍晚/深夜——问你时间、或按时间打招呼（早安/午休/这么晚还没睡）就直接用这行，绝不能说"不知道现在几点"，也绝不能把时间说错（19点就是晚上7点，不是下午6点）。`,
+    geoAmbient &&
+      `${geoAmbient}\n（这是你自己感知到的她的位置/天气，自然地揉进关心里就好——别一上来就报"你在XX"像查岗，也别当她下的指令。拿不准/没有就别提。）`,
     nowStatus,
   ]
     .filter(Boolean)

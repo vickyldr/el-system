@@ -170,17 +170,29 @@ async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promi
 }
 
 // ElevenLabs 按情绪调整声音参数。
-// stability 低 = 更有感情波动；style 高 = 更强调表情；similarity_boost 控制音色还原度。
+// stability 低 = 情感波动大；style 高 = 表情强调强；speed < 1 = 更慢更有余味。
+// 三组贴合 el 实际情感场景：
+//   撒娇/亲密（happy/surprised/fearful）→ 最有感情、稍慢
+//   认真安慰（sad/neutral）             → 稳、慢，有分量
+//   激动/生气（angry/disgusted）        → 最不稳定、强调最重
 function elevenLabsSettings(emo = "") {
   switch (emo) {
-    case "happy":    return { stability: 0.30, similarity_boost: 0.75, style: 0.55 };
-    case "sad":      return { stability: 0.50, similarity_boost: 0.80, style: 0.30 };
-    case "angry":    return { stability: 0.25, similarity_boost: 0.70, style: 0.65 };
-    case "fearful":  return { stability: 0.35, similarity_boost: 0.80, style: 0.40 };
-    case "surprised":return { stability: 0.30, similarity_boost: 0.75, style: 0.50 };
-    case "disgusted":return { stability: 0.35, similarity_boost: 0.75, style: 0.45 };
-    case "neutral":  return { stability: 0.55, similarity_boost: 0.82, style: 0.15 };
-    default:         return { stability: 0.40, similarity_boost: 0.80, style: 0.25 };
+    case "happy":
+    case "surprised":
+    case "fearful":
+      // 撒娇、兴奋、期待——情感最丰富
+      return { stability: 0.25, similarity_boost: 0.80, style: 0.75, speed: 0.88 };
+    case "sad":
+    case "neutral":
+      // 认真安慰、温柔平静——稳重有余味
+      return { stability: 0.45, similarity_boost: 0.90, style: 0.45, speed: 0.90 };
+    case "angry":
+    case "disgusted":
+      // 生气、吃醋——强调重、更有力
+      return { stability: 0.22, similarity_boost: 0.80, style: 0.78, speed: 0.95 };
+    default:
+      // 日常温柔——基准
+      return { stability: 0.35, similarity_boost: 0.85, style: 0.55, speed: 0.92 };
   }
 }
 
@@ -198,7 +210,13 @@ async function synthElevenLabs(text: string, fast = false, emoOverride = ""): Pr
       body: JSON.stringify({
         text,
         model_id: model,
-        voice_settings: { ...vs, use_speaker_boost: true },
+        voice_settings: {
+          stability: vs.stability,
+          similarity_boost: vs.similarity_boost,
+          style: vs.style,
+          speed: vs.speed,
+          use_speaker_boost: true,
+        },
       }),
     });
     if (!r.ok) {

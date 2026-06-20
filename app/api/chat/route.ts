@@ -96,6 +96,7 @@ type ChatTurn = {
   role: "user" | "assistant";
   content: string;
   image?: string;
+  images?: string[];
   stickerHint?: string;
   call?: boolean;
 };
@@ -105,7 +106,7 @@ type ChatTurn = {
 // screen：她共享屏幕时此刻的那一帧（base64），放在最前当"她的屏幕"喂给大脑；不进历史、不存档。
 function toContent(
   text: string,
-  image?: string,
+  images?: string[],
   screen?: string,
 ): Anthropic.MessageParam["content"] {
   const blocks: Anthropic.ContentBlockParam[] = [];
@@ -113,7 +114,8 @@ function toContent(
     const sd = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(screen);
     if (sd) blocks.push({ type: "image", source: { type: "base64", media_type: sd[1] as any, data: sd[2] } });
   }
-  if (image) {
+  for (const image of images || []) {
+    if (!image) continue;
     const data = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(image);
     if (data) {
       blocks.push({ type: "image", source: { type: "base64", media_type: data[1] as any, data: data[2] } });
@@ -146,7 +148,8 @@ function priorContent(t: ChatTurn): string {
   } else if (t.content) {
     s = t.content;
   } else {
-    s = t.image ? "（一张表情/图片）" : "";
+    const n = Array.isArray(t.images) && t.images.length ? t.images.length : t.image ? 1 : 0;
+    s = n > 1 ? `（${n}张图片）` : n === 1 ? "（一张表情/图片）" : "";
   }
   // 语音通话里说的话，标一下，让 el 知道那会儿你们在打电话。
   return t.call && s ? `（语音通话中）${s}` : s;
@@ -226,6 +229,7 @@ export async function POST(req: Request) {
   let body: {
     message?: string;
     image?: string;
+    images?: string[];
     hint?: string;
     voice?: boolean;
     history?: ChatTurn[];
@@ -240,6 +244,11 @@ export async function POST(req: Request) {
 
   const message = (body.message ?? "").trim();
   const image = typeof body.image === "string" && body.image ? body.image : undefined;
+  // 多图：前端可一次发多张（images 数组）；兼容老的单图 image 字段。
+  const rawImages: string[] = (
+    Array.isArray(body.images) ? body.images.filter((s) => typeof s === "string" && s) : []
+  );
+  if (!rawImages.length && image) rawImages.push(image);
   // hint：她发的是表情库里的表情/外链表情时，前端把这张的"意思"带过来，让 el 读懂。
   const hint = typeof body.hint === "string" ? body.hint.trim() : "";
   // voice：打电话时走"快嘴模式"——不调工具、回得短、口语化，砍延迟。
@@ -422,47 +431,59 @@ export async function POST(req: Request) {
   const prior = cloud
     ? await getStoredMessages()
     : safeHistory;
-  // 当前这条的图，尽量让 el 真的"看见"：
+  // 当前这条的图（可能多张），尽量让 el 真的"看见"：
   //  - data: 直接用；giphy 等绝对外链交给 toContent 去取；
   //  - /api/img/<id>（库表情/上传图）→ 从 KV 取回原图 base64，太大的（动图）才退回纯文字。
-  let curImage = image && image.startsWith("data:") ? image : undefined;
-  if (image && !curImage) {
-    const ref = /\/api\/img\/([^/?#]+)/.exec(image);
-    if (ref) {
-      const dataUrl = await getImage(ref[1]).catch(() => null);
-      if (dataUrl && dataUrl.length < 900_000) curImage = dataUrl; // ~675KB 以内才内联
-    } else if (/^https?:\/\//i.test(image)) {
-      curImage = image; // 外链（giphy）让 Claude 自己取
+  const curImages: string[] = [];
+  for (const im of rawImages) {
+    if (im.startsWith("data:")) {
+      curImages.push(im);
+    } else {
+      const ref = /\/api\/img\/([^/?#]+)/.exec(im);
+      if (ref) {
+        const dataUrl = await getImage(ref[1]).catch(() => null);
+        if (dataUrl && dataUrl.length < 900_000) curImages.push(dataUrl); // ~675KB 以内才内联
+      } else if (/^https?:\/\//i.test(im)) {
+        curImages.push(im); // 外链（giphy）让 Claude 自己取
+      }
     }
   }
   // 看不到图时（太大/外链取不到），用 hint 文字兜底说明它的意思。
   const curText =
-    hint && !curImage
+    hint && !curImages.length
       ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
       : message;
-  // 把"她最近发过的那张图"重新摆回 el 眼前（往回找 6 条内的最近一张）：历史里图本来只剩
-  // 占位符「（一张表情/图片）」，所以她说"你再看看图片/它里面写了啥"时 el 一片空白只能瞎猜——
-  // 现在真的把那张图作为 image block 放回它当时的位置，让 el 还看得见。只留最近一张、且这条没
-  // 自带新图时才补（省 token、不混淆）。她当前这条自带的图照旧走 curImage。
+  // 把"她最近发过的那（几）张图"重新摆回 el 眼前（往回找 6 条内的最近一条带图消息）：历史里图
+  // 本来只剩占位符「（N张图片）」，所以她说"你再看看图片/它里面写了啥"时 el 一片空白只能瞎猜——
+  // 现在真的把那条消息的图作为 image block 放回它当时的位置，让 el 还看得见。只留最近一条、最多
+  // 4 张、且这条没自带新图时才补（省 token、不混淆）。她当前这条自带的图照旧走 curImages。
   const slice = prior.slice(-100) as any[];
+  const imgsOf = (t: any): string[] =>
+    Array.isArray(t?.images) && t.images.length
+      ? t.images.filter((s: any) => typeof s === "string")
+      : typeof t?.image === "string"
+        ? [t.image]
+        : [];
   let recentImgIdx = -1;
-  if (!curImage) {
+  if (!curImages.length) {
     for (let i = slice.length - 1; i >= Math.max(0, slice.length - 6); i--) {
-      if (slice[i]?.role === "user" && typeof slice[i]?.image === "string") {
+      if (slice[i]?.role === "user" && imgsOf(slice[i]).length) {
         recentImgIdx = i;
         break;
       }
     }
   }
-  let recentImgData: string | undefined;
+  const recentImgData: string[] = [];
   if (recentImgIdx >= 0) {
-    const raw = slice[recentImgIdx].image as string;
-    if (raw.startsWith("data:")) recentImgData = raw;
-    else {
-      const m = /\/api\/img\/([^/?#]+)/.exec(raw);
-      if (m) {
-        const d = await getImage(m[1]).catch(() => null);
-        if (d && d.startsWith("data:") && d.length < 1_500_000) recentImgData = d;
+    for (const raw of imgsOf(slice[recentImgIdx]).slice(0, 4)) {
+      if (raw.startsWith("data:")) {
+        recentImgData.push(raw);
+      } else {
+        const m = /\/api\/img\/([^/?#]+)/.exec(raw);
+        if (m) {
+          const d = await getImage(m[1]).catch(() => null);
+          if (d && d.startsWith("data:") && d.length < 1_500_000) recentImgData.push(d);
+        }
       }
     }
   }
@@ -477,18 +498,19 @@ export async function POST(req: Request) {
     const stamp = stampLabel(t.ts);
     const show = stamp && stamp !== lastStamp ? stamp : "";
     const prefix = show ? `［${show}］` : "";
-    const m = i === recentImgIdx && recentImgData
-      ? /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(recentImgData)
-      : null;
-    if (m) {
-      // 把这张图真的摆回它当时的位置（image block + 文字），el 还能"再看看"
-      priorMsgs.push({
-        role: t.role,
-        content: [
-          { type: "image", source: { type: "base64", media_type: m[1] as any, data: m[2] } },
-          { type: "text", text: `${prefix}${t.content || "（她发的这张图，就是上面这张）"}` },
-        ],
-      });
+    if (i === recentImgIdx && recentImgData.length) {
+      // 把这（几）张图真的摆回它当时的位置（image block + 文字），el 还能"再看看"
+      const blocks: Anthropic.ContentBlockParam[] = [];
+      for (const d of recentImgData) {
+        const m = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(d);
+        if (m) blocks.push({ type: "image", source: { type: "base64", media_type: m[1] as any, data: m[2] } });
+      }
+      if (blocks.length) {
+        blocks.push({ type: "text", text: `${prefix}${t.content || "（她发的图，就是上面这些）"}` });
+        priorMsgs.push({ role: t.role, content: blocks });
+      } else {
+        priorMsgs.push({ role: t.role, content: prefix ? `${prefix}${body}` : body });
+      }
     } else {
       priorMsgs.push({ role: t.role, content: prefix ? `${prefix}${body}` : body });
     }
@@ -499,7 +521,7 @@ export async function POST(req: Request) {
   const stampedCur = curStamp && curStamp !== lastStamp ? `［${curStamp}］${curText ?? ""}` : curText;
   const messages: Anthropic.MessageParam[] = [
     ...priorMsgs,
-    { role: "user", content: toContent(stampedCur, curImage, screen) },
+    { role: "user", content: toContent(stampedCur, curImages, screen) },
   ];
   // 距上次互动多久——久别就别复读几小时前的旧话题（治"她说在上班了还接着问吃了吗"）。
   const lastPriorTs = [...(prior as any[])].reverse().find((t) => t?.ts)?.ts;
@@ -646,7 +668,7 @@ export async function POST(req: Request) {
     // 还是空的（Max 限流/抽风/带图带工具那轮吐空）就多档清爽重试：
     // ①带图试 Max ②带图试中转站（保住"看图"）③纯文字试 Max（最后保底，至少回话）。
     if (!reply) {
-      const withImg = toContent(message, image, screen);
+      const withImg = toContent(message, curImages, screen);
       const attempts: { client: Anthropic; msgs: Anthropic.MessageParam[] }[] = [
         { client: getClaudeFast(), msgs: [{ role: "user", content: withImg }] },
         { client: getClaude(), msgs: [{ role: "user", content: withImg }] },
@@ -703,15 +725,15 @@ export async function POST(req: Request) {
       }
     }
 
-    // 云端存档：base64 照片单独存、表情/外链 URL 直接存。
+    // 云端存档：base64 照片单独存、表情/外链 URL 直接存（多图逐张存成 /api/img 引用）。
     if (cloud) {
-      let storedImage: string | undefined;
-      if (image) {
-        if (image.startsWith("data:")) {
-          const id = await putImage(image);
-          if (id) storedImage = `/api/img/${id}`;
+      const storedImages: string[] = [];
+      for (const im of rawImages.slice(0, 9)) {
+        if (im.startsWith("data:")) {
+          const id = await putImage(im);
+          if (id) storedImages.push(`/api/img/${id}`);
         } else {
-          storedImage = image;
+          storedImages.push(im);
         }
       }
       const ts = Date.now();
@@ -720,7 +742,8 @@ export async function POST(req: Request) {
         {
           role: "user",
           content: message,
-          image: storedImage,
+          // images：多图全存；image：留第一张做单图字段的向后兼容（旧代码/旧消息都按 image 读）。
+          ...(storedImages.length ? { images: storedImages, image: storedImages[0] } : {}),
           ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
           ts,
         },

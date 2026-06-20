@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import Lottie from "./Lottie";
+import type { ElAvatarHandle } from "./ElAvatar";
+const ElAvatar = lazy(() => import("./ElAvatar"));
 
 // 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -2436,6 +2438,10 @@ function FindTab({
   const cameraLastSigRef = useRef<number | null>(null); // 上次发给 el 看的那帧签名
   const cameraLoopRef = useRef<ReturnType<typeof setInterval> | null>(null); // el 持续看她的循环
   const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
+  const avatarRef = useRef<ElAvatarHandle | null>(null); // el 的 VRM 头像
+  const avatarAnalyserRef = useRef<AnalyserNode | null>(null); // 嘴型分析器
+  const avatarRafRef = useRef<number>(0); // 嘴型同步 raf
+  const [callEmotion, setCallEmotion] = useState<string | undefined>(undefined); // 当前通话情绪
   const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
   const streamRef = useRef<MediaStream | null>(null);
@@ -2526,6 +2532,7 @@ function FindTab({
   async function speakReply(ac: AudioContext, text: string, emotion?: string) {
     botSpeaking.current = true;
     setCallState("speaking");
+    if (emotion) setCallEmotion(emotion);
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
@@ -2538,8 +2545,26 @@ function FindTab({
       if (ac.state === "suspended") await ac.resume().catch(() => {});
       const src = ac.createBufferSource();
       src.buffer = buf;
-      src.connect(outputGainRef.current ?? ac.destination);
+
+      // 嘴型同步：用 AnalyserNode 读音量驱动 VRM 嘴巴
+      cancelAnimationFrame(avatarRafRef.current);
+      const analyser = ac.createAnalyser();
+      analyser.fftSize = 256;
+      avatarAnalyserRef.current = analyser;
+      src.connect(analyser);
+      analyser.connect(outputGainRef.current ?? ac.destination);
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      function lipSync() {
+        analyser.getByteFrequencyData(dataArr);
+        const avg = dataArr.slice(0, 16).reduce((a, b) => a + b, 0) / 16 / 255;
+        avatarRef.current?.setMouth(avg * 2.5);
+        avatarRafRef.current = requestAnimationFrame(lipSync);
+      }
+      avatarRafRef.current = requestAnimationFrame(lipSync);
+
       src.onended = () => {
+        cancelAnimationFrame(avatarRafRef.current);
+        avatarRef.current?.setMouth(0);
         botSpeaking.current = false;
         if (callActive.current) setCallState("listening");
       };
@@ -3356,6 +3381,12 @@ function FindTab({
               : callMode === "screen"
                 ? "和 el 共享屏幕中"
                 : "和 el 通话中"}
+          </div>
+          {/* el 的 VRM 头像（所有通话模式都显示） */}
+          <div className="call-avatar">
+            <Suspense fallback={null}>
+              <ElAvatar ref={avatarRef} emotion={callEmotion} />
+            </Suspense>
           </div>
           {callMode === "video" && (
             <video

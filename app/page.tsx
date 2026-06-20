@@ -2570,7 +2570,14 @@ function FindTab({
       };
       currentSrcRef.current = src;
       src.start();
-    } catch {
+    } catch (err) {
+      console.error("[speakReply]", err);
+      // AudioContext 被挂起时尝试恢复一次再重试
+      if (ac.state === "suspended") {
+        try {
+          await ac.resume();
+        } catch {}
+      }
       botSpeaking.current = false;
       if (callActive.current) setCallState("listening");
     }
@@ -2889,6 +2896,15 @@ function FindTab({
       const gain = ac.createGain();
       gain.connect(ac.destination);
       outputGainRef.current = gain;
+
+      // iOS Safari 必须在用户手势里播一段静音才能解锁 AudioContext 的解码能力
+      try {
+        const silBuf = ac.createBuffer(1, 1, 22050);
+        const silSrc = ac.createBufferSource();
+        silSrc.buffer = silBuf;
+        silSrc.connect(gain);
+        silSrc.start();
+      } catch {}
 
       const ws = new WebSocket(`${wsUrl}/live?secret=${encodeURIComponent(secret || "")}`);
       wsRef.current = ws;

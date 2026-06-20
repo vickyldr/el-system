@@ -3497,3 +3497,319 @@ body::before {
   font-size: 18px;
   color: var(--ink-soft);
 }
+
+/* ===== 恢复：此刻 Lottie 改版 + 深度问答 + 你画我猜（接回当前 main，覆盖旧的滑动卡样式） ===== */
+
+/* ── 此刻：收起来的那些小卡（天气/推歌/电影/今日签/吃啥）排成两列网格，
+   点哪格走底部抽屉看详情 ── */
+.now-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+/* 此刻小卡：磨砂玻璃（照沉浸卡），盖掉旧的实色/投影 */
+.duo-mini {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: none;
+}
+.duo-mini:active {
+  transform: scale(0.97);
+}
+
+/* 心情：中间一团会呼吸的动画当主角，不套卡片、居中；文字小小地落在动画下面 */
+.mood-hero {
+  padding: 10px 6px 6px;
+  margin: 6px 0 28px;
+  text-align: center;
+  animation: fadeInUp 0.42s ease both;
+}
+/* 动画主角：居中的一团光 */
+.mood-anim {
+  width: 132px;
+  height: 132px;
+  margin: 2px auto 12px;
+}
+.mood-hero .meta {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 30ch;
+}
+/* mood 这句话：小而温，落在动画下面 */
+.mood-hero-text {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--ink);
+  word-break: break-word;
+}
+.mood-thought {
+  margin-top: 6px;
+}
+
+.status-reply {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.status-reply:active {
+  color: var(--ink);
+}
+.status-actions {
+
+/* ── 深度问答 ── */
+.qa {
+  padding: 8px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.qa-card {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 22px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeInUp 0.42s ease both;
+}
+.qa-q {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.qa-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+.qa-input::placeholder {
+  color: var(--ink-soft);
+}
+.qa-send,
+.qa-next {
+  appearance: none;
+  align-self: flex-start;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  cursor: pointer;
+}
+.qa-next {
+  align-self: center;
+}
+.qa-send:disabled,
+.qa-next:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.qa-turn {
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.qa-turn-latest {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: fadeInUp 0.42s ease both;
+}
+.qa-t-q {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.qa-t-a {
+  font-size: 14.5px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.qa-t-reply {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+.qa-past {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.qa-past-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  padding: 4px 2px;
+}
+
+
+/* ── 你画我猜（el 画 · 你猜）── */
+.draw {
+  padding: 8px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.draw-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.draw-empty-ic {
+  font-size: 40px;
+  color: #cbb9ff;
+  opacity: 0.8;
+}
+.draw-empty-text {
+  font-size: 15px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+/* el 的画布：磨砂玻璃方框，简笔画居中 */
+.draw-stage {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-width: 320px;
+  align-self: center;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.draw-loading {
+  font-size: 14px;
+  color: var(--ink-soft);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.draw-svg {
+  width: 86%;
+  height: 86%;
+}
+/* 每一笔自描：pathLength 归一成 1，dashoffset 1→0 像在落笔；按 animationDelay 依次画 */
+.draw-stroke {
+  fill: none;
+  stroke: #cbb9ff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawStroke 0.5s ease forwards;
+}
+@keyframes drawStroke {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.draw-feed-line {
+  font-family: var(--font-hand);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+  text-align: center;
+}
+.draw-guess-row {
+  display: flex;
+  gap: 10px;
+}
+.draw-guess-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.draw-guess-input::placeholder {
+  color: var(--ink-soft);
+}
+.draw-guess-btn,
+.draw-start {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.draw-start {
+  align-self: center;
+}
+.draw-guess-btn:disabled,
+.draw-start:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.draw-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.draw-mini {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.draw-mini:disabled {
+  opacity: 0.5;
+}

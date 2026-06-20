@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import {
   setGeoNow,
   pushGeoEvent,
@@ -8,6 +8,7 @@ import {
   type GeoNow,
   type GeoEvent,
 } from "@/lib/store";
+import { maybeReachOut } from "@/lib/reach";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,8 +18,8 @@ export const dynamic = "force-dynamic";
 // 精确坐标永不进入云端。鉴权同心跳：Bearer CRON_SECRET 或 ?key=。
 //
 // 两类负载：
-//   { type:"snapshot", area, place, weather, raining, accuracy, atHome }  → 当下位置快照（覆盖）
-//   { type:"left_home"|"arrived_place"|"outside_checkin"|"back_home", summary } → 转场事件（入队）
+//   { type:"snapshot", area, place, weather, raining, accuracy, atHome, atWork }  → 当下位置快照（覆盖）
+//   { type:"left_home"|"arrived_place"|"outside_checkin"|"back_home"|"arrived_work"|"left_work", summary } → 转场事件（入队）
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
   const url = new URL(req.url);
@@ -48,13 +49,15 @@ async function handle(req: Request) {
       accuracy: body.accuracy === "coarse" ? "coarse" : "good",
       // 三态：true=在家 / false=确实在外 / 不传或 null=没设家、判断不了（别当成在外）
       atHome: typeof body.atHome === "boolean" ? body.atHome : undefined,
+      // 三态：true=在公司 / false=不在公司 / 不传或 null=没设工作地点
+      atWork: typeof body.atWork === "boolean" ? body.atWork : undefined,
       ts: Date.now(),
     };
     await setGeoNow(g);
     return NextResponse.json({ ok: true, stored: "snapshot" });
   }
 
-  const kinds = ["left_home", "arrived_place", "outside_checkin", "back_home"] as const;
+  const kinds = ["left_home", "arrived_place", "outside_checkin", "back_home", "arrived_work", "left_work"] as const;
   if ((kinds as readonly string[]).includes(type)) {
     const summary = clip(body.summary, 200);
     if (!summary) return NextResponse.json({ error: "summary required" }, { status: 400 });
@@ -68,10 +71,20 @@ async function handle(req: Request) {
         weather: clip(body.weather, 60),
         raining: !!body.raining,
         accuracy: body.accuracy === "coarse" ? "coarse" : "good",
-        atHome: type === "back_home",
+        atHome: typeof body.atHome === "boolean" ? body.atHome : type === "back_home",
+        atWork: typeof body.atWork === "boolean" ? body.atWork : type === "arrived_work" ? true : type === "left_work" ? false : undefined,
         ts: Date.now(),
       });
     }
+    // 快通道：转场事件（出门/到家/在外）时效性强——不傻等下一次心跳，事件一进来就
+    // 立刻让 el 判一次要不要开口。仍走 maybeReachOut 的全部闸（每天≤5、间隔≥2.5h、
+    // 安静时段、重要日期优先）+ el 自己决定"这事不值当就别说"，所以不会变成机械报备。
+    // 用 after() 在响应发出后才冷跑（不阻塞守望者的 POST、避开它 12s 超时）；
+    // 走 maybeReachOut 自己读 geoNow/事件队列，weatherLine 留空（由头就是这条转场事件）。
+    // 和心跳里的 maybeReachOut 共用同一份 reachState，谁先推谁更新 last，另一边撞间隔自然让位。
+    after(async () => {
+      await maybeReachOut("").catch(() => {});
+    });
     return NextResponse.json({ ok: true, stored: "event", kind: type });
   }
 

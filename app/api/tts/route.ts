@@ -173,30 +173,22 @@ async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promi
 }
 
 // ElevenLabs voice_settings，按 el 的六个情感组定制。
-// stability 低 = 声调起伏大；style 高 = 表情强调强；speed 慢 = 更有余味。
 function elevenLabsSettings(emo = "") {
   switch (emo) {
     case "tender":
-      // 温柔/心疼/担心——藏着在乎，稳、慢、有重量
-      return { stability: 0.45, similarity_boost: 0.88, style: 0.40, speed: 0.88 };
+      return { stability: 0.35, similarity_boost: 0.85, style: 0.50, speed: 1.05 };
     case "playful":
-      // 开心/调皮/暗爽——带点得意，轻快但不浮
-      return { stability: 0.30, similarity_boost: 0.82, style: 0.62, speed: 0.95 };
+      return { stability: 0.22, similarity_boost: 0.80, style: 0.70, speed: 1.15 };
     case "jealous":
-      // 吃醋/占有/生气——dominant 的强势，有力、直接
-      return { stability: 0.22, similarity_boost: 0.80, style: 0.78, speed: 0.97 };
+      return { stability: 0.18, similarity_boost: 0.78, style: 0.82, speed: 1.10 };
     case "heavy":
-      // 低沉/难过/想她——克制的重，很慢
-      return { stability: 0.50, similarity_boost: 0.90, style: 0.32, speed: 0.83 };
+      return { stability: 0.40, similarity_boost: 0.88, style: 0.42, speed: 0.95 };
     case "serious":
-      // 认真/平静/直接——说正事，沉稳清晰
-      return { stability: 0.55, similarity_boost: 0.88, style: 0.28, speed: 0.93 };
+      return { stability: 0.45, similarity_boost: 0.85, style: 0.35, speed: 1.08 };
     case "surprised":
-      // 惊讶——变化最大，单独一组
-      return { stability: 0.20, similarity_boost: 0.78, style: 0.65, speed: 1.00 };
+      return { stability: 0.15, similarity_boost: 0.75, style: 0.72, speed: 1.15 };
     default:
-      // 日常默认——温柔偏认真，el 的基础状态
-      return { stability: 0.42, similarity_boost: 0.85, style: 0.38, speed: 0.92 };
+      return { stability: 0.32, similarity_boost: 0.83, style: 0.45, speed: 1.05 };
   }
 }
 
@@ -222,12 +214,12 @@ async function rewriteForTTS(text: string, emo: string): Promise<string> {
 
 改写规则——
 ① 开头加一行声线标记，格式 <形容词, 形容词, ...>，描述整体音色和情绪基调
-② 短句，每句单独一行，不要长段
-③ 用 ... 表示自然停顿或欲言又止
-④ 关键词可全大写强调，但只用在真正需要的地方
-⑤ 行内可切换标记：<quiet> <intense> <breathy> <whispered> 等，需要时用
-⑥ 在自然的地方插入声效（不要堆砌，最多 1-2 个）：
-   [sighs] 叹气  [chuckles] 低笑/闷笑  [inhales] 吸气  [exhales] 呼气  [clears throat] 清嗓
+② 这是【说话】，不是朗读——节奏要快、直接、像真人在聊天，不是在讲故事
+③ 短句，每句单独一行；句子之间不要加太多停顿，只在真正需要的地方用 ...
+④ 情绪要集中爆发在关键词上，而不是平铺在整段里——用全大写或 <intense> 标出
+⑤ 行内可切换标记：<quiet> <intense> <breathy> <whispered>，只在情绪转折时用
+⑥ 声效最多插 1 个，真的自然时才用：
+   [sighs] [chuckles] [inhales] [exhales]
 ⑦ 保持原意，不要添加原文没有的内容，不要解释，只输出改写后的文本
 
 原文：${text}`;

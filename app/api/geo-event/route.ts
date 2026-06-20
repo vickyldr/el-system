@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import {
   setGeoNow,
   pushGeoEvent,
@@ -8,6 +8,7 @@ import {
   type GeoNow,
   type GeoEvent,
 } from "@/lib/store";
+import { maybeReachOut } from "@/lib/reach";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,6 +73,15 @@ async function handle(req: Request) {
         ts: Date.now(),
       });
     }
+    // 快通道：转场事件（出门/到家/在外）时效性强——不傻等下一次心跳，事件一进来就
+    // 立刻让 el 判一次要不要开口。仍走 maybeReachOut 的全部闸（每天≤5、间隔≥2.5h、
+    // 安静时段、重要日期优先）+ el 自己决定"这事不值当就别说"，所以不会变成机械报备。
+    // 用 after() 在响应发出后才冷跑（不阻塞守望者的 POST、避开它 12s 超时）；
+    // 走 maybeReachOut 自己读 geoNow/事件队列，weatherLine 留空（由头就是这条转场事件）。
+    // 和心跳里的 maybeReachOut 共用同一份 reachState，谁先推谁更新 last，另一边撞间隔自然让位。
+    after(async () => {
+      await maybeReachOut("").catch(() => {});
+    });
     return NextResponse.json({ ok: true, stored: "event", kind: type });
   }
 

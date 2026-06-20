@@ -3,7 +3,7 @@ import { getClaudeFast, getClaude } from "@/lib/claude";
 import { EL_SYSTEM } from "@/lib/persona";
 import {
   getRpgSession, setRpgSession, resetRpgSession,
-  type RpgSession, type RpgStats, type RpgNpc,
+  type RpgSession, type RpgStats,
 } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -89,7 +89,7 @@ async function extractStateChanges(
   playerInput: string,
   gmReply: string,
   roll: number,
-): Promise<{ hpDelta: number; mpDelta: number; npcs: RpgNpc[]; flags: Record<string, boolean> }> {
+): Promise<{ hpDelta: number; mpDelta: number; npcs: { name: string; delta: number }[]; flags: Record<string, boolean> }> {
   try {
     const claude = getClaude();
     const resp = await claude.messages.create({
@@ -120,7 +120,7 @@ GM叙事：${gmReply}
       .join("");
     const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
 
-    const npcs: RpgNpc[] = Array.isArray(json.npcs)
+    const npcs: { name: string; delta: number }[] = Array.isArray(json.npcs)
       ? json.npcs.map((n: { name: string; delta: number }) => ({ name: n.name, delta: n.delta }))
       : [];
 

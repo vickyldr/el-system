@@ -2535,6 +2535,7 @@ function FindTab({
       if (!r.ok) throw new Error("tts");
       const buf = await ac.decodeAudioData(await r.arrayBuffer());
       try { currentSrcRef.current?.stop(); } catch {}
+      if (ac.state === "suspended") await ac.resume().catch(() => {});
       const src = ac.createBufferSource();
       src.buffer = buf;
       src.connect(outputGainRef.current ?? ac.destination);

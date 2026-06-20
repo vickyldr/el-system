@@ -139,7 +139,7 @@ function applyStateChanges(
   session: RpgSession,
   hpDelta: number,
   mpDelta: number,
-  npcDeltas: RpgNpc[],
+  npcDeltas: { name: string; delta: number }[],
   flags: Record<string, boolean>,
 ): RpgSession {
   const s = session.stats;

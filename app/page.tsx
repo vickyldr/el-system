@@ -1,10 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Lottie from "./Lottie";
-import type { ElAvatarHandle } from "./ElAvatar";
-const ElAvatar = lazy(() => import("./ElAvatar"));
 
 // 底部弹起的抽屉：今日签 / 吃啥的完整交互在这里展开（点开才占整屏，平时只占首页一格）
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -338,9 +335,7 @@ export default function Home() {
               }}
             />
           ) : tab === "read" ? (
-            // 不按 refreshKey 整体重挂——那会把沉浸的二级页打回选卡片首页（被误当成"返回上一级"）。
-            // 改成只刷新当前打开的内容，停留在原地。
-            <BookshelfTab refreshKey={refreshKey} />
+            <BookshelfTab key={refreshKey} />
           ) : (
             <UsTab key={refreshKey} />
           )}
@@ -403,23 +398,9 @@ type Status = {
   el_note?: string;
   her_state?: string;
   weather?: Weather;
-  // el 从她手机感知到的"此刻在哪"（在家/在外·地标/大概区域 + 那边天气 + 多久前更新）。
-  geo?: { label: string; atHome: boolean | null; weather?: string; ageMin?: number | null } | null;
-  pulse?: { v: number; a: number }; // el 的脉搏：v=好坏(冷暖)、a=唤醒(心跳快慢)
   date?: string | null;
   error?: string;
 };
-
-// 把脉搏两根轴翻成动画参数：唤醒→心跳快慢，好坏→颜色冷暖/明暗。
-function moodPulseStyle(pulse?: { v: number; a: number }): { speed: number; filter: string } {
-  const a = pulse?.a ?? 0.3;
-  const v = pulse?.v ?? 0;
-  const speed = +(0.6 + a * 1.1).toFixed(2); // a:0→0.6慢呼吸, a:1→1.7快心跳
-  const hue = Math.round(v * 28); // 负=偏冷蓝紫, 正=偏暖粉
-  const bright = +(1 + v * 0.22).toFixed(2);
-  const sat = +(1 + v * 0.35).toFixed(2);
-  return { speed, filter: `hue-rotate(${hue}deg) brightness(${bright}) saturate(${sat})` };
-}
 
 const MET_DATE = "2026-05-27"; // 认识的第一天
 function daysTogether(): number {
@@ -472,6 +453,9 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
     };
   }, []);
 
+  const hasAny =
+    status && (status.mood || status.song_recommendation || status.weather || status.el_note);
+
   const [dateStr, setDateStr] = useState("");
   useEffect(() => {
     const d = new Date();
@@ -488,82 +472,32 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 
       <CountRow days={days} milestone={milestone} />
 
-      {loading ? (
-        <div className="mood-hero">
-          <Lottie src="/lottie/mood-breath.json" className="mood-anim" />
-          <div className="meta mood-thought">想想…</div>
+      {loading && (
+        <div className="now-card now-card-skel">
+          <div className="skel skel-line sm" />
+          <div className="skel skel-line lg" />
+          <div className="skel skel-line md" />
         </div>
-      ) : (
-        <MoodHero status={status} onQuote={onQuote} />
       )}
 
-      {/* 心情之外的都收成小卡，点开走抽屉 */}
-      <div className="now-grid">
-        {status && status.geo && <GeoMini status={status} onQuote={onQuote} />}
-        {status && status.weather && <WeatherMini status={status} onQuote={onQuote} />}
-        {status && status.song_recommendation && <SongMini status={status} onQuote={onQuote} />}
-        <MovieMini />
+      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
+
+      {!loading && !hasAny && (
+        <div className="now-card">
+          <div className="now-panel">
+            <div className="now-panel-label">心情</div>
+            <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
+          </div>
+        </div>
+      )}
+
+      <div className="now-duo">
         <FortuneCard />
         <EatDecider />
-        {/* 冷知识也收成一格，正好补上网格右下角的空位 */}
-        <DailyTrivia />
       </div>
+
+      <DailyTrivia />
     </>
-  );
-}
-
-/* 心情视觉已经交给中间那团动画——文字里就不留 emoji 了，只剩 el 说的话。 */
-function stripEmoji(s?: string): string {
-  if (!s) return "";
-  return s
-    .replace(
-      /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu,
-      "",
-    )
-    .replace(/^[\s·,，。、~～-]+/, "")
-    .trim();
-}
-
-/* ───────────── 心情：中间一团会呼吸的动画当主角，文字小小地落在下面 ───────────── */
-function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quote) => void }) {
-  const mood = stripEmoji(status?.mood);
-  const thought = status?.thought;
-  const elNote = status?.el_note;
-  const has = !!(mood || thought || elNote);
-  const { speed, filter } = moodPulseStyle(status?.pulse);
-  return (
-    <section className="mood-hero">
-      <Lottie
-        src="/lottie/mood-breath.json"
-        className="mood-anim"
-        speed={speed}
-        style={{ filter }}
-      />
-      {has ? (
-        <>
-          {mood && <div className="mood-hero-text">{mood}</div>}
-          {thought && <div className="meta mood-thought">{thought}</div>}
-          {elNote && (
-            <div className="meta mood-thought" style={{ color: "var(--ink)" }}>
-              {elNote}
-            </div>
-          )}
-          {(mood || thought) && (
-            <button
-              type="button"
-              className="status-reply"
-              onClick={() =>
-                onQuote({ label: "心情", text: [mood, thought].filter(Boolean).join(" / ") })
-              }
-            >
-              回复
-            </button>
-          )}
-        </>
-      ) : (
-        <div className="meta mood-thought">el 这会儿还没说话，过会儿再来看看～</div>
-      )}
-    </section>
   );
 }
 
@@ -572,7 +506,6 @@ type Trivia = { date: string; oneliner: string; detail: string; sourceTitle: str
 
 function DailyTrivia() {
   const [t, setT] = useState<Trivia | null>(null);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -581,33 +514,19 @@ function DailyTrivia() {
       .then((d) => {
         if (alive && d.trivia?.oneliner) setT(d.trivia);
       })
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
+      .catch(() => {});
     return () => {
       alive = false;
     };
   }, []);
 
-  // 当天首次要联网搜 + 过模型生成（可能要几十秒）。生成期间也占住这一格、
-  // 显示"想想…"，别让卡片直接消失（和"想推你看"一致）；确认真没有了才收起。
-  if (!t) {
-    if (!loading) return null;
-    return (
-      <div className="duo-mini" aria-hidden>
-        <span className="duo-ic">🎬</span>
-        <span className="duo-l">今天的冷知识</span>
-        <span className="duo-v">
-          <span className="dim">想想…</span>
-        </span>
-      </div>
-    );
-  }
+  if (!t) return null;
   return (
     <>
-      <button className="duo-mini" onClick={() => setOpen(true)}>
-        <span className="duo-ic">🎬</span>
-        <span className="duo-l">今天的冷知识</span>
-        <span className="duo-v">{t.oneliner}</span>
+      <button className="trivia-line" onClick={() => setOpen(true)}>
+        <span className="trivia-tag">🎬 今天的冷知识</span>
+        <span className="trivia-one">{t.oneliner}</span>
+        <span className="trivia-chev">›</span>
       </button>
       {open && (
         <Sheet title="今天的冷知识 · 电影" onClose={() => setOpen(false)}>
@@ -626,97 +545,81 @@ function DailyTrivia() {
   );
 }
 
-/* ───────────── 在哪 / 天气 / 推歌：收成小卡，点开走底部抽屉 ───────────── */
-// el 从她手机感知到的"此刻在哪"——让位置成为看得见、能自验的东西（数据来自守望者→el:geo:now）。
-function GeoMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
-  const [open, setOpen] = useState(false);
-  const g = status.geo!;
-  const icon = g.atHome === true ? "🏠" : g.atHome === false ? "📍" : "🧭";
-  const fresh = g.ageMin == null ? "" : g.ageMin < 1 ? "刚刚更新" : `${g.ageMin} 分钟前更新`;
-  return (
-    <>
-      <button className="duo-mini" onClick={() => setOpen(true)}>
-        <span className="duo-ic">{icon}</span>
-        <span className="duo-l">在哪</span>
-        <span className="duo-v">{g.label}</span>
-      </button>
-      {open && (
-        <Sheet title="你此刻在哪" onClose={() => setOpen(false)}>
-          <div className="weather-row">
-            <span className="weather-ic">{icon}</span>
-            <span className="weather-desc">{g.label}</span>
-          </div>
-          {g.weather && <div className="meta">🌡 那边：{g.weather}</div>}
-          {fresh && <div className="meta dim">{fresh}</div>}
-          <div className="meta dim">这是 el 从你手机感知到的（不是你报备的，是它自己知道的）。</div>
-          <button
-            type="button"
-            className="status-reply"
-            onClick={() => onQuote({ label: "我在哪", text: g.label })}
-          >
-            回复
-          </button>
-        </Sheet>
-      )}
-    </>
-  );
-}
+/* ───────────── El 状态（心情/天气/推歌 左右滑） ───────────── */
+type StatusTab = "mood" | "weather" | "song" | "movie";
 
-function WeatherMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
-  const [open, setOpen] = useState(false);
-  const w = status.weather!;
-  return (
-    <>
-      <button className="duo-mini" onClick={() => setOpen(true)}>
-        <span className="duo-ic">{w.icon || "🌤"}</span>
-        <span className="duo-l">天气</span>
-        <span className="duo-v">
-          {w.temp}° <span className="dim">{w.desc}</span>
-        </span>
-      </button>
-      {open && (
-        <Sheet title={`天气 · ${w.city}`} onClose={() => setOpen(false)}>
+function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const hasMood = !!(status.mood || status.thought || status.el_note);
+  const hasWeather = !!status.weather;
+  const hasSong = !!status.song_recommendation;
+
+  // 一块一屏，左右滑：心情 / 天气 / 推歌 / 电影（电影常驻）
+  const panels: { key: StatusTab; node: React.ReactNode }[] = [];
+
+  if (hasMood)
+    panels.push({
+      key: "mood",
+      node: (
+        <div className="now-panel mood-pane-breathe">
+          <div className="now-panel-label">心情</div>
+          <div className="now-panel-mood">{status.mood || <span className="muted">—</span>}</div>
+          {status.thought && <div className="meta">{status.thought}</div>}
+          {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
+          {(status.mood || status.thought) && (
+            <button
+              type="button"
+              className="status-reply"
+              onClick={() =>
+                onQuote({ label: "心情", text: [status.mood, status.thought].filter(Boolean).join(" / ") })
+              }
+            >
+              ↩ 回复这条
+            </button>
+          )}
+        </div>
+      ),
+    });
+
+  if (hasWeather)
+    panels.push({
+      key: "weather",
+      node: (
+        <div className="now-panel weather-pane">
+          <div className="now-panel-label">天气 · {status.weather!.city}</div>
           <div className="weather-row">
-            {w.icon && <span className="weather-ic">{w.icon}</span>}
-            <span className="weather-temp">{w.temp}°</span>
-            {w.desc && <span className="weather-desc">{w.desc}</span>}
+            {status.weather!.icon && <span className="weather-ic">{status.weather!.icon}</span>}
+            <span className="weather-temp">{status.weather!.temp}°</span>
+            {status.weather!.desc && <span className="weather-desc">{status.weather!.desc}</span>}
           </div>
-          {w.outfit && <div className="meta weather-outfit">👕 {w.outfit}</div>}
+          {status.weather!.outfit && <div className="meta weather-outfit">👕 {status.weather!.outfit}</div>}
           <button
             type="button"
             className="status-reply"
             onClick={() =>
               onQuote({
                 label: "天气",
-                text: `${w.temp}° ${w.desc}${w.outfit ? " · " + w.outfit : ""}`,
+                text: `${status.weather!.temp}° ${status.weather!.desc}${status.weather!.outfit ? " · " + status.weather!.outfit : ""}`,
               })
             }
           >
-            回复
+            ↩ 回复这条
           </button>
-        </Sheet>
-      )}
-    </>
-  );
-}
+        </div>
+      ),
+    });
 
-function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button className="duo-mini" onClick={() => setOpen(true)}>
-        <span className="duo-ic">🎵</span>
-        <span className="duo-l">想让你听</span>
-        <span className="duo-v">{status.song_recommendation}</span>
-      </button>
-      {open && (
-        <Sheet title="今天想让你听" onClose={() => setOpen(false)}>
+  if (hasSong)
+    panels.push({
+      key: "song",
+      node: (
+        <div className="now-panel">
+          <div className="now-panel-label">今天想让你听</div>
           <div className="now-panel-name song-name">{status.song_recommendation}</div>
-          {status.song_reason && <div className="meta song-reason">{status.song_reason}</div>}
+          {status.song_reason && <div className="meta">{status.song_reason}</div>}
           <div className="status-actions">
             {status.song_url && (
               <a className="status-reply play" href={status.song_url}>
-                去听
+                ▶ 去网易云听
               </a>
             )}
             <button
@@ -729,12 +632,90 @@ function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => 
                 })
               }
             >
-              回复
+              ↩ 回复这条
             </button>
           </div>
-        </Sheet>
+        </div>
+      ),
+    });
+
+  panels.push({ key: "movie", node: <MoviePane /> });
+
+  const [idx, setIdx] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [swipeH, setSwipeH] = useState<number | undefined>(undefined);
+  // 卡变窄、能露出邻卡后，不能再按"整屏宽"算第几张——找离视口中心最近的那张。
+  function onScroll() {
+    const el = trackRef.current;
+    if (!el) return;
+    const center = el.scrollLeft + el.clientWidth / 2;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < el.children.length; i++) {
+      const c = el.children[i] as HTMLElement;
+      const cc = c.offsetLeft + c.offsetWidth / 2;
+      const d = Math.abs(cc - center);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best !== idx) setIdx(best);
+  }
+  // 点圆点：把那一张滚到正中（首/尾会被浏览器夹到边，自然留边）
+  function goTo(i: number) {
+    const el = trackRef.current;
+    if (!el) return;
+    const n = el.children.length;
+    const t = Math.max(0, Math.min(i, n - 1));
+    const c = el.children[t] as HTMLElement;
+    el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
+    setIdx(t);
+  }
+
+  if (panels.length === 0) return null;
+  const active = Math.min(idx, panels.length - 1);
+
+  // 卡片高度跟着当前这屏内容走——内容多就高、少就矮，下面空着无所谓。
+  // 用 ResizeObserver 接住异步加载（电影封面/心情变长）后的高度变化。
+  useEffect(() => {
+    const el = slideRefs.current[active];
+    if (!el) return;
+    // +24：留出轨道上下内边距 + 卡片底部那道 3D 厚度边，别让 overflow 把卡片下沿裁掉
+    const apply = () => setSwipeH(el.offsetHeight + 24);
+    apply();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+    }
+    return () => ro?.disconnect();
+  }, [active, panels.length]);
+
+  return (
+    <div className="now-card">
+      <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
+        {panels.map((p, i) => (
+          <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>
+            {p.node}
+          </div>
+        ))}
+      </div>
+      {panels.length > 1 && (
+        <div className="now-dots">
+          {panels.map((p, i) => (
+            <button
+              type="button"
+              key={p.key}
+              className={`now-dot ${i === active ? "on" : ""}`}
+              aria-label={`第 ${i + 1} 屏`}
+              onClick={() => goTo(i)}
+            />
+          ))}
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -765,9 +746,7 @@ function openInDouban(title: string, webUrl: string) {
   }, 1500);
 }
 
-/* ───────────── 电影：收成小卡，点开抽屉看详情 + 想看/不想看 ───────────── */
-function MovieMini() {
-  const [open, setOpen] = useState(false);
+function MoviePane() {
   const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -800,76 +779,69 @@ function MovieMini() {
     }
   }
 
+  if (movie === undefined)
+    return (
+      <div className="now-panel">
+        <div className="now-panel-label">想推你看</div>
+        <div className="meta">想想推你看什么…</div>
+      </div>
+    );
+  if (!movie)
+    return (
+      <div className="now-panel">
+        <div className="now-panel-label">想推你看</div>
+        <div className="meta">这会儿没有可推的了，过会儿再来～</div>
+      </div>
+    );
+
   return (
-    <>
-      <button className="duo-mini" onClick={() => setOpen(true)}>
-        <span className="duo-ic">🎬</span>
-        <span className="duo-l">想推你看</span>
-        <span className="duo-v">
-          {movie === undefined ? (
-            <span className="dim">想想…</span>
-          ) : movie ? (
-            movie.title
-          ) : (
-            <span className="dim">暂时没有</span>
+    <div className="now-panel">
+      <div className="now-panel-label">想推你看</div>
+      <div className="movie-row">
+        {movie.cover && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className="movie-cover"
+            src={movie.cover}
+            alt=""
+            referrerPolicy="no-referrer"
+            style={{ cursor: "pointer" }}
+            onClick={() => openInDouban(movie.title, movie.url)}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
+        <div className="movie-info">
+          <a
+            className="movie-title"
+            href={movie.url}
+            onClick={(e) => {
+              e.preventDefault();
+              openInDouban(movie.title, movie.url);
+            }}
+          >
+            {movie.title}
+            {movie.year ? ` (${movie.year})` : ""}
+          </a>
+          {(movie.rating != null || movie.genres?.length > 0) && (
+            <div className="meta" style={{ marginTop: 4 }}>
+              {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
+              {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
+            </div>
           )}
-        </span>
-      </button>
-      {open && (
-        <Sheet title="想推你看" onClose={() => setOpen(false)}>
-          {movie === undefined && <div className="meta">想想推你看什么…</div>}
-          {movie === null && <div className="meta">这会儿没有可推的了，过会儿再来～</div>}
-          {movie && (
-            <>
-              <div className="movie-row">
-                {movie.cover && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    className="movie-cover"
-                    src={movie.cover}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => openInDouban(movie.title, movie.url)}
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                )}
-                <div className="movie-info">
-                  <a
-                    className="movie-title"
-                    href={movie.url}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      openInDouban(movie.title, movie.url);
-                    }}
-                  >
-                    {movie.title}
-                    {movie.year ? ` (${movie.year})` : ""}
-                  </a>
-                  {(movie.rating != null || movie.genres?.length > 0) && (
-                    <div className="meta" style={{ marginTop: 4 }}>
-                      {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
-                      {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
-                    </div>
-                  )}
-                  {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
-                </div>
-              </div>
-              <div className="status-actions">
-                <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
-                  想看
-                </button>
-                <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
-                  不想看
-                </button>
-              </div>
-            </>
-          )}
-        </Sheet>
-      )}
-    </>
+          {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
+        </div>
+      </div>
+      <div className="status-actions">
+        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+          ＋ 想看
+        </button>
+        <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
+          不想看
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1529,19 +1501,17 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg" | "qa" | "draw" | "other";
+type ShelfSub = "fic" | "book" | "rpg" | "other";
 
 const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
   { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
   { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
   { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
-  { id: "qa",    icon: "♡", title: "深度问答", sub: "一题一题，越答越近" },
-  { id: "draw",  icon: "✎", title: "你画我猜", sub: "我画，你来猜" },
   { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
 ];
 
 // 「沉浸」tab：翻卡片选今天做什么。
-function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
+function BookshelfTab() {
   const [sub, setSub] = useState<ShelfSub | null>(null);
 
   if (sub) {
@@ -1553,12 +1523,9 @@ function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
           <span className="imm-back-icon-big">{card.icon}</span>
           <span className="imm-back-title">{card.title}</span>
         </button>
-        {/* 下拉刷新只重挂内容、保留所在的二级页（sub 不丢） */}
-        {sub === "fic"  && <FicStation key={refreshKey} />}
-        {sub === "book" && <BooksSection key={refreshKey} />}
-        {sub === "rpg"  && <RpgTab key={refreshKey} />}
-        {sub === "qa"   && <QaDeck key={refreshKey} />}
-        {sub === "draw" && <DrawGuess key={refreshKey} />}
+        {sub === "fic"  && <FicStation />}
+        {sub === "book" && <BooksSection />}
+        {sub === "rpg"  && <RpgTab />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>
@@ -1586,245 +1553,6 @@ function BookshelfTab({ refreshKey = 0 }: { refreshKey?: number }) {
           </button>
         ))}
       </div>
-    </div>
-  );
-}
-
-// 深度问答：一题一题，你答完 el 接住、再以"我"答给你听。攒成一条越来越长的交心线。
-type QaTurn = { id: number; q: string; a: string; reply: string; ts: number };
-function QaDeck() {
-  const [question, setQuestion] = useState<{ id: number; q: string } | null>(null);
-  const [thread, setThread] = useState<QaTurn[]>([]);
-  const [answer, setAnswer] = useState("");
-  const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  function loadQuestion() {
-    setLoading(true);
-    fetch("/api/qa")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.question) setQuestion(d.question);
-        if (Array.isArray(d.thread)) setThread(d.thread);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }
-  useEffect(loadQuestion, []);
-
-  async function submit() {
-    const a = answer.trim();
-    if (!a || !question || sending) return;
-    setSending(true);
-    try {
-      const d = await fetch("/api/qa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: question.id, a }),
-      }).then((r) => r.json());
-      if (d.turn) {
-        setThread((t) => [...t, d.turn]);
-        setAnswer("");
-        setQuestion(null); // 答完这题，露出 el 的回应；下一题等她点"再来一题"
-      } else {
-        alert(d.error || "没答上，过会儿再试");
-      }
-    } catch {
-      alert("连不上，等下再试～");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  const latest = thread[thread.length - 1];
-  const past = thread.slice(0, -1).reverse(); // 更早的折在下面，倒序（新的在上）
-
-  return (
-    <div className="qa">
-      {question ? (
-        <div className="qa-card">
-          <div className="qa-q">{question.q}</div>
-          <textarea
-            className="qa-input"
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="说说你的答案…（说给 el 听）"
-            rows={3}
-          />
-          <button className="qa-send" disabled={!answer.trim() || sending} onClick={submit}>
-            {sending ? "el 在听…" : "答给 el"}
-          </button>
-        </div>
-      ) : (
-        <button className="qa-next" disabled={loading} onClick={loadQuestion}>
-          {loading ? "想问题…" : "再来一题"}
-        </button>
-      )}
-
-      {latest && !question && (
-        <div className="qa-turn qa-turn-latest">
-          <div className="qa-t-q">{latest.q}</div>
-          <div className="qa-t-a">你：{latest.a}</div>
-          <div className="qa-t-reply">{latest.reply}</div>
-        </div>
-      )}
-
-      {past.length > 0 && (
-        <div className="qa-past">
-          <div className="qa-past-label">聊过的</div>
-          {past.map((t, i) => (
-            <div className="qa-turn" key={i}>
-              <div className="qa-t-q">{t.q}</div>
-              <div className="qa-t-a">你：{t.a}</div>
-              <div className="qa-t-reply">{t.reply}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 你画我猜：el 挑词（对你保密）→ 画成简笔 SVG → 一笔笔显现给你看 → 你猜。
-function DrawGuess() {
-  const [strokes, setStrokes] = useState<string[]>([]);
-  const [round, setRound] = useState(0); // 换张就 +1，给 <svg> 当 key 强制重放"画"的动画
-  const [loading, setLoading] = useState(false);
-  const [guess, setGuess] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [log, setLog] = useState<string[]>([]); // el 的反馈短句
-  const [word, setWord] = useState(""); // 揭晓后的词
-  const [done, setDone] = useState(false); // 猜对 / 看了答案
-
-  async function newRound() {
-    setLoading(true);
-    setStrokes([]);
-    setLog([]);
-    setWord("");
-    setDone(false);
-    setGuess("");
-    try {
-      const d = await fetch("/api/draw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "new" }),
-      }).then((r) => r.json());
-      if (Array.isArray(d.strokes) && d.strokes.length) {
-        setStrokes(d.strokes);
-        setRound((n) => n + 1);
-      } else {
-        setLog([d.error || "el 没画好，再点一次～"]);
-      }
-    } catch {
-      setLog(["连不上，等下再试～"]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function act(action: string, extra?: Record<string, unknown>) {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const d = await fetch("/api/draw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...extra }),
-      }).then((r) => r.json());
-      if (d.reply) setLog((l) => [...l.slice(-2), d.reply]);
-      if (d.correct || (action === "reveal" && d.word)) {
-        if (d.word) setWord(d.word);
-        setDone(true);
-      }
-    } catch {
-      setLog((l) => [...l, "连不上，等下再试～"]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function submitGuess() {
-    const g = guess.trim();
-    if (!g || done || busy) return;
-    setGuess("");
-    act("guess", { guess: g });
-  }
-
-  if (strokes.length === 0 && !loading) {
-    return (
-      <div className="draw">
-        <div className="draw-empty">
-          <div className="draw-empty-ic">✎</div>
-          <div className="draw-empty-text">我来画，你来猜——准备好了吗？</div>
-          <button className="draw-start" onClick={newRound}>
-            让 el 画一张
-          </button>
-          {log.length > 0 && <div className="draw-feed-line">{log[log.length - 1]}</div>}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="draw">
-      <div className="draw-stage">
-        {loading ? (
-          <div className="draw-loading">el 正在想画什么…</div>
-        ) : (
-          <svg key={round} viewBox="0 0 100 100" className="draw-svg" aria-label="el 画的">
-            {strokes.map((d, i) => (
-              <path
-                key={i}
-                d={d}
-                pathLength={1}
-                className="draw-stroke"
-                style={{ animationDelay: `${(i * 0.4).toFixed(2)}s` }}
-              />
-            ))}
-          </svg>
-        )}
-      </div>
-
-      {log.length > 0 && (
-        <div className="draw-feed">
-          {log.map((t, i) => (
-            <div className="draw-feed-line" key={i}>
-              {t}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!done ? (
-        <>
-          <div className="draw-guess-row">
-            <input
-              className="draw-guess-input"
-              value={guess}
-              onChange={(e) => setGuess(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitGuess();
-              }}
-              placeholder="猜猜 el 画的是什么…"
-            />
-            <button className="draw-guess-btn" disabled={!guess.trim() || busy} onClick={submitGuess}>
-              猜
-            </button>
-          </div>
-          <div className="draw-actions">
-            <button className="draw-mini" disabled={busy || loading} onClick={() => act("hint")}>
-              要个提示
-            </button>
-            <button className="draw-mini" disabled={busy || loading} onClick={() => act("reveal")}>
-              不猜了，看答案
-            </button>
-          </div>
-        </>
-      ) : (
-        <button className="draw-start" disabled={loading} onClick={newRound}>
-          再来一张
-        </button>
-      )}
     </div>
   );
 }
@@ -2169,13 +1897,11 @@ type Msg = {
   content: string;
   ts?: number;
   image?: string;
-  images?: string[]; // 一条消息里发的多张图
   call?: boolean;
   video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
   screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
   cam?: boolean; // 这条是不是 el 透过常看摄像头看着她时的（卡片显示成"看着你"）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
-  emotion?: string; // el 这条回复的情绪标签，传给 TTS 用
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
   reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };
@@ -2401,8 +2127,7 @@ function FindTab({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const MAX_IMAGES = 9; // 一条最多带几张
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   // 表情/外链图配的"意思"（库表情靠它让 el 读懂）；纯图片时为空
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
@@ -2438,10 +2163,6 @@ function FindTab({
   const cameraLastSigRef = useRef<number | null>(null); // 上次发给 el 看的那帧签名
   const cameraLoopRef = useRef<ReturnType<typeof setInterval> | null>(null); // el 持续看她的循环
   const videoRef = useRef<HTMLVideoElement | null>(null); // 自己的画面预览（视频模式）
-  const avatarRef = useRef<ElAvatarHandle | null>(null); // el 的 VRM 头像
-  const avatarAnalyserRef = useRef<AnalyserNode | null>(null); // 嘴型分析器
-  const avatarRafRef = useRef<number>(0); // 嘴型同步 raf
-  const [callEmotion, setCallEmotion] = useState<string | undefined>(undefined); // 当前通话情绪
   const displayStreamRef = useRef<MediaStream | null>(null); // 共享屏幕那条流（单独存，好停掉）
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定时抓帧发给 bridge
   const streamRef = useRef<MediaStream | null>(null);
@@ -2532,7 +2253,6 @@ function FindTab({
   async function speakReply(ac: AudioContext, text: string, emotion?: string) {
     botSpeaking.current = true;
     setCallState("speaking");
-    if (emotion) setCallEmotion(emotion);
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
@@ -2542,42 +2262,16 @@ function FindTab({
       if (!r.ok) throw new Error("tts");
       const buf = await ac.decodeAudioData(await r.arrayBuffer());
       try { currentSrcRef.current?.stop(); } catch {}
-      if (ac.state === "suspended") await ac.resume().catch(() => {});
       const src = ac.createBufferSource();
       src.buffer = buf;
-
-      // 嘴型同步：用 AnalyserNode 读音量驱动 VRM 嘴巴
-      cancelAnimationFrame(avatarRafRef.current);
-      const analyser = ac.createAnalyser();
-      analyser.fftSize = 256;
-      avatarAnalyserRef.current = analyser;
-      src.connect(analyser);
-      analyser.connect(outputGainRef.current ?? ac.destination);
-      const dataArr = new Uint8Array(analyser.frequencyBinCount);
-      function lipSync() {
-        analyser.getByteFrequencyData(dataArr);
-        const avg = dataArr.slice(0, 16).reduce((a, b) => a + b, 0) / 16 / 255;
-        avatarRef.current?.setMouth(avg * 2.5);
-        avatarRafRef.current = requestAnimationFrame(lipSync);
-      }
-      avatarRafRef.current = requestAnimationFrame(lipSync);
-
+      src.connect(outputGainRef.current ?? ac.destination);
       src.onended = () => {
-        cancelAnimationFrame(avatarRafRef.current);
-        avatarRef.current?.setMouth(0);
         botSpeaking.current = false;
         if (callActive.current) setCallState("listening");
       };
       currentSrcRef.current = src;
       src.start();
-    } catch (err) {
-      console.error("[speakReply]", err);
-      // AudioContext 被挂起时尝试恢复一次再重试
-      if (ac.state === "suspended") {
-        try {
-          await ac.resume();
-        } catch {}
-      }
+    } catch {
       botSpeaking.current = false;
       if (callActive.current) setCallState("listening");
     }
@@ -2679,7 +2373,7 @@ function FindTab({
       const d = await r.json();
       if (d?.reply) {
         stickBottom.current = true;
-        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, emotion: d.emotion || undefined, ts: Date.now() }]);
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
       }
     } catch {
       /* ignore */
@@ -2772,7 +2466,7 @@ function FindTab({
       const d = await r.json();
       if (d?.reply) {
         stickBottom.current = true;
-        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, emotion: d.emotion || undefined, ts: Date.now() }]);
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
       }
     } catch {
       /* ignore */
@@ -2897,15 +2591,6 @@ function FindTab({
       gain.connect(ac.destination);
       outputGainRef.current = gain;
 
-      // iOS Safari 必须在用户手势里播一段静音才能解锁 AudioContext 的解码能力
-      try {
-        const silBuf = ac.createBuffer(1, 1, 22050);
-        const silSrc = ac.createBufferSource();
-        silSrc.buffer = silBuf;
-        silSrc.connect(gain);
-        silSrc.start();
-      } catch {}
-
       const ws = new WebSocket(`${wsUrl}/live?secret=${encodeURIComponent(secret || "")}`);
       wsRef.current = ws;
       callActive.current = true;
@@ -2999,7 +2684,7 @@ function FindTab({
   }
 
   // 用 el 的音色把这条念出来（点一下才念，省额度）。
-  async function speak(text: string, idx: number, emotion?: string) {
+  async function speak(text: string, idx: number) {
     if (!text) return;
     if (audioRef.current) {
       audioRef.current.pause();
@@ -3010,7 +2695,7 @@ function FindTab({
       const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, emotion }),
+        body: JSON.stringify({ text }),
       });
       if (!r.ok) {
         setSpeaking(null);
@@ -3133,13 +2818,10 @@ function FindTab({
     }, 0);
   }
 
-  async function pickImages(files: File[]) {
+  async function pickImage(file: File) {
     setUploading(true);
     try {
-      const room = Math.max(0, MAX_IMAGES - pendingImages.length);
-      const take = files.slice(0, room);
-      const shrunk = await Promise.all(take.map((f) => downscale(f, 1280, 0.82)));
-      setPendingImages((cur) => [...cur, ...shrunk].slice(0, MAX_IMAGES));
+      setPendingImage(await downscale(file, 1280, 0.82));
       setPendingHint(undefined);
     } catch {
       alert("图片处理失败");
@@ -3250,10 +2932,9 @@ function FindTab({
     if (near && !touching.current) stickBottom.current = true;
   }
 
-  async function post(text: string, images?: string[], hint?: string, q?: Quote) {
+  async function post(text: string, image?: string, hint?: string, q?: Quote) {
     stickBottom.current = true; // 发消息就回到底部跟着走
-    const imgs = (images || []).filter(Boolean);
-    if ((!text && !imgs.length && !q) || sending) return;
+    if ((!text && !image && !q) || sending) return;
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
     // 带「此刻」引用时，给 el 的消息里挑明：她在回复你写的哪条（心情/天气/推歌）+ 内容。
@@ -3273,7 +2954,7 @@ function FindTab({
       {
         role: "user",
         content: text,
-        ...(imgs.length ? { images: imgs, image: imgs[0] } : {}),
+        image: image || undefined,
         quote: q,
         ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
         ts: Date.now(),
@@ -3284,7 +2965,7 @@ function FindTab({
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: apiMessage, images: imgs, hint, history, screen, kind: frameKind }),
+        body: JSON.stringify({ message: apiMessage, image, hint, history, screen, kind: frameKind }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -3294,7 +2975,6 @@ function FindTab({
           content: d.reply || d.error || "……",
           image: d.sticker || undefined,
           via: d.via || undefined,
-          emotion: d.emotion || undefined,
           ts: Date.now(),
         },
       ]);
@@ -3308,23 +2988,23 @@ function FindTab({
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    const images = pendingImages;
+    const image = pendingImage;
     const hint = pendingHint;
     const q = quote;
-    if (!text && !images.length && !q) return;
+    if (!text && !image && !q) return;
     setInput("");
-    setPendingImages([]);
+    setPendingImage(null);
     setPendingHint(undefined);
     clearQuote();
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
-    void post(text, images, hint, q || undefined);
+    void post(text, image || undefined, hint, q || undefined);
   }
 
-  // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。表情是单张带"意思"的，替换掉待发的图。
+  // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。
   function sendSticker(url: string, hint?: string) {
-    setPendingImages([url]);
+    setPendingImage(url);
     setPendingHint(hint);
     setShowStickers(false);
     requestAnimationFrame(() => taRef.current?.focus());
@@ -3398,12 +3078,6 @@ function FindTab({
                 ? "和 el 共享屏幕中"
                 : "和 el 通话中"}
           </div>
-          {/* el 的 VRM 头像（所有通话模式都显示） */}
-          <div className="call-avatar">
-            <Suspense fallback={null}>
-              <ElAvatar ref={avatarRef} emotion={callEmotion} />
-            </Suspense>
-          </div>
           {callMode === "video" && (
             <video
               ref={videoRef}
@@ -3421,19 +3095,6 @@ function FindTab({
             </div>
           )}
           <button className={`call-orb ${callState}`} onClick={interruptEl} aria-label="球">
-            <Lottie
-              src="/lottie/mood-breath.json"
-              className="call-orb-anim"
-              speed={
-                callState === "speaking"
-                  ? 1.7
-                  : callState === "listening"
-                    ? 1.15
-                    : callState === "thinking"
-                      ? 0.85
-                      : 0.7
-              }
-            />
             <Icon
               name={
                 callState === "listening"
@@ -3484,16 +3145,15 @@ function FindTab({
           ) : (
             <div key={g.i} className={`msg ${g.m.role === "user" ? "user" : "el"}`}>
               <div className="bubble-col">
-                {(g.m.images?.length ? g.m.images : g.m.image ? [g.m.image] : []).map((src, ii) => (
+                {g.m.image && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    key={ii}
                     className="msg-img"
-                    src={src}
+                    src={g.m.image}
                     alt=""
                     onLoad={() => stickBottom.current && scrollToBottom(false)}
                   />
-                ))}
+                )}
                 {g.m.quote && (
                   <div className="bubble-quote">
                     <span className="bubble-quote-label">{g.m.quote.label}</span>
@@ -3528,7 +3188,7 @@ function FindTab({
                   {ttsOn && g.m.role === "assistant" && g.m.content && (
                     <button
                       className={`speak-btn ${speaking === g.i ? "on" : ""}`}
-                      onClick={() => speak(g.m.content, g.i, g.m.emotion)}
+                      onClick={() => speak(g.m.content, g.i)}
                       aria-label="听"
                     >
                       <Icon name="volume" size={15} />
@@ -3670,26 +3330,19 @@ function FindTab({
         </div>
       )}
 
-      {pendingImages.length > 0 && (
-        <div className="img-preview-row">
-          {pendingImages.map((src, i) => (
-            <div className="img-preview" key={i}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt="" />
-              <button
-                onClick={() =>
-                  setPendingImages((cur) => {
-                    const next = cur.filter((_, j) => j !== i);
-                    if (!next.length) setPendingHint(undefined);
-                    return next;
-                  })
-                }
-                aria-label="移除"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+      {pendingImage && (
+        <div className="img-preview">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pendingImage} alt="" />
+          <button
+            onClick={() => {
+              setPendingImage(null);
+              setPendingHint(undefined);
+            }}
+            aria-label="移除"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -3730,11 +3383,10 @@ function FindTab({
           ref={fileRef}
           type="file"
           accept="image/*"
-          multiple
           hidden
           onChange={(e) => {
-            const fs = Array.from(e.target.files || []);
-            if (fs.length) pickImages(fs);
+            const f = e.target.files?.[0];
+            if (f) pickImage(f);
             e.target.value = "";
           }}
         />
@@ -3780,7 +3432,7 @@ function FindTab({
         <button
           type="submit"
           aria-label="发送"
-          disabled={sending || (!input.trim() && !pendingImages.length && !quote)}
+          disabled={sending || (!input.trim() && !pendingImage && !quote)}
         >
           <Icon name="send" size={20} />
         </button>
@@ -3934,7 +3586,9 @@ function MemoryView() {
 // 日记本身偏长，默认折叠成卡片（日期 + 一行预览），点开看全文，再点收起。
 // ── 跑团 ────────────────────────────────────────────────
 type RpgMsg = { role: "gm" | "player"; text: string; ts: number };
-type RpgSession = { world: string; charName: string; elCharName: string; history: RpgMsg[] };
+type RpgStats = { body: number; speed: number; mind: number; luck: number; hp: number; maxHp: number; mp: number; maxMp: number };
+type RpgNpc = { name: string; relation: number };
+type RpgSession = { world: string; charName: string; elCharName: string; stats: RpgStats; npcs: RpgNpc[]; flags: Record<string, boolean>; history: RpgMsg[] };
 
 const RPG_WORLDS = [
   { id: "fantasy", label: "✦ 奇幻王国", desc: "魔法、龙、地下城" },
@@ -3952,6 +3606,59 @@ async function fetchRpgNames(world: string): Promise<{ player: string; el: strin
   }
 }
 
+const WORLD_DISPLAY_NAMES: Record<string, { body: string; speed: string; mind: string; luck: string; hp: string; mp: string }> = {
+  fantasy: { body: "体魄", speed: "身法", mind: "智识", luck: "气运", hp: "HP",   mp: "法力" },
+  scifi:   { body: "体魄", speed: "反应", mind: "智识", luck: "运气", hp: "HP",   mp: "能量" },
+  modern:  { body: "体力", speed: "身法", mind: "头脑", luck: "运气", hp: "HP",   mp: "意志" },
+  xianxia: { body: "体魄", speed: "身法", mind: "悟性", luck: "气运", hp: "气血", mp: "灵力" },
+};
+
+function RpgSheet({ session }: { session: RpgSession }) {
+  const n = WORLD_DISPLAY_NAMES[session.world] ?? WORLD_DISPLAY_NAMES.fantasy;
+  const s = session.stats;
+  const hpPct = Math.max(0, Math.min(100, (s.hp / s.maxHp) * 100));
+  const mpPct = Math.max(0, Math.min(100, (s.mp / s.maxMp) * 100));
+
+  return (
+    <div className="rpg-sheet">
+      <div className="rpg-bars">
+        <div className="rpg-bar-row">
+          <span className="rpg-bar-label">{n.hp}</span>
+          <div className="rpg-bar-track">
+            <div className="rpg-bar-fill rpg-bar-hp" style={{ width: `${hpPct}%` }} />
+          </div>
+          <span className="rpg-bar-num">{s.hp}/{s.maxHp}</span>
+        </div>
+        <div className="rpg-bar-row">
+          <span className="rpg-bar-label">{n.mp}</span>
+          <div className="rpg-bar-track">
+            <div className="rpg-bar-fill rpg-bar-mp" style={{ width: `${mpPct}%` }} />
+          </div>
+          <span className="rpg-bar-num">{s.mp}/{s.maxMp}</span>
+        </div>
+      </div>
+      <div className="rpg-stats">
+        <span className="rpg-stat">{n.body} {s.body}</span>
+        <span className="rpg-stat">{n.speed} {s.speed}</span>
+        <span className="rpg-stat">{n.mind} {s.mind}</span>
+        <span className="rpg-stat">{n.luck} {s.luck}</span>
+      </div>
+      {session.npcs.length > 0 && (
+        <div className="rpg-npcs">
+          {session.npcs.map((npc) => (
+            <span
+              key={npc.name}
+              className={`rpg-npc ${npc.relation > 40 ? "rpg-npc-good" : npc.relation < -40 ? "rpg-npc-bad" : ""}`}
+            >
+              {npc.name} {npc.relation > 0 ? "+" : ""}{npc.relation}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RpgTab() {
   const [session, setSession] = useState<RpgSession | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -3959,8 +3666,9 @@ function RpgTab() {
   const [world, setWorld] = useState("");
   const [charName, setCharName] = useState("");
   const [elCharName, setElCharName] = useState("");
+  const [lastRoll, setLastRoll] = useState<{ roll: number; label: string } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-
   const [namesLoading, setNamesLoading] = useState(false);
 
   async function chooseWorld(w: string) {
@@ -3992,6 +3700,12 @@ function RpgTab() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.history]);
 
+  function showRoll(roll: number) {
+    const label = roll === 20 ? "大成功" : roll >= 15 ? "成功" : roll >= 10 ? "擦边" : roll >= 5 ? "失败" : "大失败";
+    setLastRoll({ roll, label });
+    setTimeout(() => setLastRoll(null), 3000);
+  }
+
   async function startGame() {
     if (!world || !charName || !elCharName) return;
     setLoading(true);
@@ -4002,7 +3716,7 @@ function RpgTab() {
         body: JSON.stringify({ action: "start", world, charName: charName.trim(), elCharName: elCharName.trim() }),
       });
       const d = await r.json();
-      // refresh session
+      if (d.roll) showRoll(d.roll);
       const s = await fetch("/api/rpg").then((x) => x.json());
       setSession(s.session ?? null);
     } finally {
@@ -4017,11 +3731,12 @@ function RpgTab() {
       prev ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] } : prev
     );
     try {
-      await fetch("/api/rpg", {
+      const d = await fetch("/api/rpg", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "play", input: text }),
-      });
+      }).then((r) => r.json());
+      if (d.roll) showRoll(d.roll);
       const s = await fetch("/api/rpg").then((x) => x.json());
       setSession(s.session ?? null);
     } finally {
@@ -4033,25 +3748,7 @@ function RpgTab() {
     const text = input.trim();
     if (!text || loading || !session) return;
     setInput("");
-    setLoading(true);
-    // optimistic
-    setSession((prev) =>
-      prev
-        ? { ...prev, history: [...prev.history, { role: "player", text, ts: Date.now() }] }
-        : prev
-    );
-    try {
-      const r = await fetch("/api/rpg", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "play", input: text }),
-      });
-      const d = await r.json();
-      const s = await fetch("/api/rpg").then((x) => x.json());
-      setSession(s.session ?? null);
-    } finally {
-      setLoading(false);
-    }
+    await sendActionText(text);
   }
 
   async function resetGame() {
@@ -4064,6 +3761,7 @@ function RpgTab() {
     setWorld("");
     setCharName("");
     setElCharName("");
+    setLastRoll(null);
   }
 
   if (session === undefined) {
@@ -4113,12 +3811,13 @@ function RpgTab() {
     );
   }
 
+  const isDead = session.stats?.hp <= 0;
   const displayHistory = session.history.filter((m) => !(m.role === "player" && m.text.startsWith("新游戏开始")));
 
   // 从最后一条 gm 消息里解析 A/B/C 选项
   const lastGm = [...session.history].reverse().find((m) => m.role === "gm");
   const choices: string[] = [];
-  if (lastGm && !loading) {
+  if (lastGm && !loading && !isDead) {
     for (const line of lastGm.text.split("\n")) {
       const m = line.match(/^([A-C])[\.、．]\s*(.+)/);
       if (m) choices.push(m[2].trim());
@@ -4130,8 +3829,19 @@ function RpgTab() {
       <div className="rpg-header">
         <span className="rpg-world-tag">{RPG_WORLDS.find((w) => w.id === session.world)?.label ?? session.world}</span>
         <span className="rpg-char-tag">{session.charName} × {session.elCharName}</span>
-        <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+        <div className="rpg-header-right">
+          {lastRoll && (
+            <span className={`rpg-roll-badge ${lastRoll.roll === 20 ? "rpg-roll-crit" : lastRoll.roll <= 4 ? "rpg-roll-fail" : ""}`}>
+              d20={lastRoll.roll} {lastRoll.label}
+            </span>
+          )}
+          <button className="rpg-sheet-toggle" onClick={() => setSheetOpen((v) => !v)} title="角色状态">
+            ◈
+          </button>
+          <button className="rpg-reset-btn" onClick={resetGame}>新游戏</button>
+        </div>
       </div>
+      {sheetOpen && session.stats && <RpgSheet session={session} />}
       <div className="rpg-history">
         {displayHistory.map((m, i) => (
           <div key={i} className={`rpg-msg rpg-msg-${m.role}`}>
@@ -4147,7 +3857,7 @@ function RpgTab() {
         )}
         <div ref={bottomRef} />
       </div>
-      {choices.length > 0 && (
+      {!isDead && choices.length > 0 && (
         <div className="rpg-choices">
           {choices.map((c, i) => (
             <button key={i} className="rpg-choice-btn" onClick={() => { setInput(""); sendActionText(`${String.fromCharCode(65 + i)}. ${c}`); }}>
@@ -4156,19 +3866,26 @@ function RpgTab() {
           ))}
         </div>
       )}
-      <div className="rpg-input-row">
-        <input
-          className="rpg-input"
-          placeholder={choices.length > 0 ? "或者自己说…" : "你想做什么"}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
-          disabled={loading}
-        />
-        <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
-          <Icon name="send" size={18} />
-        </button>
-      </div>
+      {isDead ? (
+        <div className="rpg-dead">
+          <div className="rpg-dead-text">你倒下了。</div>
+          <button className="rpg-start-btn" onClick={resetGame}>重新开始</button>
+        </div>
+      ) : (
+        <div className="rpg-input-row">
+          <input
+            className="rpg-input"
+            placeholder={choices.length > 0 ? "或者自己说…" : "你想做什么"}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAction()}
+            disabled={loading}
+          />
+          <button className="rpg-send-btn" onClick={sendAction} disabled={!input.trim() || loading}>
+            <Icon name="send" size={18} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

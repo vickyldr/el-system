@@ -215,47 +215,91 @@ body::before {
   text-align: right;
 }
 
-/* 心情：中间一团会呼吸的动画当主角，不套卡片、居中；文字小小地落在动画下面 */
-.mood-hero {
-  padding: 10px 6px 6px;
-  margin: 6px 0 28px;
-  text-align: center;
+/* ── 此刻：心情/天气/推歌做成"一张张露边的卡"，左右滑（仿植物店那种轮播）──
+   .now-card 只是个透明的轨道容器；真正的卡是每一张 .now-panel。 */
+.now-card {
+  position: relative;
+  margin: 2px 0 20px;
+  display: flex;
+  flex-direction: column;
   animation: fadeInUp 0.42s ease both;
 }
-/* 动画主角：居中的一团光 */
-.mood-anim {
-  width: 132px;
-  height: 132px;
-  margin: 2px auto 12px;
+
+/* 骨架屏：当成一张普通卡 */
+.now-card-skel {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-xl);
+  box-shadow: var(--elev-2);
+  padding: 26px;
+  min-height: 200px;
+  justify-content: center;
+  gap: 12px;
 }
-.mood-hero .meta {
-  margin-left: auto;
-  margin-right: auto;
-  max-width: 30ch;
+
+.now-swipe {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0 -22px; /* 出血：吃掉 content 的左右内距，让卡能滑到贴近屏幕边、邻卡露得出来 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 22px;
+  padding: 8px 22px 14px; /* 两端各留 22px，上下留出 3D 厚度边不被裁 */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  transition: height 0.28s ease;
 }
-/* mood 这句话：小而温，落在动画下面 */
-.mood-hero-text {
+.now-swipe::-webkit-scrollbar {
+  display: none;
+}
+
+.now-slide {
+  flex: 0 0 84%; /* 比满宽窄一截 → 旁边露出下一张的边 */
+  scroll-snap-align: center;
+  scroll-snap-stop: always; /* 一次滑动最多翻一张，不让惯性一甩掠过中间几张 */
+  align-self: flex-start;
+}
+
+/* 每一屏 = 一张抬起来的卡 */
+.now-panel {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
+  padding: 22px 22px 20px;
+}
+
+.now-panel-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 16px;
+}
+
+.now-panel-mood {
   font-family: var(--font-hand);
-  font-size: 16px;
+  font-size: 25px;
   font-weight: 600;
-  line-height: 1.6;
-  color: var(--ink);
+  line-height: 1.5;
   word-break: break-word;
 }
-.mood-thought {
-  margin-top: 6px;
-}
 
-/* 抽屉里：推歌曲名 */
-.now-panel-name {
-  font-family: var(--font-display);
-  font-size: 34px;
+.now-panel-big {
+  font-size: 52px;
   font-weight: 600;
-  letter-spacing: -0.5px;
-  line-height: 1.1;
+  line-height: 1;
+}
+.now-panel-big .dim {
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 30px;
 }
 
-/* 天气（抽屉里）：图标 + 温度 + 描述排成对齐的一行 */
+/* 天气：图标 + 温度 + 描述排成对齐的一行，紧凑，不再一柱擎天 */
 .weather-row {
   display: flex;
   align-items: baseline;
@@ -283,7 +327,94 @@ body::before {
   margin-top: 14px;
 }
 
-/* ── 今天的冷知识 · 电影（小卡 → 抽屉详情）── */
+.now-panel-name {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.now-panel .meta {
+  margin-top: 12px;
+}
+
+.now-dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+/* 圆点：可点跳转，外层透明扩大点击区，圆点本体用 ::before 画 */
+.now-dot {
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 8px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.now-dot::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.now-dot.on::before {
+  width: 18px;
+  border-radius: 3px;
+  background: #cbb9ff;
+  box-shadow: 0 0 8px var(--glow);
+}
+
+/* ── 此刻最底：今天的冷知识 · 电影 ── */
+.trivia-line {
+  width: 100%;
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 13px 16px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--hair);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: var(--elev-1);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+}
+.trivia-line:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--edge);
+}
+.trivia-tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #cbb9ff;
+}
+.trivia-one {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trivia-chev {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1;
+}
 .trivia-detail {
   padding: 4px 2px;
 }
@@ -315,44 +446,32 @@ body::before {
   word-break: break-all;
 }
 
-/* ── 此刻：收起来的那些小卡（天气/推歌/电影/今日签/吃啥）排成两列网格，
-   点哪格走底部抽屉看详情 ── */
-.now-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* ── 此刻：下面两格（今日签 / 吃啥）── */
+.now-duo {
+  display: flex;
   gap: 14px;
   margin-bottom: 18px;
 }
-/* 卡片统一照搬「沉浸」.imm-card 的玻璃质感：半透底 + 一道发丝边 + 轻模糊，
-   不加阴影、不加噪点/高光——这样最轻。全 app 卡片共用这套。 */
-.duo-mini,
-.card,
-.wish,
-.diary-entry,
-.call-card,
-.quote-bar,
-.msg.el .bubble {
-  background: var(--glass);
-  border: 1px solid var(--hair);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
 .duo-mini {
+  flex: 1;
   appearance: none;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
   color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
   border-radius: var(--r-md);
-  padding: 17px 17px;
+  padding: 16px 17px;
+  box-shadow: var(--elev-2);
   display: flex;
   flex-direction: column;
-  transition: transform 0.15s ease, border-color 0.2s ease;
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
   animation: fadeInUp 0.42s ease both;
 }
 .duo-mini:active {
-  transform: scale(0.97);
-  border-color: rgba(203, 185, 255, 0.3);
+  transform: translateY(3px);
+  box-shadow: var(--elev-1);
 }
 .duo-mini:disabled {
   opacity: 0.7;
@@ -461,9 +580,12 @@ body::before {
 }
 
 .card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hair);
   border-radius: var(--r-lg);
   padding: 22px 22px;
   margin-bottom: var(--sp-4);
+  box-shadow: var(--shadow);
   animation: fadeInUp 0.42s ease both;
 }
 
@@ -746,12 +868,9 @@ body::before {
 .count-chip {
   font-size: 12px;
   color: var(--ink-soft);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--hair);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 999px;
-  padding: 4px 12px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 4px 10px;
 }
 
 /* ── 底部 tab 栏：磨砂玻璃，文档流里的最后一个孩子，永远贴底、不会飘 ── */
@@ -823,28 +942,15 @@ body::before {
   gap: 22px;
   padding: 24px;
 }
-/* el 的 VRM 头像容器 */
-.call-avatar {
-  width: min(60vw, 240px);
-  aspect-ratio: 3 / 4;
-  border-radius: 20px;
-  overflow: hidden;
-  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.06);
-}
-
 /* 视频通话里自己的画面预览（镜像，像照镜子更自然） */
 .call-selfcam {
-  width: min(36vw, 120px);
+  width: min(72vw, 280px);
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  border-radius: 12px;
+  border-radius: 18px;
   background: #000;
   transform: scaleX(-1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  position: absolute;
-  bottom: 120px;
-  right: 20px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
 }
 
 .call-title {
@@ -852,36 +958,27 @@ body::before {
   color: var(--ink-soft);
 }
 
-/* 通话光球：心跳改用 Lottie（call-orb-anim）当球身，图标浮在上面。
-   快慢由 callState 调（说话最快、听着次之、想/待机慢），CSS 不再 pulse。 */
 .call-orb {
   appearance: none;
   border: none;
   cursor: pointer;
   color: #fff;
-  width: 150px;
-  height: 150px;
-  position: relative;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
-  filter: drop-shadow(0 0 36px var(--glow));
-}
-.call-orb-anim {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-/* 图标浮在心跳球之上 */
-.call-orb > svg {
-  position: relative;
-  z-index: 1;
+  background: radial-gradient(circle at 50% 35%, var(--accent-2), var(--accent));
+  box-shadow: 0 0 50px var(--glow);
 }
 
-/* 通用脉动（跑团"取名中/在想…"等 loading 文字用） */
+.call-orb.listening {
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.call-orb.speaking {
+  animation: pulse 0.7s ease-in-out infinite;
+}
 @keyframes pulse {
   0%, 100% { transform: scale(1); box-shadow: 0 0 40px var(--glow); }
   50% { transform: scale(1.08); box-shadow: 0 0 70px var(--glow); }
@@ -1018,19 +1115,6 @@ body::before {
   color: #fff;
   font-size: 12px;
   cursor: pointer;
-}
-
-/* 多张待发图：排成一行，可横向滑动 */
-.img-preview-row {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 0 16px 8px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.img-preview-row .img-preview {
-  margin: 0;
 }
 
 .attach-btn {
@@ -1274,12 +1358,14 @@ body::before {
   align-items: center;
   gap: 11px;
   text-align: left;
+  background: var(--glass);
   border: 1px solid rgba(123, 111, 240, 0.32);
   border-radius: 16px;
   padding: 11px 14px;
   color: var(--ink);
   cursor: pointer;
   font-family: inherit;
+  box-shadow: var(--shadow);
 }
 
 .call-card-ic {
@@ -1395,6 +1481,8 @@ body::before {
 }
 
 .msg.el .bubble {
+  background: var(--el-bubble);
+  border: 1px solid var(--hair);
   border-bottom-left-radius: 6px;
   font-family: var(--font-hand);
   font-size: 15.5px;
@@ -1499,23 +1587,21 @@ body::before {
   box-shadow: none;
 }
 
-/* ── 此刻的小动作按钮：「回复」——纯文字、无色无边，安静到几乎只是个可点的字 ── */
+/* ── 此刻的小动作按钮：「↩ 回复这条」「▶ 去网易云听」── */
 .status-reply {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   margin-top: 16px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--ink-soft);
-  background: none;
-  border: none;
-  padding: 4px 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #cbb9ff;
+  background: rgba(123, 111, 240, 0.13);
+  border: 1px solid rgba(123, 111, 240, 0.26);
+  border-radius: 999px;
+  padding: 8px 15px;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.15s ease;
-}
-.status-reply:active {
-  color: var(--ink);
 }
 .status-actions {
   display: flex;
@@ -1527,14 +1613,12 @@ body::before {
 .status-actions .status-reply {
   margin-top: 0;
 }
-/* 「去听」= 主行动，保留一点分量的实色小胶囊 */
+/* 「去网易云听」= 主行动，填充实色 */
 .status-reply.play {
   color: #fff;
   text-decoration: none;
   background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
-  border: none;
-  padding: 7px 14px;
-  opacity: 1;
+  border-color: transparent;
 }
 
 /* el 主动够向她那条消息上的行动按钮（接听 / 接着读 / 看看）——实色，像一张能点的邀请 */
@@ -1649,6 +1733,7 @@ body::before {
   margin: 6px 12px 0;
   padding: 8px 12px;
   border-left: 3px solid var(--accent);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 0 10px 10px 0;
 }
 .quote-bar-body {
@@ -1785,6 +1870,8 @@ body::before {
 }
 
 .wish {
+  background: var(--panel);
+  border: 1px solid var(--hair);
   border-radius: 16px;
   padding: 14px 16px;
   margin-bottom: 12px;
@@ -1881,6 +1968,8 @@ body::before {
 }
 
 .diary-entry {
+  background: var(--panel);
+  border: 1px solid var(--hair);
   border-radius: 16px;
   padding: 16px 18px;
 }
@@ -2450,248 +2539,6 @@ body::before {
   font-size: 14px;
   text-align: center;
   line-height: 1.6;
-}
-
-/* ── 深度问答 ── */
-.qa {
-  padding: 8px 14px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.qa-card {
-  background: var(--glass);
-  border: 1px solid var(--hair);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 20px;
-  padding: 22px 18px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  animation: fadeInUp 0.42s ease both;
-}
-.qa-q {
-  font-family: var(--font-display);
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-.qa-input {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: 14px;
-  padding: 12px 14px;
-  color: var(--ink);
-  font-size: 15px;
-  font-family: inherit;
-  line-height: 1.6;
-  resize: none;
-  outline: none;
-}
-.qa-input::placeholder {
-  color: var(--ink-soft);
-}
-.qa-send,
-.qa-next {
-  appearance: none;
-  align-self: flex-start;
-  border: none;
-  border-radius: 999px;
-  padding: 10px 22px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  color: #fff;
-  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
-  cursor: pointer;
-}
-.qa-next {
-  align-self: center;
-}
-.qa-send:disabled,
-.qa-next:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.qa-turn {
-  border: 1px solid var(--hair);
-  border-radius: 16px;
-  padding: 16px 16px 14px;
-  background: rgba(255, 255, 255, 0.03);
-}
-.qa-turn-latest {
-  background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  animation: fadeInUp 0.42s ease both;
-}
-.qa-t-q {
-  font-size: 13px;
-  color: var(--ink-soft);
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-.qa-t-a {
-  font-size: 14.5px;
-  line-height: 1.6;
-  margin-bottom: 10px;
-}
-.qa-t-reply {
-  font-family: var(--font-hand);
-  font-size: 16px;
-  line-height: 1.8;
-  color: var(--ink);
-  white-space: pre-wrap;
-}
-.qa-past {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.qa-past-label {
-  font-size: 12px;
-  color: var(--ink-soft);
-  letter-spacing: 0.04em;
-  padding: 4px 2px;
-}
-
-/* ── 你画我猜（el 画 · 你猜）── */
-.draw {
-  padding: 8px 14px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.draw-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 48px 24px;
-  text-align: center;
-}
-.draw-empty-ic {
-  font-size: 40px;
-  color: #cbb9ff;
-  opacity: 0.8;
-}
-.draw-empty-text {
-  font-size: 15px;
-  color: var(--ink-soft);
-  line-height: 1.6;
-}
-/* el 的画布：磨砂玻璃方框，简笔画居中 */
-.draw-stage {
-  aspect-ratio: 1 / 1;
-  width: 100%;
-  max-width: 320px;
-  align-self: center;
-  background: var(--glass);
-  border: 1px solid var(--hair);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.draw-loading {
-  font-size: 14px;
-  color: var(--ink-soft);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-.draw-svg {
-  width: 86%;
-  height: 86%;
-}
-/* 每一笔自描：pathLength 归一成 1，dashoffset 1→0 像在落笔；按 animationDelay 依次画 */
-.draw-stroke {
-  fill: none;
-  stroke: #cbb9ff;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: drawStroke 0.5s ease forwards;
-}
-@keyframes drawStroke {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-.draw-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.draw-feed-line {
-  font-family: var(--font-hand);
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--ink);
-  text-align: center;
-}
-.draw-guess-row {
-  display: flex;
-  gap: 10px;
-}
-.draw-guess-input {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--hair);
-  border-radius: 14px;
-  padding: 12px 14px;
-  color: var(--ink);
-  font-size: 15px;
-  font-family: inherit;
-  outline: none;
-}
-.draw-guess-input::placeholder {
-  color: var(--ink-soft);
-}
-.draw-guess-btn,
-.draw-start {
-  appearance: none;
-  border: none;
-  border-radius: 999px;
-  padding: 12px 22px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  color: #fff;
-  background: linear-gradient(135deg, #5a4fcf, #7b6ff0);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.draw-start {
-  align-self: center;
-}
-.draw-guess-btn:disabled,
-.draw-start:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.draw-actions {
-  display: flex;
-  gap: 14px;
-  justify-content: center;
-}
-.draw-mini {
-  appearance: none;
-  background: none;
-  border: none;
-  color: var(--ink-soft);
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 4px 0;
-}
-.draw-mini:disabled {
-  opacity: 0.5;
 }
 .shelf-sec-label {
   font-size: 12px;
@@ -3491,4 +3338,136 @@ body::before {
 .rpg-send-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.rpg-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.rpg-roll-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(203, 185, 255, 0.15);
+  color: #cbb9ff;
+  animation: rpg-roll-in 0.3s ease;
+}
+.rpg-roll-badge.rpg-roll-crit { background: rgba(100, 220, 150, 0.18); color: #7de8a8; }
+.rpg-roll-badge.rpg-roll-fail { background: rgba(230, 100, 100, 0.18); color: #e88080; }
+
+@keyframes rpg-roll-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.rpg-sheet-toggle {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.rpg-sheet-toggle:active { color: #cbb9ff; }
+
+.rpg-sheet {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: rgba(203, 185, 255, 0.05);
+  border-bottom: 1px solid var(--line);
+}
+
+.rpg-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.rpg-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rpg-bar-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.rpg-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rpg-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.rpg-bar-hp { background: linear-gradient(90deg, #e06060, #e88080); }
+.rpg-bar-mp { background: linear-gradient(90deg, #6070c0, #7b8fe0); }
+
+.rpg-bar-num {
+  font-size: 11px;
+  color: var(--ink-soft);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rpg-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.rpg-stat {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 10px;
+  color: var(--ink-soft);
+}
+
+.rpg-npcs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rpg-npc {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  color: var(--ink-soft);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.rpg-npc.rpg-npc-good { color: #7de8a8; border-color: rgba(125,232,168,0.25); }
+.rpg-npc.rpg-npc-bad  { color: #e88080; border-color: rgba(232,128,128,0.25); }
+
+.rpg-dead {
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.rpg-dead-text {
+  font-size: 18px;
+  color: var(--ink-soft);
 }

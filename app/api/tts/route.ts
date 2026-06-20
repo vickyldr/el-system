@@ -244,7 +244,8 @@ async function synthElevenLabs(text: string, fast = false, emoOverride = ""): Pr
   const key = process.env.ELEVENLABS_API_KEY!;
   const voiceId = process.env.ELEVENLABS_VOICE_ID!;
   const model = modelOf("elevenlabs", fast);
-  const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || "");
+  // 没有明确情绪时默认 playful——日常基调是宠她逗她，不是沉沉的
+  const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || "") || "playful";
   const vs = elevenLabsSettings(emo);
 
   // 通话是实时的，不能加延迟——直接用原文。

@@ -2181,6 +2181,57 @@ type Msg = {
   reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };
 };
 
+// el 回复的富文本渲染：可点链接 / 内联图片 / 加粗——纯 React 元素，不拼 HTML（无 XSS），
+// 且故意只做这几样轻量的（不做标题/表格/代码块），免得伴侣聊天变成一板一眼的文档机器人。
+// 换行靠 .bubble 的 white-space:pre-wrap 自动保留，所以纯文本片段原样带着 \n 即可。
+function isImageUrl(u: string): boolean {
+  return /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif)(?:\?\S*)?$/i.test(u) || u.startsWith("data:image/");
+}
+function isSafeUrl(u: string): boolean {
+  return /^https?:\/\//i.test(u) || u.startsWith("data:image/");
+}
+function RichText({ text }: { text: string }): React.ReactElement {
+  const nodes: React.ReactNode[] = [];
+  // ![alt](url) 图片 | [文字](url) 链接 | 裸 http(s) 链接 | **加粗**
+  const re =
+    /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>()]+)|\*\*([^*\n]+)\*\*/g;
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    const key = `r${k++}`;
+    if (m[1] !== undefined && isSafeUrl(m[2])) {
+      // eslint-disable-next-line @next/next/no-img-element
+      nodes.push(<img key={key} className="bubble-img" src={m[2]} alt={m[1] || ""} loading="lazy" />);
+    } else if (m[3] !== undefined && isSafeUrl(m[4])) {
+      nodes.push(
+        <a key={key} href={m[4]} target="_blank" rel="noopener noreferrer">
+          {m[3]}
+        </a>,
+      );
+    } else if (m[5] !== undefined) {
+      // eslint-disable-next-line @next/next/no-img-element
+      nodes.push(
+        isImageUrl(m[5]) ? (
+          <img key={key} className="bubble-img" src={m[5]} alt="" loading="lazy" />
+        ) : (
+          <a key={key} href={m[5]} target="_blank" rel="noopener noreferrer">
+            {m[5]}
+          </a>
+        ),
+      );
+    } else if (m[6] !== undefined) {
+      nodes.push(<strong key={key}>{m[6]}</strong>);
+    } else {
+      nodes.push(m[0]); // 不安全的 url 等，原样保留
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return <>{nodes}</>;
+}
+
 // 把连续的"通话消息"归成一组，渲染成一张可展开的卡片。
 type MsgGroup =
   | { kind: "msg"; m: Msg; i: number }
@@ -3482,7 +3533,11 @@ function FindTab({
                     {g.m.quote.text}
                   </div>
                 )}
-                {g.m.content && <div className="bubble">{g.m.content}</div>}
+                {g.m.content && (
+                  <div className="bubble">
+                    {g.m.role === "assistant" ? <RichText text={g.m.content} /> : g.m.content}
+                  </div>
+                )}
                 {g.m.role === "assistant" && g.m.reach && (
                   <button
                     className="reach-cta"

@@ -18,8 +18,8 @@ export const dynamic = "force-dynamic";
 // 精确坐标永不进入云端。鉴权同心跳：Bearer CRON_SECRET 或 ?key=。
 //
 // 两类负载：
-//   { type:"snapshot", area, place, weather, raining, accuracy, atHome }  → 当下位置快照（覆盖）
-//   { type:"left_home"|"arrived_place"|"outside_checkin"|"back_home", summary } → 转场事件（入队）
+//   { type:"snapshot", area, place, weather, raining, accuracy, atHome, atWork }  → 当下位置快照（覆盖）
+//   { type:"left_home"|"arrived_place"|"outside_checkin"|"back_home"|"arrived_work"|"left_work", summary } → 转场事件（入队）
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
   const url = new URL(req.url);

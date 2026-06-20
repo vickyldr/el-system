@@ -88,6 +88,8 @@ cp .env.example .env        # 然后编辑 .env 填好（见下）
 必填：`ICLOUD_APPLE_ID`、`GEO_POST_URL`（= `https://你的域名/api/geo-event`）、`CRON_SECRET`（和小家 Vercel 上同一个值）。
 想要"出门/到家"事件就再填 `HOME_LAT`/`HOME_LON`（地图上长按你家复制坐标）。其余可选项见 `.env.example`。
 
+**家/公司一键存坐标**（不用手抄经纬度）：在家时跑 `python watcher.py set-home`、在公司时跑 `python watcher.py set-work`，它会读你此刻的位置写进 `.env`（坐标不出本机），之后 `sudo systemctl restart el-geo` 生效。设了公司后，到公司/离开公司会单独发"到公司了 / 离开公司了"事件，且在公司时 el 直接说"她在公司"（而不只是"在 XX 路附近"）。
+
 ## 首次登录（走一遍 2FA）
 
 第一次要密码 + 一次 2FA，之后靠钥匙串 + trust 免密续登。临时把密码塞进环境跑一次：

@@ -942,15 +942,28 @@ body::before {
   gap: 22px;
   padding: 24px;
 }
-/* 视频通话里自己的画面预览（镜像，像照镜子更自然） */
+/* el 的 VRM 头像容器 */
+.call-avatar {
+  width: min(60vw, 240px);
+  aspect-ratio: 3 / 4;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 100%);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* 视频通话里自己的画面预览（镜像，缩到右下角画中画） */
 .call-selfcam {
-  width: min(72vw, 280px);
+  width: min(36vw, 120px);
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  border-radius: 18px;
+  border-radius: 12px;
   background: #000;
   transform: scaleX(-1);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  position: absolute;
+  bottom: 120px;
+  right: 20px;
 }
 
 .call-title {

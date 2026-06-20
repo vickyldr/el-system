@@ -1130,6 +1130,19 @@ body::before {
   cursor: pointer;
 }
 
+/* 多张待发图：排成一行，可横向滑动 */
+.img-preview-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 16px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.img-preview-row .img-preview {
+  margin: 0;
+}
+
 .attach-btn {
   flex-shrink: 0;
   width: 34px;

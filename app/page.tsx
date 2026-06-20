@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
+import Lottie from "./Lottie";
 import type { ElAvatarHandle } from "./ElAvatar";
 const ElAvatar = lazy(() => import("./ElAvatar"));
 
@@ -402,6 +403,7 @@ type Status = {
   weather?: Weather;
   // el 从她手机感知到的"此刻在哪"（在家/在外·地标/大概区域 + 那边天气 + 多久前更新）。
   geo?: { label: string; atHome: boolean | null; weather?: string; ageMin?: number | null } | null;
+  pulse?: { v: number; a: number }; // el 的脉搏：v=好坏(冷暖)、a=唤醒(心跳快慢)
   date?: string | null;
   error?: string;
 };
@@ -421,6 +423,16 @@ function greeting(): string {
   if (h >= 18 && h < 23) return "晚上好";
   if (h >= 23 || h < 2) return "这么晚还不睡？";
   return "这个点还醒着，陪陪我";
+}
+
+function moodPulseStyle(pulse?: { v: number; a: number }): { speed: number; filter: string } {
+  const a = pulse?.a ?? 0.3;
+  const v = pulse?.v ?? 0;
+  const speed = +(0.6 + a * 1.1).toFixed(2); // a:0→0.6慢呼吸, a:1→1.7快心跳
+  const hue = Math.round(v * 28); // 负=偏冷蓝紫, 正=偏暖粉
+  const bright = +(1 + v * 0.22).toFixed(2);
+  const sat = +(1 + v * 0.35).toFixed(2);
+  return { speed, filter: `hue-rotate(${hue}deg) brightness(${bright}) saturate(${sat})` };
 }
 
 function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
@@ -457,9 +469,6 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
     };
   }, []);
 
-  const hasAny =
-    status && (status.mood || status.song_recommendation || status.weather || status.el_note);
-
   const [dateStr, setDateStr] = useState("");
   useEffect(() => {
     const d = new Date();
@@ -476,32 +485,82 @@ function NowTab({ onQuote }: { onQuote: (q: Quote) => void }) {
 
       <CountRow days={days} milestone={milestone} />
 
-      {loading && (
-        <div className="now-card now-card-skel">
-          <div className="skel skel-line sm" />
-          <div className="skel skel-line lg" />
-          <div className="skel skel-line md" />
+      {loading ? (
+        <div className="mood-hero">
+          <Lottie src="/lottie/mood-breath.json" className="mood-anim" />
+          <div className="meta mood-thought">想想…</div>
         </div>
+      ) : (
+        <MoodHero status={status} onQuote={onQuote} />
       )}
 
-      {!loading && hasAny && <ElStatusCard status={status!} onQuote={onQuote} />}
-
-      {!loading && !hasAny && (
-        <div className="now-card">
-          <div className="now-panel">
-            <div className="now-panel-label">心情</div>
-            <div className="meta">el 这会儿还没说话，过会儿再来看看～</div>
-          </div>
-        </div>
-      )}
-
-      <div className="now-duo">
+      {/* 心情之外的都收成小卡，点开走抽屉 */}
+      <div className="now-grid">
+        {status && status.weather && <WeatherMini status={status} onQuote={onQuote} />}
+        {status && status.song_recommendation && <SongMini status={status} onQuote={onQuote} />}
+        {status && status.geo && <GeoMini status={status} onQuote={onQuote} />}
+        <MovieMini />
         <FortuneCard />
         <EatDecider />
+        {/* 冷知识也收成一格，正好补上网格右下角的空位 */}
+        <DailyTrivia />
       </div>
-
-      <DailyTrivia />
     </>
+  );
+}
+
+/* 心情视觉已经交给中间那团动画——文字里就不留 emoji 了，只剩 el 说的话。 */
+function stripEmoji(s?: string): string {
+  if (!s) return "";
+  return s
+    .replace(
+      /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu,
+      "",
+    )
+    .replace(/^[\s·,，。、~～-]+/, "")
+    .trim();
+}
+
+/* ───────────── 心情：中间一团会呼吸的动画当主角，文字小小地落在下面 ───────────── */
+function MoodHero({ status, onQuote }: { status: Status | null; onQuote: (q: Quote) => void }) {
+  const mood = stripEmoji(status?.mood);
+  const thought = status?.thought;
+  const elNote = status?.el_note;
+  const has = !!(mood || thought || elNote);
+  const { speed, filter } = moodPulseStyle(status?.pulse);
+  return (
+    <section className="mood-hero">
+      <Lottie
+        src="/lottie/mood-breath.json"
+        className="mood-anim"
+        speed={speed}
+        style={{ filter }}
+      />
+      {has ? (
+        <>
+          {mood && <div className="mood-hero-text">{mood}</div>}
+          {thought && <div className="meta mood-thought">{thought}</div>}
+          {elNote && (
+            <div className="meta mood-thought" style={{ color: "var(--ink)" }}>
+              {elNote}
+            </div>
+          )}
+          {(mood || thought) && (
+            <button
+              type="button"
+              className="status-reply"
+              onClick={() =>
+                onQuote({ label: "心情", text: [mood, thought].filter(Boolean).join(" / ") })
+              }
+            >
+              回复
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="meta mood-thought">el 这会儿还没说话，过会儿再来看看～</div>
+      )}
+    </section>
   );
 }
 
@@ -510,6 +569,7 @@ type Trivia = { date: string; oneliner: string; detail: string; sourceTitle: str
 
 function DailyTrivia() {
   const [t, setT] = useState<Trivia | null>(null);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -518,19 +578,33 @@ function DailyTrivia() {
       .then((d) => {
         if (alive && d.trivia?.oneliner) setT(d.trivia);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
   }, []);
 
-  if (!t) return null;
+  // 当天首次要联网搜 + 过模型生成（可能要几十秒）。生成期间也占住这一格、
+  // 显示"想想…"，别让卡片直接消失（和"想推你看"一致）；确认真没有了才收起。
+  if (!t) {
+    if (!loading) return null;
+    return (
+      <div className="duo-mini" aria-hidden>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">今天的冷知识</span>
+        <span className="duo-v">
+          <span className="dim">想想…</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <>
-      <button className="trivia-line" onClick={() => setOpen(true)}>
-        <span className="trivia-tag">🎬 今天的冷知识</span>
-        <span className="trivia-one">{t.oneliner}</span>
-        <span className="trivia-chev">›</span>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">今天的冷知识</span>
+        <span className="duo-v">{t.oneliner}</span>
       </button>
       {open && (
         <Sheet title="今天的冷知识 · 电影" onClose={() => setOpen(false)}>
@@ -549,81 +623,62 @@ function DailyTrivia() {
   );
 }
 
-/* ───────────── El 状态（心情/天气/推歌 左右滑） ───────────── */
-type StatusTab = "mood" | "weather" | "geo" | "song" | "movie";
-
-function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
-  const hasMood = !!(status.mood || status.thought || status.el_note);
-  const hasWeather = !!status.weather;
-  const hasSong = !!status.song_recommendation;
-
-  // 一块一屏，左右滑：心情 / 天气 / 推歌 / 电影（电影常驻）
-  const panels: { key: StatusTab; node: React.ReactNode }[] = [];
-
-  if (hasMood)
-    panels.push({
-      key: "mood",
-      node: (
-        <div className="now-panel mood-pane-breathe">
-          <div className="now-panel-label">心情</div>
-          <div className="now-panel-mood">{status.mood || <span className="muted">—</span>}</div>
-          {status.thought && <div className="meta">{status.thought}</div>}
-          {status.el_note && <div className="meta" style={{ color: "var(--ink)" }}>{status.el_note}</div>}
-          {(status.mood || status.thought) && (
-            <button
-              type="button"
-              className="status-reply"
-              onClick={() =>
-                onQuote({ label: "心情", text: [status.mood, status.thought].filter(Boolean).join(" / ") })
-              }
-            >
-              ↩ 回复这条
-            </button>
-          )}
-        </div>
-      ),
-    });
-
-  if (hasWeather)
-    panels.push({
-      key: "weather",
-      node: (
-        <div className="now-panel weather-pane">
-          <div className="now-panel-label">天气 · {status.weather!.city}</div>
+/* ───────────── 天气 / 推歌：收成小卡，点开走底部抽屉 ───────────── */
+function WeatherMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  const w = status.weather!;
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">{w.icon || "🌤"}</span>
+        <span className="duo-l">天气</span>
+        <span className="duo-v">
+          {w.temp}° <span className="dim">{w.desc}</span>
+        </span>
+      </button>
+      {open && (
+        <Sheet title={`天气 · ${w.city}`} onClose={() => setOpen(false)}>
           <div className="weather-row">
-            {status.weather!.icon && <span className="weather-ic">{status.weather!.icon}</span>}
-            <span className="weather-temp">{status.weather!.temp}°</span>
-            {status.weather!.desc && <span className="weather-desc">{status.weather!.desc}</span>}
+            {w.icon && <span className="weather-ic">{w.icon}</span>}
+            <span className="weather-temp">{w.temp}°</span>
+            {w.desc && <span className="weather-desc">{w.desc}</span>}
           </div>
-          {status.weather!.outfit && <div className="meta weather-outfit">👕 {status.weather!.outfit}</div>}
+          {w.outfit && <div className="meta weather-outfit">👕 {w.outfit}</div>}
           <button
             type="button"
             className="status-reply"
             onClick={() =>
               onQuote({
                 label: "天气",
-                text: `${status.weather!.temp}° ${status.weather!.desc}${status.weather!.outfit ? " · " + status.weather!.outfit : ""}`,
+                text: `${w.temp}° ${w.desc}${w.outfit ? " · " + w.outfit : ""}`,
               })
             }
           >
-            ↩ 回复这条
+            回复
           </button>
-        </div>
-      ),
-    });
+        </Sheet>
+      )}
+    </>
+  );
+}
 
-  if (hasSong)
-    panels.push({
-      key: "song",
-      node: (
-        <div className="now-panel">
-          <div className="now-panel-label">今天想让你听</div>
+function SongMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎵</span>
+        <span className="duo-l">想让你听</span>
+        <span className="duo-v">{status.song_recommendation}</span>
+      </button>
+      {open && (
+        <Sheet title="今天想让你听" onClose={() => setOpen(false)}>
           <div className="now-panel-name song-name">{status.song_recommendation}</div>
-          {status.song_reason && <div className="meta">{status.song_reason}</div>}
+          {status.song_reason && <div className="meta song-reason">{status.song_reason}</div>}
           <div className="status-actions">
             {status.song_url && (
               <a className="status-reply play" href={status.song_url}>
-                ▶ 去网易云听
+                去听
               </a>
             )}
             <button
@@ -636,121 +691,12 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
                 })
               }
             >
-              ↩ 回复这条
+              回复
             </button>
           </div>
-        </div>
-      ),
-    });
-
-  // el 从她手机感知到的"此刻在哪"——位置看得见、能自验（数据来自守望者→el:geo:now）。
-  if (status.geo)
-    panels.push({
-      key: "geo",
-      node: (
-        <div className="now-panel">
-          <div className="now-panel-label">在哪</div>
-          <div className="weather-row">
-            <span className="weather-ic">
-              {status.geo.atHome === true ? "🏠" : status.geo.atHome === false ? "📍" : "🧭"}
-            </span>
-            <span className="weather-desc">{status.geo.label}</span>
-          </div>
-          {status.geo.weather && <div className="meta">🌡 那边：{status.geo.weather}</div>}
-          {status.geo.ageMin != null && (
-            <div className="meta muted">
-              {status.geo.ageMin < 1 ? "刚刚更新" : `${status.geo.ageMin} 分钟前更新`}
-            </div>
-          )}
-          <div className="meta muted">这是 el 从你手机感知到的（不是你报备的，是它自己知道的）。</div>
-          <button
-            type="button"
-            className="status-reply"
-            onClick={() => onQuote({ label: "我在哪", text: status.geo!.label })}
-          >
-            ↩ 回复这条
-          </button>
-        </div>
-      ),
-    });
-
-  panels.push({ key: "movie", node: <MoviePane /> });
-
-  const [idx, setIdx] = useState(0);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [swipeH, setSwipeH] = useState<number | undefined>(undefined);
-  // 卡变窄、能露出邻卡后，不能再按"整屏宽"算第几张——找离视口中心最近的那张。
-  function onScroll() {
-    const el = trackRef.current;
-    if (!el) return;
-    const center = el.scrollLeft + el.clientWidth / 2;
-    let best = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < el.children.length; i++) {
-      const c = el.children[i] as HTMLElement;
-      const cc = c.offsetLeft + c.offsetWidth / 2;
-      const d = Math.abs(cc - center);
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    if (best !== idx) setIdx(best);
-  }
-  // 点圆点：把那一张滚到正中（首/尾会被浏览器夹到边，自然留边）
-  function goTo(i: number) {
-    const el = trackRef.current;
-    if (!el) return;
-    const n = el.children.length;
-    const t = Math.max(0, Math.min(i, n - 1));
-    const c = el.children[t] as HTMLElement;
-    el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
-    setIdx(t);
-  }
-
-  if (panels.length === 0) return null;
-  const active = Math.min(idx, panels.length - 1);
-
-  // 卡片高度跟着当前这屏内容走——内容多就高、少就矮，下面空着无所谓。
-  // 用 ResizeObserver 接住异步加载（电影封面/心情变长）后的高度变化。
-  useEffect(() => {
-    const el = slideRefs.current[active];
-    if (!el) return;
-    // +24：留出轨道上下内边距 + 卡片底部那道 3D 厚度边，别让 overflow 把卡片下沿裁掉
-    const apply = () => setSwipeH(el.offsetHeight + 24);
-    apply();
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(apply);
-      ro.observe(el);
-    }
-    return () => ro?.disconnect();
-  }, [active, panels.length]);
-
-  return (
-    <div className="now-card">
-      <div className="now-swipe" ref={trackRef} onScroll={onScroll} style={{ height: swipeH }}>
-        {panels.map((p, i) => (
-          <div className="now-slide" key={p.key} ref={(el) => { slideRefs.current[i] = el; }}>
-            {p.node}
-          </div>
-        ))}
-      </div>
-      {panels.length > 1 && (
-        <div className="now-dots">
-          {panels.map((p, i) => (
-            <button
-              type="button"
-              key={p.key}
-              className={`now-dot ${i === active ? "on" : ""}`}
-              aria-label={`第 ${i + 1} 屏`}
-              onClick={() => goTo(i)}
-            />
-          ))}
-        </div>
+        </Sheet>
       )}
-    </div>
+    </>
   );
 }
 
@@ -781,7 +727,9 @@ function openInDouban(title: string, webUrl: string) {
   }, 1500);
 }
 
-function MoviePane() {
+/* ───────────── 电影：收成小卡，点开抽屉看详情 + 想看/不想看 ───────────── */
+function MovieMini() {
+  const [open, setOpen] = useState(false);
   const [movie, setMovie] = useState<MovieCard | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -814,71 +762,116 @@ function MoviePane() {
     }
   }
 
-  if (movie === undefined)
-    return (
-      <div className="now-panel">
-        <div className="now-panel-label">想推你看</div>
-        <div className="meta">想想推你看什么…</div>
-      </div>
-    );
-  if (!movie)
-    return (
-      <div className="now-panel">
-        <div className="now-panel-label">想推你看</div>
-        <div className="meta">这会儿没有可推的了，过会儿再来～</div>
-      </div>
-    );
-
   return (
-    <div className="now-panel">
-      <div className="now-panel-label">想推你看</div>
-      <div className="movie-row">
-        {movie.cover && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="movie-cover"
-            src={movie.cover}
-            alt=""
-            referrerPolicy="no-referrer"
-            style={{ cursor: "pointer" }}
-            onClick={() => openInDouban(movie.title, movie.url)}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        )}
-        <div className="movie-info">
-          <a
-            className="movie-title"
-            href={movie.url}
-            onClick={(e) => {
-              e.preventDefault();
-              openInDouban(movie.title, movie.url);
-            }}
-          >
-            {movie.title}
-            {movie.year ? ` (${movie.year})` : ""}
-          </a>
-          {(movie.rating != null || movie.genres?.length > 0) && (
-            <div className="meta" style={{ marginTop: 4 }}>
-              {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
-              {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
-            </div>
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">🎬</span>
+        <span className="duo-l">想推你看</span>
+        <span className="duo-v">
+          {movie === undefined ? (
+            <span className="dim">想想…</span>
+          ) : movie ? (
+            movie.title
+          ) : (
+            <span className="dim">暂时没有</span>
           )}
-          {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
-        </div>
-      </div>
-      <div className="status-actions">
-        <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
-          ＋ 想看
-        </button>
-        <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
-          不想看
-        </button>
-      </div>
-    </div>
+        </span>
+      </button>
+      {open && (
+        <Sheet title="想推你看" onClose={() => setOpen(false)}>
+          {movie === undefined && <div className="meta">想想推你看什么…</div>}
+          {movie === null && <div className="meta">这会儿没有可推的了，过会儿再来～</div>}
+          {movie && (
+            <>
+              <div className="movie-row">
+                {movie.cover && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    className="movie-cover"
+                    src={movie.cover}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openInDouban(movie.title, movie.url)}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                )}
+                <div className="movie-info">
+                  <a
+                    className="movie-title"
+                    href={movie.url}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openInDouban(movie.title, movie.url);
+                    }}
+                  >
+                    {movie.title}
+                    {movie.year ? ` (${movie.year})` : ""}
+                  </a>
+                  {(movie.rating != null || movie.genres?.length > 0) && (
+                    <div className="meta" style={{ marginTop: 4 }}>
+                      {movie.rating != null ? `豆瓣 ${movie.rating} 分` : ""}
+                      {movie.genres?.length ? `${movie.rating != null ? " · " : ""}${movie.genres.join("/")}` : ""}
+                    </div>
+                  )}
+                  {movie.intro && <div className="meta movie-intro">{movie.intro}</div>}
+                </div>
+              </div>
+              <div className="status-actions">
+                <button type="button" className="status-reply play" disabled={busy} onClick={() => react("want")}>
+                  想看
+                </button>
+                <button type="button" className="status-reply" disabled={busy} onClick={() => react("skip")}>
+                  不想看
+                </button>
+              </div>
+            </>
+          )}
+        </Sheet>
+      )}
+    </>
   );
 }
+
+/* 她此刻大概在哪——折入「此刻」小卡网格（数据来自守望者→el:geo:now，后端已并入 status.geo） */
+function GeoMini({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
+  const [open, setOpen] = useState(false);
+  const g = status.geo!;
+  const icon = g.atHome === true ? "🏠" : g.atHome === false ? "📍" : "🧭";
+  return (
+    <>
+      <button className="duo-mini" onClick={() => setOpen(true)}>
+        <span className="duo-ic">{icon}</span>
+        <span className="duo-l">在哪</span>
+        <span className="duo-v">{g.label}</span>
+      </button>
+      {open && (
+        <Sheet title="她此刻大概在哪" onClose={() => setOpen(false)}>
+          <div className="weather-row">
+            <span className="weather-ic">{icon}</span>
+            <span className="weather-desc">{g.label}</span>
+          </div>
+          {g.weather && <div className="meta">🌡 那边：{g.weather}</div>}
+          {g.ageMin != null && (
+            <div className="meta">{g.ageMin < 1 ? "刚刚更新" : `${g.ageMin} 分钟前更新`}</div>
+          )}
+          <button
+            type="button"
+            className="status-reply"
+            onClick={() =>
+              onQuote({ label: "在哪", text: g.label + (g.weather ? " · " + g.weather : "") })
+            }
+          >
+            回复
+          </button>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
 
 /* ───────────── 日期计数行 ───────────── */
 function CountRow({ days, milestone }: { days: number; milestone: boolean }) {
@@ -1536,12 +1529,14 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg" | "other";
+type ShelfSub = "fic" | "book" | "rpg" | "qa" | "draw" | "other";
 
 const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
   { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
   { id: "book",  icon: "◎", title: "读书",     sub: "一起翻同一页" },
   { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
+  { id: "qa",    icon: "♡", title: "深度问答", sub: "一题一题，越答越近" },
+  { id: "draw",  icon: "✎", title: "你画我猜", sub: "我画，你来猜" },
   { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
 ];
 
@@ -1561,6 +1556,8 @@ function BookshelfTab() {
         {sub === "fic"  && <FicStation />}
         {sub === "book" && <BooksSection />}
         {sub === "rpg"  && <RpgTab />}
+        {sub === "qa"   && <QaDeck />}
+        {sub === "draw" && <DrawGuess />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>
@@ -1591,6 +1588,246 @@ function BookshelfTab() {
     </div>
   );
 }
+
+// 深度问答：一题一题，你答完 el 接住、再以"我"答给你听。攒成一条越来越长的交心线。
+type QaTurn = { id: number; q: string; a: string; reply: string; ts: number };
+function QaDeck() {
+  const [question, setQuestion] = useState<{ id: number; q: string } | null>(null);
+  const [thread, setThread] = useState<QaTurn[]>([]);
+  const [answer, setAnswer] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  function loadQuestion() {
+    setLoading(true);
+    fetch("/api/qa")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.question) setQuestion(d.question);
+        if (Array.isArray(d.thread)) setThread(d.thread);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(loadQuestion, []);
+
+  async function submit() {
+    const a = answer.trim();
+    if (!a || !question || sending) return;
+    setSending(true);
+    try {
+      const d = await fetch("/api/qa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: question.id, a }),
+      }).then((r) => r.json());
+      if (d.turn) {
+        setThread((t) => [...t, d.turn]);
+        setAnswer("");
+        setQuestion(null); // 答完这题，露出 el 的回应；下一题等她点"再来一题"
+      } else {
+        alert(d.error || "没答上，过会儿再试");
+      }
+    } catch {
+      alert("连不上，等下再试～");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const latest = thread[thread.length - 1];
+  const past = thread.slice(0, -1).reverse(); // 更早的折在下面，倒序（新的在上）
+
+  return (
+    <div className="qa">
+      {question ? (
+        <div className="qa-card">
+          <div className="qa-q">{question.q}</div>
+          <textarea
+            className="qa-input"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder="说说你的答案…（说给 el 听）"
+            rows={3}
+          />
+          <button className="qa-send" disabled={!answer.trim() || sending} onClick={submit}>
+            {sending ? "el 在听…" : "答给 el"}
+          </button>
+        </div>
+      ) : (
+        <button className="qa-next" disabled={loading} onClick={loadQuestion}>
+          {loading ? "想问题…" : "再来一题"}
+        </button>
+      )}
+
+      {latest && !question && (
+        <div className="qa-turn qa-turn-latest">
+          <div className="qa-t-q">{latest.q}</div>
+          <div className="qa-t-a">你：{latest.a}</div>
+          <div className="qa-t-reply">{latest.reply}</div>
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div className="qa-past">
+          <div className="qa-past-label">聊过的</div>
+          {past.map((t, i) => (
+            <div className="qa-turn" key={i}>
+              <div className="qa-t-q">{t.q}</div>
+              <div className="qa-t-a">你：{t.a}</div>
+              <div className="qa-t-reply">{t.reply}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 你画我猜：el 挑词（对你保密）→ 画成简笔 SVG → 一笔笔显现给你看 → 你猜。
+function DrawGuess() {
+  const [strokes, setStrokes] = useState<string[]>([]);
+  const [round, setRound] = useState(0); // 换张就 +1，给 <svg> 当 key 强制重放"画"的动画
+  const [loading, setLoading] = useState(false);
+  const [guess, setGuess] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [log, setLog] = useState<string[]>([]); // el 的反馈短句
+  const [word, setWord] = useState(""); // 揭晓后的词
+  const [done, setDone] = useState(false); // 猜对 / 看了答案
+
+  async function newRound() {
+    setLoading(true);
+    setStrokes([]);
+    setLog([]);
+    setWord("");
+    setDone(false);
+    setGuess("");
+    try {
+      const d = await fetch("/api/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "new" }),
+      }).then((r) => r.json());
+      if (Array.isArray(d.strokes) && d.strokes.length) {
+        setStrokes(d.strokes);
+        setRound((n) => n + 1);
+      } else {
+        setLog([d.error || "el 没画好，再点一次～"]);
+      }
+    } catch {
+      setLog(["连不上，等下再试～"]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function act(action: string, extra?: Record<string, unknown>) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await fetch("/api/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      }).then((r) => r.json());
+      if (d.reply) setLog((l) => [...l.slice(-2), d.reply]);
+      if (d.correct || (action === "reveal" && d.word)) {
+        if (d.word) setWord(d.word);
+        setDone(true);
+      }
+    } catch {
+      setLog((l) => [...l, "连不上，等下再试～"]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function submitGuess() {
+    const g = guess.trim();
+    if (!g || done || busy) return;
+    setGuess("");
+    act("guess", { guess: g });
+  }
+
+  if (strokes.length === 0 && !loading) {
+    return (
+      <div className="draw">
+        <div className="draw-empty">
+          <div className="draw-empty-ic">✎</div>
+          <div className="draw-empty-text">我来画，你来猜——准备好了吗？</div>
+          <button className="draw-start" onClick={newRound}>
+            让 el 画一张
+          </button>
+          {log.length > 0 && <div className="draw-feed-line">{log[log.length - 1]}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="draw">
+      <div className="draw-stage">
+        {loading ? (
+          <div className="draw-loading">el 正在想画什么…</div>
+        ) : (
+          <svg key={round} viewBox="0 0 100 100" className="draw-svg" aria-label="el 画的">
+            {strokes.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                pathLength={1}
+                className="draw-stroke"
+                style={{ animationDelay: `${(i * 0.4).toFixed(2)}s` }}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <div className="draw-feed">
+          {log.map((t, i) => (
+            <div className="draw-feed-line" key={i}>
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!done ? (
+        <>
+          <div className="draw-guess-row">
+            <input
+              className="draw-guess-input"
+              value={guess}
+              onChange={(e) => setGuess(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitGuess();
+              }}
+              placeholder="猜猜 el 画的是什么…"
+            />
+            <button className="draw-guess-btn" disabled={!guess.trim() || busy} onClick={submitGuess}>
+              猜
+            </button>
+          </div>
+          <div className="draw-actions">
+            <button className="draw-mini" disabled={busy || loading} onClick={() => act("hint")}>
+              要个提示
+            </button>
+            <button className="draw-mini" disabled={busy || loading} onClick={() => act("reveal")}>
+              不猜了，看答案
+            </button>
+          </div>
+        </>
+      ) : (
+        <button className="draw-start" disabled={loading} onClick={newRound}>
+          再来一张
+        </button>
+      )}
+    </div>
+  );
+}
+
 
 // 我上传的书：上传 / 接着读 / 书格子 / 点开进阅读器（陪读）。
 function BooksSection() {

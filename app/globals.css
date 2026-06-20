@@ -3813,3 +3813,28 @@ body::before {
 .draw-mini:disabled {
   opacity: 0.5;
 }
+
+/* ===== 磨砂统一：我们 / 找我 的卡片也用「沉浸」那套玻璃质感 ===== */
+/* 半透底 + 发丝边 + 轻模糊，去掉旧的重投影，和此刻/沉浸的卡一致 */
+.card,
+.wish,
+.diary-entry,
+.msg.el .bubble {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: none;
+}
+/* 通话邀请卡：保留它的紫色描边，只补模糊、去重投影 */
+.call-card {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: none;
+}
+/* 引用条：保留左侧强调边，底色换玻璃 + 模糊 */
+.quote-bar {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}

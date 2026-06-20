@@ -1904,6 +1904,7 @@ type Msg = {
   screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
   cam?: boolean; // 这条是不是 el 透过常看摄像头看着她时的（卡片显示成"看着你"）
   via?: string; // 这条回复走的哪条路：max / 中转站 / bridge
+  emotion?: string; // el 这条回复的情绪标签，传给 TTS 用
   quote?: Quote; // 这条是在回复「此刻」的哪条（心情/天气/推歌）
   // el 主动够向她：这条带个动作，渲染成带按钮的卡（接听 / 视频接听 / 接着读 / 看看）。
   reach?: { kind: "call" | "video" | "read" | "link"; link?: string; cta?: string };
@@ -2401,7 +2402,7 @@ function FindTab({
       const d = await r.json();
       if (d?.reply) {
         stickBottom.current = true;
-        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, emotion: d.emotion || undefined, ts: Date.now() }]);
       }
     } catch {
       /* ignore */
@@ -2494,7 +2495,7 @@ function FindTab({
       const d = await r.json();
       if (d?.reply) {
         stickBottom.current = true;
-        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, ts: Date.now() }]);
+        setMsgs((m) => [...m, { role: "assistant", content: d.reply, via: d.via, emotion: d.emotion || undefined, ts: Date.now() }]);
       }
     } catch {
       /* ignore */
@@ -2721,7 +2722,7 @@ function FindTab({
   }
 
   // 用 el 的音色把这条念出来（点一下才念，省额度）。
-  async function speak(text: string, idx: number) {
+  async function speak(text: string, idx: number, emotion?: string) {
     if (!text) return;
     if (audioRef.current) {
       audioRef.current.pause();
@@ -2732,7 +2733,7 @@ function FindTab({
       const r = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, emotion }),
       });
       if (!r.ok) {
         setSpeaking(null);
@@ -3012,6 +3013,7 @@ function FindTab({
           content: d.reply || d.error || "……",
           image: d.sticker || undefined,
           via: d.via || undefined,
+          emotion: d.emotion || undefined,
           ts: Date.now(),
         },
       ]);
@@ -3231,7 +3233,7 @@ function FindTab({
                   {ttsOn && g.m.role === "assistant" && g.m.content && (
                     <button
                       className={`speak-btn ${speaking === g.i ? "on" : ""}`}
-                      onClick={() => speak(g.m.content, g.i)}
+                      onClick={() => speak(g.m.content, g.i, g.m.emotion)}
                       aria-label="听"
                     >
                       <Icon name="volume" size={15} />

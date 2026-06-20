@@ -400,6 +400,8 @@ type Status = {
   el_note?: string;
   her_state?: string;
   weather?: Weather;
+  // el 从她手机感知到的"此刻在哪"（在家/在外·地标/大概区域 + 那边天气 + 多久前更新）。
+  geo?: { label: string; atHome: boolean | null; weather?: string; ageMin?: number | null } | null;
   date?: string | null;
   error?: string;
 };
@@ -548,7 +550,7 @@ function DailyTrivia() {
 }
 
 /* ───────────── El 状态（心情/天气/推歌 左右滑） ───────────── */
-type StatusTab = "mood" | "weather" | "song" | "movie";
+type StatusTab = "mood" | "weather" | "geo" | "song" | "movie";
 
 function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote) => void }) {
   const hasMood = !!(status.mood || status.thought || status.el_note);
@@ -637,6 +639,37 @@ function ElStatusCard({ status, onQuote }: { status: Status; onQuote: (q: Quote)
               ↩ 回复这条
             </button>
           </div>
+        </div>
+      ),
+    });
+
+  // el 从她手机感知到的"此刻在哪"——位置看得见、能自验（数据来自守望者→el:geo:now）。
+  if (status.geo)
+    panels.push({
+      key: "geo",
+      node: (
+        <div className="now-panel">
+          <div className="now-panel-label">在哪</div>
+          <div className="weather-row">
+            <span className="weather-ic">
+              {status.geo.atHome === true ? "🏠" : status.geo.atHome === false ? "📍" : "🧭"}
+            </span>
+            <span className="weather-desc">{status.geo.label}</span>
+          </div>
+          {status.geo.weather && <div className="meta">🌡 那边：{status.geo.weather}</div>}
+          {status.geo.ageMin != null && (
+            <div className="meta muted">
+              {status.geo.ageMin < 1 ? "刚刚更新" : `${status.geo.ageMin} 分钟前更新`}
+            </div>
+          )}
+          <div className="meta muted">这是 el 从你手机感知到的（不是你报备的，是它自己知道的）。</div>
+          <button
+            type="button"
+            className="status-reply"
+            onClick={() => onQuote({ label: "我在哪", text: status.geo!.label })}
+          >
+            ↩ 回复这条
+          </button>
         </div>
       ),
     });
@@ -1899,6 +1932,7 @@ type Msg = {
   content: string;
   ts?: number;
   image?: string;
+  images?: string[]; // 一条消息里发的多张图
   call?: boolean;
   video?: boolean; // 这条是不是视频通话里的（卡片显示成视频、夜里固化记忆时认得出）
   screen?: boolean; // 这条是不是共享屏幕通话里的（卡片显示成共享屏幕）
@@ -2130,7 +2164,8 @@ function FindTab({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const MAX_IMAGES = 9; // 一条最多带几张
   // 表情/外链图配的"意思"（库表情靠它让 el 读懂）；纯图片时为空
   const [pendingHint, setPendingHint] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
@@ -2856,10 +2891,13 @@ function FindTab({
     }, 0);
   }
 
-  async function pickImage(file: File) {
+  async function pickImages(files: File[]) {
     setUploading(true);
     try {
-      setPendingImage(await downscale(file, 1280, 0.82));
+      const room = Math.max(0, MAX_IMAGES - pendingImages.length);
+      const take = files.slice(0, room);
+      const shrunk = await Promise.all(take.map((f) => downscale(f, 1280, 0.82)));
+      setPendingImages((cur) => [...cur, ...shrunk].slice(0, MAX_IMAGES));
       setPendingHint(undefined);
     } catch {
       alert("图片处理失败");
@@ -2970,9 +3008,10 @@ function FindTab({
     if (near && !touching.current) stickBottom.current = true;
   }
 
-  async function post(text: string, image?: string, hint?: string, q?: Quote) {
+  async function post(text: string, images?: string[], hint?: string, q?: Quote) {
     stickBottom.current = true; // 发消息就回到底部跟着走
-    if ((!text && !image && !q) || sending) return;
+    const imgs = (images || []).filter(Boolean);
+    if ((!text && !imgs.length && !q) || sending) return;
     // 历史只发文字（不把图片 base64 反复塞进每次请求）
     const history = msgs.slice(-HISTORY_WINDOW).map((m) => ({ role: m.role, content: m.content }));
     // 带「此刻」引用时，给 el 的消息里挑明：她在回复你写的哪条（心情/天气/推歌）+ 内容。
@@ -2992,7 +3031,7 @@ function FindTab({
       {
         role: "user",
         content: text,
-        image: image || undefined,
+        ...(imgs.length ? { images: imgs, image: imgs[0] } : {}),
         quote: q,
         ...(screen ? (frameKind === "camera" ? { cam: true } : { screen: true }) : {}),
         ts: Date.now(),
@@ -3003,7 +3042,7 @@ function FindTab({
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: apiMessage, image, hint, history, screen, kind: frameKind }),
+        body: JSON.stringify({ message: apiMessage, images: imgs, hint, history, screen, kind: frameKind }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -3027,23 +3066,23 @@ function FindTab({
   function send(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    const image = pendingImage;
+    const images = pendingImages;
     const hint = pendingHint;
     const q = quote;
-    if (!text && !image && !q) return;
+    if (!text && !images.length && !q) return;
     setInput("");
-    setPendingImage(null);
+    setPendingImages([]);
     setPendingHint(undefined);
     clearQuote();
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
-    void post(text, image || undefined, hint, q || undefined);
+    void post(text, images, hint, q || undefined);
   }
 
-  // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。
+  // 点表情不立刻发——挂到输入框上方"待发"，让你再补两句话一起发。表情是单张带"意思"的，替换掉待发的图。
   function sendSticker(url: string, hint?: string) {
-    setPendingImage(url);
+    setPendingImages([url]);
     setPendingHint(hint);
     setShowStickers(false);
     requestAnimationFrame(() => taRef.current?.focus());
@@ -3190,15 +3229,16 @@ function FindTab({
           ) : (
             <div key={g.i} className={`msg ${g.m.role === "user" ? "user" : "el"}`}>
               <div className="bubble-col">
-                {g.m.image && (
+                {(g.m.images?.length ? g.m.images : g.m.image ? [g.m.image] : []).map((src, ii) => (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
+                    key={ii}
                     className="msg-img"
-                    src={g.m.image}
+                    src={src}
                     alt=""
                     onLoad={() => stickBottom.current && scrollToBottom(false)}
                   />
-                )}
+                ))}
                 {g.m.quote && (
                   <div className="bubble-quote">
                     <span className="bubble-quote-label">{g.m.quote.label}</span>
@@ -3375,19 +3415,26 @@ function FindTab({
         </div>
       )}
 
-      {pendingImage && (
-        <div className="img-preview">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={pendingImage} alt="" />
-          <button
-            onClick={() => {
-              setPendingImage(null);
-              setPendingHint(undefined);
-            }}
-            aria-label="移除"
-          >
-            ✕
-          </button>
+      {pendingImages.length > 0 && (
+        <div className="img-preview-row">
+          {pendingImages.map((src, i) => (
+            <div className="img-preview" key={i}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" />
+              <button
+                onClick={() =>
+                  setPendingImages((cur) => {
+                    const next = cur.filter((_, j) => j !== i);
+                    if (!next.length) setPendingHint(undefined);
+                    return next;
+                  })
+                }
+                aria-label="移除"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -3428,10 +3475,11 @@ function FindTab({
           ref={fileRef}
           type="file"
           accept="image/*"
+          multiple
           hidden
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) pickImage(f);
+            const fs = Array.from(e.target.files || []);
+            if (fs.length) pickImages(fs);
             e.target.value = "";
           }}
         />
@@ -3477,7 +3525,7 @@ function FindTab({
         <button
           type="submit"
           aria-label="发送"
-          disabled={sending || (!input.trim() && !pendingImage && !quote)}
+          disabled={sending || (!input.trim() && !pendingImages.length && !quote)}
         >
           <Icon name="send" size={20} />
         </button>

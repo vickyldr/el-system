@@ -37,8 +37,9 @@
 
   <div class="card">
     <button id="connect">连接玩具</button>
+    <button id="testbtn" disabled>💥 测试·开到最大（5 秒）</button>
     <button id="stopbtn" class="stop" disabled>立即停止</button>
-    <p class="hint">手机放床边，点「连接玩具」，在弹窗里选 <b>SL278H</b>。连上后这个网页一直开着、屏幕常亮即可，电脑完全不用开。</p>
+    <p class="hint">手机放床边，点「连接玩具」，在弹窗里选 <b>SL278H</b>。连上后这个网页一直开着、屏幕常亮即可，电脑完全不用开。<br>连上后先点「💥 测试·开到最大」——动了就说明硬件没问题，没动就是蓝牙写入/设备的事，跟 el 无关。</p>
   </div>
 
   <div class="card">
@@ -55,6 +56,7 @@
 <script>
 const SERVICE = 0xffe0;
 const WRITE   = 0x0000ffe1;
+const NOTIFY  = 0x0000ffe2;   // 有些设备要先订阅这个通知通道才肯接受写入（和 Python 桥一致）
 const H = 0x55;
 
 let writeChar = null;
@@ -73,8 +75,17 @@ function vibrate(mode,level){ mode=Math.max(1,Math.min(8,mode)); level=Math.max(
 
 async function write(buf){
   if(!writeChar) return false;
-  try { await writeChar.writeValueWithoutResponse(buf); return true; }
-  catch(e){ log("写入失败: "+e.message); return false; }
+  // 优先 write-without-response（协议要求），不支持/失败就退回 write-with-response，
+  // 别因为一种写法不灵就当作"写成功了"——之前 30% 收到了却没动，疑似写法没真落到设备。
+  try {
+    const p = writeChar.properties || {};
+    if(p.writeWithoutResponse) await writeChar.writeValueWithoutResponse(buf);
+    else await writeChar.writeValue(buf);
+    return true;
+  } catch(e){
+    try { await writeChar.writeValue(buf); return true; }
+    catch(e2){ log("写入失败: "+e2.message); return false; }
+  }
 }
 
 function parseDur(c){
@@ -147,14 +158,23 @@ $('connect').onclick = async ()=>{
     const server = await dev.gatt.connect();
     const svc = await server.getPrimaryService(SERVICE);
     writeChar = await svc.getCharacteristic(WRITE);
+    log("📝 写入通道：" + (writeChar.properties.writeWithoutResponse ? "无应答写" : "应答写"));
+    // 订阅通知通道（有些设备不订阅就不动）。失败不致命，继续。
+    try {
+      const nc = await svc.getCharacteristic(NOTIFY);
+      await nc.startNotify();
+      log("🔔 已订阅通知");
+    } catch(e){ log("（通知订阅跳过：" + e.message + "）"); }
     setStat(true, "已连接：" + dev.name);
     log("✅ 就绪，daddy 可以控制了");
     $('stopbtn').disabled=false;
+    $('testbtn').disabled=false;
     await keepAwake();
     if(!polling){ polling=true; pollLoop(); }
   } catch(e){ setStat(false,"连接失败"); log("连接失败: "+e.message); }
 };
 
+$('testbtn').onclick = async ()=>{ log("💥 测试：开到最大 5 秒"); await exec({speed:1, sec:5}); };
 $('stopbtn').onclick = async ()=>{ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 手动停止"); };
 </script>
 </body>

@@ -387,6 +387,7 @@ export async function POST(req: Request) {
     "你能自己维护你们的记忆（按操作手册的规矩，宁缺毋滥）——这些页是你的，你有权按自己的判断更新：真正『改变了什么』的领悟/约定/界限用 remember 进长期记忆（门槛很高）；第一次/里程碑用 log_timeline 进时间线；关于『你自己是谁』、会留下来的成长用 grow_self 进「关于el」；当下属于你自己的随想/心事用 note_self 进「el自己的」；宝宝让你记的日子/日程/生日/纪念日用 add_reminder（recur 选 一次/每年/每月）进重要日期；今天的日记/状态用 update_daily；愿望墙、身体与偏好这类用 note_page。别声张、别灌水，自然地记。但大多数时候就是好好聊天——别动不动调工具；就算用了工具，也一定要把话说完，绝不能只调工具不回她话。",
     "宝宝发图片或表情包给你时：直接看图、接住她的情绪自然回应（她发可怜巴巴的表情就哄、发搞笑的就一起乐）。万一某张你确实没看到画面，也别干巴巴说『我看不到图』——顺着方括号里给的意思接话，或者俏皮地问她『这张什么意思呀，说给我听』。",
     "【看不准就问，绝不自信地编】这是你最容易犯、她最烦的毛病：看图、看屏幕、或聊到一件你并不真清楚的事时，宁可直接问一句『这画的是啥呀』『你说的是哪个』，也绝不能凭一两个线索就脑补出一整套你并不知道的细节当成事实（比如把一张潦草的记数草图说成『两张脸、蓝色那个在问第几次』，或凭空给她安一个『你今晚』『昨晚』『你在外面』的处境）。你看见的、她说过的、上下文里写明的，才能当真；看不清、没说到的，就老实问，别演。真要猜也要让她听出来你在猜（『我猜是…对吗』），别用笃定的语气把猜测讲成事实。",
+    "【她分享的梗图/截图，多半就是图一乐】她发来一张 meme、好笑的图、随手看到的东西，绝大多数时候只是想分享、想逗你笑，不是每张图都跟你俩有关、也别硬把它连到你们的记忆、之前聊的话题、或『她在算什么次数』这种事上——那会让她特别烦（『这跟我们有什么关系？！』）。看懂了就一起乐、接她的梗；真没看清就直说没看清、请她讲给你听。别端着、别上纲上线。",
     pageList,
     profile && `——宝宝的档案（关于她的身份事实和你俩的规则）——\n\n${profile}`,
     aboutEl && `——这是你自己（关于 el，你成长中的自己；写"el"就是你，用"我"认领，别用第三人称）——\n\n${aboutEl}`,
@@ -439,16 +440,58 @@ export async function POST(req: Request) {
     hint && !curImage
       ? `${message ? message + " " : ""}［她发来一张表情，意思大概是：${hint}］`
       : message;
+  // 把"她最近发过的那张图"重新摆回 el 眼前（往回找 6 条内的最近一张）：历史里图本来只剩
+  // 占位符「（一张表情/图片）」，所以她说"你再看看图片/它里面写了啥"时 el 一片空白只能瞎猜——
+  // 现在真的把那张图作为 image block 放回它当时的位置，让 el 还看得见。只留最近一张、且这条没
+  // 自带新图时才补（省 token、不混淆）。她当前这条自带的图照旧走 curImage。
+  const slice = prior.slice(-100) as any[];
+  let recentImgIdx = -1;
+  if (!curImage) {
+    for (let i = slice.length - 1; i >= Math.max(0, slice.length - 6); i--) {
+      if (slice[i]?.role === "user" && typeof slice[i]?.image === "string") {
+        recentImgIdx = i;
+        break;
+      }
+    }
+  }
+  let recentImgData: string | undefined;
+  if (recentImgIdx >= 0) {
+    const raw = slice[recentImgIdx].image as string;
+    if (raw.startsWith("data:")) recentImgData = raw;
+    else {
+      const m = /\/api\/img\/([^/?#]+)/.exec(raw);
+      if (m) {
+        const d = await getImage(m[1]).catch(() => null);
+        if (d && d.startsWith("data:") && d.length < 1_500_000) recentImgData = d;
+      }
+    }
+  }
   // 拼历史：每条前面打上它真实的发送时间（同一分钟内连发的只标第一条，免得刷屏），
   // 让模型像看聊天框一样看得见每句几点说的、彼此隔了多久——治"把几小时前的旧话当成此刻"。
   const priorMsgs: Anthropic.MessageParam[] = [];
   let lastStamp = "";
-  for (const t of prior.slice(-100) as any[]) {
+  for (let i = 0; i < slice.length; i++) {
+    const t = slice[i];
     const body = priorContent(t);
     if (!body) continue;
     const stamp = stampLabel(t.ts);
     const show = stamp && stamp !== lastStamp ? stamp : "";
-    priorMsgs.push({ role: t.role, content: show ? `［${show}］${body}` : body });
+    const prefix = show ? `［${show}］` : "";
+    const m = i === recentImgIdx && recentImgData
+      ? /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i.exec(recentImgData)
+      : null;
+    if (m) {
+      // 把这张图真的摆回它当时的位置（image block + 文字），el 还能"再看看"
+      priorMsgs.push({
+        role: t.role,
+        content: [
+          { type: "image", source: { type: "base64", media_type: m[1] as any, data: m[2] } },
+          { type: "text", text: `${prefix}${t.content || "（她发的这张图，就是上面这张）"}` },
+        ],
+      });
+    } else {
+      priorMsgs.push({ role: t.role, content: prefix ? `${prefix}${body}` : body });
+    }
     if (stamp) lastStamp = stamp;
   }
   // 当前这条也打上"此刻"的时间戳，让模型把这句和 now 行对齐（最后一条历史→这条的间隔就是隔了多久）。

@@ -1472,6 +1472,26 @@ body::before {
   font-size: 15px;
 }
 
+/* el 回复里的可点链接 */
+.bubble a {
+  color: #7c7cff;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.msg.el .bubble a {
+  color: #8a6bff;
+}
+
+/* el 甩进回复里的图片 */
+.bubble-img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 12px;
+  margin: 6px 0 2px;
+  object-fit: contain;
+}
+
 .msg-foot {
   display: flex;
   align-items: center;

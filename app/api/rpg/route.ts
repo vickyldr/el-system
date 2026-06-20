@@ -147,7 +147,7 @@ function applyStateChanges(
   const newMp = Math.max(0, Math.min(s.maxMp, s.mp + mpDelta));
 
   const npcs = [...session.npcs];
-  for (const { name, delta } of npcDeltas as { name: string; delta: number }[]) {
+  for (const { name, delta } of npcDeltas) {
     const idx = npcs.findIndex((n) => n.name === name);
     if (idx >= 0) {
       npcs[idx] = { name, relation: Math.max(-100, Math.min(100, npcs[idx].relation + delta)) };

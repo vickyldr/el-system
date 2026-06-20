@@ -6,6 +6,7 @@ export type StoredMsg = {
   content: string;
   ts?: number;
   image?: string;
+  images?: string[]; // 一条消息里发的多张图（逐张 /api/img 引用）；image 留第一张做向后兼容
   stickerHint?: string; // 这条若是 el 贴的表情，记下它的意思，好让 el 事后知道自己发过啥
   call?: boolean; // 这条是不是语音通话里的（显示成通话卡片，el 回顾时也知道当时在打电话）
   video?: boolean; // 这条是不是视频通话里的（el 当时能看见她，夜里固化记忆时认得出"这是我看着她的一晚"）

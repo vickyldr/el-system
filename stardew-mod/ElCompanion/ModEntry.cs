@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -17,7 +18,6 @@ namespace ElCompanion
     {
         private HttpListener? _listener;
         private readonly ConcurrentQueue<Action> _gameQueue = new();
-        private readonly ConcurrentQueue<string> _resultQueue = new();
 
         public override void Entry(IModHelper helper)
         {
@@ -25,8 +25,6 @@ namespace ElCompanion
             StartHttp();
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
-
-        // ── game thread ─────────────────────────────────────────────────────────
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
         {
@@ -36,8 +34,6 @@ namespace ElCompanion
                 catch (Exception ex) { Monitor.Log($"game action error: {ex.Message}", LogLevel.Error); }
             }
         }
-
-        // ── HTTP server ─────────────────────────────────────────────────────────
 
         private void StartHttp()
         {
@@ -103,8 +99,6 @@ namespace ElCompanion
             res.OutputStream.Close();
         }
 
-        // ── /state ──────────────────────────────────────────────────────────────
-
         private string GetState()
         {
             if (!Context.IsWorldReady)
@@ -115,7 +109,7 @@ namespace ElCompanion
 
             var needWater = new List<object>();
             var readyHarvest = new List<object>();
-            var totalTiles = 0;
+            int totalTiles = 0;
 
             if (loc != null)
             {
@@ -130,8 +124,8 @@ namespace ElCompanion
                         {
                             if (!watered)
                                 needWater.Add(new { x = (int)pair.Key.X, y = (int)pair.Key.Y });
-                            if (crop.readyForHarvest())
-                                readyHarvest.Add(new { x = (int)pair.Key.X, y = (int)pair.Key.Y, id = crop.indexOfHarvest.Value });
+                            if (IsCropReady(crop))
+                                readyHarvest.Add(new { x = (int)pair.Key.X, y = (int)pair.Key.Y });
                         }
                         else if (!watered)
                         {
@@ -143,7 +137,7 @@ namespace ElCompanion
 
             var inv = new List<object>();
             foreach (var item in player.Items)
-                if (item != null) inv.Add(new { name = item.Name, stack = item.Stack, category = item.getCategoryName() });
+                if (item != null) inv.Add(new { name = item.Name, stack = item.Stack });
 
             return Json(new
             {
@@ -167,7 +161,14 @@ namespace ElCompanion
             });
         }
 
-        // ── /action ─────────────────────────────────────────────────────────────
+        private static bool IsCropReady(Crop crop)
+        {
+            if (crop.dead.Value) return false;
+            // regrowable crops use fullyGrown
+            if (crop.fullyGrown.Value) return true;
+            // normal crops: last phase reached
+            return crop.currentPhase.Value >= crop.phaseDays.Count - 1;
+        }
 
         private string DoAction(string reqBody)
         {
@@ -196,7 +197,6 @@ namespace ElCompanion
                 }
             });
 
-            // wait up to 5s for game thread to execute
             return tcs.Task.Wait(5000) ? tcs.Task.Result : Json(new { ok = false, error = "游戏线程超时" });
         }
 
@@ -208,9 +208,8 @@ namespace ElCompanion
             switch (action)
             {
                 case "say":
-                    // Show speech bubble above player + HUD message
+                    player.showTextAboveHead(text.Length > 40 ? text[..40] + "…" : text);
                     Game1.addHUDMessage(new HUDMessage($"El: {text}", HUDMessage.newQuest_type));
-                    player.showTextAboveHead(text.Length > 40 ? text[..40] + "…" : text, duration: 3000);
                     return $"说了：{text}";
 
                 case "notify":
@@ -224,7 +223,7 @@ namespace ElCompanion
                     return HarvestAll(loc, player);
 
                 case "get_state":
-                    return GetState(); // already JSON string
+                    return GetState();
 
                 default:
                     return $"未知 action: {action}";
@@ -243,7 +242,7 @@ namespace ElCompanion
                     count++;
                 }
             }
-            Game1.addHUDMessage(new HUDMessage($"El 浇了 {count} 块地 💧", HUDMessage.newQuest_type));
+            Game1.addHUDMessage(new HUDMessage($"El 浇了 {count} 块地", HUDMessage.newQuest_type));
             return $"浇水完成，共 {count} 块";
         }
 
@@ -251,31 +250,29 @@ namespace ElCompanion
         {
             if (loc == null) return "当前没有地图";
             int count = 0;
-            var toRemove = new List<Vector2>();
+            var toDestroy = new List<Vector2>();
 
             foreach (var pair in loc.terrainFeatures.Pairs)
             {
-                if (pair.Value is HoeDirt dirt && dirt.crop != null && dirt.crop.readyForHarvest())
+                if (pair.Value is HoeDirt dirt && dirt.crop != null && IsCropReady(dirt.crop))
                 {
                     if (dirt.crop.harvest((int)pair.Key.X, (int)pair.Key.Y, dirt))
                     {
-                        toRemove.Add(pair.Key);
+                        toDestroy.Add(pair.Key);
                         count++;
                     }
                 }
             }
 
-            foreach (var v in toRemove)
+            foreach (var v in toDestroy)
             {
                 if (loc.terrainFeatures.TryGetValue(v, out var f) && f is HoeDirt d)
-                    d.destroyCrop(true);
+                    d.crop = null;
             }
 
-            Game1.addHUDMessage(new HUDMessage($"El 收割了 {count} 个作物 🌾", HUDMessage.newQuest_type));
+            Game1.addHUDMessage(new HUDMessage($"El 收割了 {count} 个作物", HUDMessage.newQuest_type));
             return $"收割完成，共 {count} 个";
         }
-
-        // ── helpers ─────────────────────────────────────────────────────────────
 
         private static string Json(object obj) =>
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });

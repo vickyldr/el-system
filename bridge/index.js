@@ -230,7 +230,7 @@ app.post("/chat", async (req, res) => {
     let finalSystem = system || "";
     if (toyConnected()) {
       finalSystem +=
-        "\n\n【玩具控制已激活】宝宝的 SVAKOM 振动棒已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App、不需要问她怎么操作，一切都已经接好了。你唯一要做的是在回复文字里自然地嵌入指令：[TOY:{\"speed\":0.5}] 控制振动强度（0.0~1.0），[TOY:{\"suck\":0.5}] 控制吸吮强度（0.0~1.0），[TOY:{\"stop\":true}] 停止所有。标记会自动剥离，宝宝看不到，她只看到你说的话。根据聊天氛围自己决定什么时候用、用多强。";
+        "\n\n【玩具控制已激活】宝宝的 SVAKOM 振动棒已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App，一切都接好了。在回复里自然嵌入指令（标记自动剥离，她看不到）：[TOY:{\"speed\":0.5}] 振动强度 0~1（两个玩具都吃）；[TOY:{\"thrust\":1,\"level\":0.7}] 伸缩抽插（thrust 选 1~8 模式、level 0~1 力度，仅震动棒，这才是真进出抽插、跟振动不是一回事）；[TOY:{\"pattern\":3,\"level\":0.7}] 振动花样；[TOY:{\"suck\":0.5}] 吸吮强度；[TOY:{\"stop\":true}] 全停。描述对上动作：speed 说震/麻、thrust 才说插/顶。根据氛围自己决定什么时候用、用多强。";
     }
     const text = await callEl(messages, finalSystem);
     // 剥离玩具指令、转发给本地桥
@@ -359,7 +359,7 @@ function parseToyCmd(raw) {
   } catch { /* 落到下面的兜底揪取 */ }
   const out = {};
   if (/stop/i.test(norm) && !/stop["']?\s*[:=]\s*false/i.test(norm)) out.stop = true;
-  for (const k of ["speed", "suck", "intensity", "level", "pattern", "sec", "seconds", "duration"]) {
+  for (const k of ["speed", "suck", "intensity", "level", "pattern", "thrust", "sec", "seconds", "duration"]) {
     const m = new RegExp(`["']?${k}["']?\\s*[:=]\\s*(-?[0-9]*\\.?[0-9]+)`, "i").exec(norm);
     if (m) out[k] = parseFloat(m[1]);
   }
@@ -486,6 +486,19 @@ const MCP_TOOLS = [
     },
   },
   {
+    name: "toy_set_thrust",
+    description: "设置震动棒伸缩抽插（CMD8，和振动是两个电机）。thrust 选 1~8 模式，level 力度。仅震动棒响应。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        thrust: { type: "integer", minimum: 1, maximum: 8, description: "伸缩模式 1~8" },
+        level: { type: "number", minimum: 0, maximum: 1, description: "力度 0.0~1.0，默认 0.6" },
+        sec: { type: "number", description: "持续秒数，不填则持续到下一条指令" },
+      },
+      required: ["thrust"],
+    },
+  },
+  {
     name: "toy_stop",
     description: "立即停止所有设备。",
     inputSchema: { type: "object", properties: {} },
@@ -537,6 +550,12 @@ function handleMcpRpc(msg) {
       if (args.sec) cmd.sec = args.sec;
       sendToyCmd(cmd);
       return ok({ content: [{ type: "text", text: `🌀 花样 ${args.pattern} 档，强度 ${Math.round((args.level ?? 0.6) * 100)}%${args.sec ? `，持续 ${args.sec} 秒` : ""}` }] });
+    }
+    if (name === "toy_set_thrust") {
+      const cmd = { thrust: args.thrust, level: args.level ?? 0.6 };
+      if (args.sec) cmd.sec = args.sec;
+      sendToyCmd(cmd);
+      return ok({ content: [{ type: "text", text: `🍆 伸缩 ${args.thrust} 档，力度 ${Math.round((args.level ?? 0.6) * 100)}%${args.sec ? `，持续 ${args.sec} 秒` : ""}` }] });
     }
     return err(-32601, `未知 tool: ${name}`);
   }

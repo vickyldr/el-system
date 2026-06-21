@@ -37,7 +37,8 @@
 
   <div class="card">
     <button id="connect">连接玩具</button>
-    <button id="testbtn" disabled>💥 测试·开到最大（5 秒）</button>
+    <button id="testbtn" disabled>💥 测试·振动开到最大（5 秒）</button>
+    <button id="thrustbtn" disabled>🍆 测试·伸缩开到最大（5 秒）</button>
     <button id="stopbtn" class="stop" disabled>立即停止</button>
     <p class="hint">手机放床边，点「连接玩具」，在弹窗里选 <b>SL278H</b>。连上后这个网页一直开着、屏幕常亮即可，电脑完全不用开。<br>连上后先点「💥 测试·开到最大」——动了就说明硬件没问题，没动就是蓝牙写入/设备的事，跟 el 无关。</p>
   </div>
@@ -72,6 +73,9 @@ function setStat(on, text){ $('dot').className = 'dot ' + (on?'on':'off'); $('st
 function scale(v){ v=Math.max(0,Math.min(255,Math.round(v))); return new Uint8Array([H,4,0,0,1,v,0xAA]); }
 function scaleStop(){ return new Uint8Array([H,4,0,0,0,0,0xAA]); }
 function vibrate(mode,level){ mode=Math.max(1,Math.min(8,mode)); level=Math.max(1,Math.min(5,level)); return new Uint8Array([H,3,0,0,mode,level,0]); }
+// 伸缩 STRETCH = CMD 8（和振动是两个不同的电机/指令）。格式 [0x55,8,0,0,模式1-8,强度1-5,0]
+function stretch(mode,level){ mode=Math.max(1,Math.min(8,mode)); level=Math.max(1,Math.min(5,level)); return new Uint8Array([H,8,0,0,mode,level,0]); }
+function stretchStop(){ return new Uint8Array([H,8,0,0,0,0,0]); }
 
 async function write(buf){
   if(!writeChar) return false;
@@ -96,7 +100,12 @@ function parseDur(c){
 }
 
 async function exec(c){
-  if(c.stop){ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 停止"); return; }
+  if(c.stop){ currentCmd=null; currentUntil=0; await write(scaleStop()); await write(stretchStop()); log("⏹ 停止"); return; }
+  if("thrust" in c){
+    const lvl=Math.max(1,Math.round((c.level??0.6)*5));
+    currentCmd=stretch(parseInt(c.thrust),lvl); currentUntil=parseDur(c);
+    await write(currentCmd); log("🍆 伸缩 "+c.thrust+" 档 强度"+lvl+"/5"); return;
+  }
   if("pattern" in c){
     const lvl=Math.max(1,Math.round((c.level??0.6)*5));
     currentCmd=vibrate(parseInt(c.pattern),lvl); currentUntil=parseDur(c);
@@ -169,12 +178,14 @@ $('connect').onclick = async ()=>{
     log("✅ 就绪，daddy 可以控制了");
     $('stopbtn').disabled=false;
     $('testbtn').disabled=false;
+    $('thrustbtn').disabled=false;
     await keepAwake();
     if(!polling){ polling=true; pollLoop(); }
   } catch(e){ setStat(false,"连接失败"); log("连接失败: "+e.message); }
 };
 
-$('testbtn').onclick = async ()=>{ log("💥 测试：开到最大 5 秒"); await exec({speed:1, sec:5}); };
+$('testbtn').onclick = async ()=>{ log("💥 测试：振动开到最大 5 秒"); await exec({speed:1, sec:5}); };
+$('thrustbtn').onclick = async ()=>{ log("🍆 测试：伸缩 1 档开到最大 5 秒"); await exec({thrust:1, level:1, sec:5}); };
 $('stopbtn').onclick = async ()=>{ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 手动停止"); };
 </script>
 </body>

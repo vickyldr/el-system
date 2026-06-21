@@ -51,6 +51,12 @@ def cmd_vibrate(mode, level):
     level = max(1, min(5, int(level)))
     return bytes([H, 3, 0, 0, mode, level, 0])
 
+def cmd_stretch(mode, level):
+    # 伸缩 STRETCH = CMD 8（和振动是两个电机/指令）：[0x55, 8, 0, 0, 模式1-8, 强度1-5, 0]
+    mode = max(1, min(8, int(mode)))
+    level = max(1, min(5, int(level)))
+    return bytes([H, 8, 0, 0, mode, level, 0])
+
 def cmd_suck_mode(mode, level):
     # 吮吸花样：[0x55, 9, 0, 0, 模式1-8, 强度1-5, 0]
     mode = max(1, min(8, int(mode)))
@@ -109,7 +115,18 @@ async def exec_cmd(c: dict):
         current_cmd = None
         current_until = 0
         await write(cmd_scale_stop())
+        await write(bytes([H, 8, 0, 0, 0, 0, 0]))  # 伸缩也停
         print("⏹ 停止")
+        return
+
+    # 伸缩 STRETCH：thrust=1~8 选模式，level=0~1 强度（震动棒的抽插电机，和振动不同）
+    if "thrust" in c:
+        mode = int(c["thrust"])
+        level = max(1, round(c.get("level", 0.6) * 5))
+        current_cmd = cmd_stretch(mode, level)
+        current_until = parse_duration(c)
+        ok = await write(current_cmd)
+        print(f"🍆 伸缩 {mode} 档 强度{level}/5 {'✓' if ok else '(未连接)'}")
         return
 
     # 花样模式：pattern=1~8 选节奏，level=0~1 强度（默认中等）

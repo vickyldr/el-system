@@ -122,14 +122,17 @@ async function exec(c){
   }
 }
 
-// 续命：每1.5秒重发当前命令，到时长则停（玩具不被持续喂命令会自己停）
+async function stopAll(){ await write(scaleStop()); await write(stretchStop()); }
+
+// 续命：定时重发当前命令（玩具不被持续喂命令会自己超时停）。原来 1.5s 偏慢——
+// 有的模式/设备超时更短，两次重发之间就停了（=「只动了一下」）。收到 0.8s 更稳。
 setInterval(async ()=>{
   if(currentUntil && Date.now()>=currentUntil){
-    currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏱ 到时自动停");
+    currentCmd=null; currentUntil=0; await stopAll(); log("⏱ 到时自动停");
     return;
   }
   if(currentCmd) await write(currentCmd);
-}, 1500);
+}, 800);
 
 // 轮询中继取指令
 async function pollLoop(){
@@ -186,7 +189,7 @@ $('connect').onclick = async ()=>{
 
 $('testbtn').onclick = async ()=>{ log("💥 测试：振动开到最大 5 秒"); await exec({speed:1, sec:5}); };
 $('thrustbtn').onclick = async ()=>{ log("🍆 测试：伸缩 1 档开到最大 5 秒"); await exec({thrust:1, level:1, sec:5}); };
-$('stopbtn').onclick = async ()=>{ currentCmd=null; currentUntil=0; await write(scaleStop()); log("⏹ 手动停止"); };
+$('stopbtn').onclick = async ()=>{ currentCmd=null; currentUntil=0; await stopAll(); log("⏹ 手动停止"); };
 </script>
 </body>
 </html>

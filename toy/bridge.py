@@ -70,7 +70,7 @@ ble_client = None
 # 所以这里记下当前命令，后台每隔 KEEPALIVE_SEC 秒重发一次，让它持续动到换档/停止。
 current_cmd = None          # 当前要保持的字节，None=停止
 current_until = 0           # 若设了时长，到这个时间(单调秒)后自动停；0=一直保持
-KEEPALIVE_SEC = 1.5
+KEEPALIVE_SEC = 0.8  # 续命间隔。原 1.5s 偏慢，有的模式超时更短、两次重发间就停了（只动一下）
 
 async def write(buf):
     if ble_client and ble_client.is_connected:
@@ -91,6 +91,7 @@ async def keepalive_loop():
             current_cmd = None
             current_until = 0
             await write(cmd_scale_stop())
+            await write(bytes([H, 8, 0, 0, 0, 0, 0]))  # 伸缩也停
             print("⏱ 到设定时长，自动停止")
             continue
         if current_cmd is not None:

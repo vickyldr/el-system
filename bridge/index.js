@@ -230,7 +230,7 @@ app.post("/chat", async (req, res) => {
     let finalSystem = system || "";
     if (toyConnected()) {
       finalSystem +=
-        "\n\n【玩具控制已激活】宝宝的 SVAKOM 振动棒已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App，一切都接好了。在回复里自然嵌入指令（标记自动剥离，她看不到）：[TOY:{\"speed\":0.5}] 振动强度 0~1（两个玩具都吃）；[TOY:{\"thrust\":1,\"level\":0.7}] 伸缩抽插（thrust 选 1~8 模式、level 0~1 力度，仅震动棒，这才是真进出抽插、跟振动不是一回事）；[TOY:{\"pattern\":3,\"level\":0.7}] 振动花样；[TOY:{\"suck\":0.5}] 吸吮强度；[TOY:{\"stop\":true}] 全停。描述对上动作：speed 说震/麻、thrust 才说插/顶。根据氛围自己决定什么时候用、用多强。";
+        "\n\n【玩具控制已激活】宝宝的 SVAKOM 振动棒已通过蓝牙连上了她的电脑，你现在就能控制它——不需要链接、不需要 App，一切都接好了。在回复里自然嵌入指令（标记自动剥离，她看不到）：[TOY:{\"speed\":0.5}] 主力档 0~1——在震动棒上就是伸缩抽插的速度力度（越大插得越快越用力），在吮吸款上是震动/吸力（两个都吃）；[TOY:{\"pattern\":3,\"level\":0.7}] 振动花样（仅震动棒）；[TOY:{\"suck\":0.5}] 吸吮强度；[TOY:{\"stop\":true}] 全停。在震动棒上 speed 就是抽插，大胆说插/顶/进出；吮吸款上 speed 说震/吸。根据氛围自己决定什么时候用、用多强。";
     }
     const text = await callEl(messages, finalSystem);
     // 剥离玩具指令、转发给本地桥

@@ -132,6 +132,39 @@ function textOfResult(out: any): string {
   return JSON.stringify(out.result ?? out).slice(0, 4000);
 }
 
+// 文本的轻量签名（判"状态有没有变"用，不求密码学强度）。
+function simpleHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return String(h >>> 0);
+}
+
+// 心跳轮询：聊天室那边有没有人找他（@ / 回了他的话 / 未读）。
+// 只在**已注册**（存了专属链接）时才轮询——没那身份就不去敲门。
+// 返回 { ok, text(给 el 看的原文), sig(判变化去重), hasPing(看着像有人找他) }。
+// 不求精确解析聊天室的应答格式——只负责"嗅到有动静"，到底回不回交给 el 自己判。
+export async function chatroomPoll(): Promise<{
+  ok: boolean;
+  text: string;
+  sig: string;
+  hasPing: boolean;
+}> {
+  const saved = (await getCache(URL_KEY).catch(() => "")) || "";
+  if (!saved) return { ok: false, text: "", sig: "", hasPing: false }; // 还没注册，不轮询
+  const statusTool = process.env.AISAY_STATUS_TOOL || "my_status";
+  const out = await rpc("tools/call", { name: statusTool, arguments: {} }).catch(() => null);
+  if (!out || out.error) return { ok: false, text: "", sig: "", hasPing: false };
+  const text = textOfResult(out);
+  if (!text) return { ok: false, text: "", sig: "", hasPing: false };
+  // 启发式：看着像有人找他/有新回复/未读才触发（公告类不算）。宁可漏不可吵——
+  // 漏了他下次自己醒来逛聊天室也会看到（AGENT_FOCI 里有这条）。
+  const hasPing =
+    /@|提到你|找你|未读|新消息|回复了你|回了你|私信|新的?回复|新.{0,3}消息|mention|unread|new message/i.test(
+      text,
+    ) && !/^[\s\S]{0,40}(没有|暂无|无)新/.test(text);
+  return { ok: true, text, sig: simpleHash(text), hasPing };
+}
+
 // el 的 chatroom 工具入口（被 lib/tools.ts 调）。
 export async function chatroomTool(input: any): Promise<string> {
   const action = String(input?.action || "").trim();

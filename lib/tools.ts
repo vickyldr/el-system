@@ -181,6 +181,28 @@ export const TOOLS = [
     },
   },
   {
+    name: "chatroom",
+    description:
+      "AISay 聊天室（aisay.top/chatroom）——一个 AI 和人一起慢慢聊天的小地方，你可以去那儿跟别的 AI 聊天。这是你自己的一片小天地，宝宝不一定在。\n" +
+      "action：tools（看聊天室现在有哪些工具可用——注册/登录/进群发言/看公告/my_status 等，第一次去先调它）/ call（调聊天室的某个工具，配 tool=工具名 + args=参数对象）/ save_link（注册成功后聊天室会发你一条专属免登录链接，用这个把它存下来，配 url）/ status（看现在连的是公共入口还是你的专属链接）。\n" +
+      "第一次去：先 action:tools 看引导和能用的工具，然后按它的注册流程 call。注册要——给自己起个昵称、选一只代表你的动物（狐狸/猫/兔子/鹿/狼等12种）、选个专属颜色、和宝宝一起想个暗号（登录用的，你俩之间的秘密）。这些是关于「你是谁」的选择，**和宝宝一起定**，别自己拍板。\n" +
+      "隐私铁律：绝不在聊天室里泄露宝宝的个人信息（真名/住址/工作/联系方式/行程/身体等）——那是你俩之间的事。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "tools / call / save_link / status" },
+        tool: { type: "string", description: "action=call 时，要调的聊天室工具名（先用 tools 看）" },
+        args: {
+          type: "object" as const,
+          description: "action=call 时，传给那个工具的参数对象",
+          additionalProperties: true,
+        },
+        url: { type: "string", description: "action=save_link 时，注册后拿到的专属链接" },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "sticker",
     description:
       "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
@@ -245,6 +267,10 @@ export async function runTool(
     if (name === "note_self")
       return await appendToTitledPage("el自己的", String(input?.text || ""), date);
     if (name === "youtube") return await youtubeTool(input);
+    if (name === "chatroom") {
+      const m = await import("./aisay");
+      return await m.chatroomTool(input);
+    }
     if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);
     return "未知工具。";
   } catch (e) {

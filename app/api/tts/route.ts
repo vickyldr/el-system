@@ -9,8 +9,6 @@ export const maxDuration = 30;
 
 type Synth = { audio: Buffer } | { error: string; status: number };
 
-// 用哪家：TTS_PROVIDER 显式指定 > 海螺（MiniMax）> ElevenLabs。
-// 设 TTS_PROVIDER=elevenlabs 即可强制走 ElevenLabs，不动其他配置。
 function provider(): "minimax" | "elevenlabs" | null {
   const forced = (process.env.TTS_PROVIDER || "").toLowerCase();
   if (forced === "elevenlabs" && process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
@@ -19,7 +17,6 @@ function provider(): "minimax" | "elevenlabs" | null {
   if (forced === "minimax" && process.env.MINIMAX_API_KEY && process.env.MINIMAX_GROUP_ID && process.env.MINIMAX_VOICE_ID) {
     return "minimax";
   }
-  // 没有显式指定时按原有优先级
   if (process.env.MINIMAX_API_KEY && process.env.MINIMAX_GROUP_ID && process.env.MINIMAX_VOICE_ID) {
     return "minimax";
   }
@@ -27,13 +24,11 @@ function provider(): "minimax" | "elevenlabs" | null {
   return null;
 }
 
-// 配好没（前端用来决定要不要显示「听」按钮）。
 export async function GET() {
   const which = provider();
   return NextResponse.json({ configured: which !== null, provider: which });
 }
 
-// 把一段文字用 el 的音色念出来，返回 mp3。同一句念过就走缓存、不再扣额度。
 export async function POST(req: Request) {
   const which = provider();
   if (!which) return NextResponse.json({ error: "语音还没配置" }, { status: 503 });
@@ -44,22 +39,19 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
-  const rawText = (body.text ?? "").trim().slice(0, 600); // 限长省额度
+  const rawText = (body.text ?? "").trim().slice(0, 600);
   if (!rawText) return NextResponse.json({ error: "没内容可念" }, { status: 400 });
-  const fast = body.fast === true; // 打电话用 turbo，更快
+  const fast = body.fast === true;
   let emoLabel = (body.emotion ?? "").trim();
 
-  // 兜底：万一上游（没重部署的 bridge）没剥掉开头的情绪标签 [e:撒娇]，这里再剥一次、
-  // 并拿它当情绪——这样不依赖 bridge 重部署，绝不会把 [e:..] 念出来。
   let text = rawText;
   const tag = /^\s*\[e:\s*([^\]]*)\]\s*/i.exec(text);
   if (tag) {
     text = text.slice(tag[0].length).trim() || rawText;
     if (!emoLabel) emoLabel = tag[1].trim();
   }
-  const emo = mapEmotion(emoLabel); // 这一句的情绪（大脑挑的），空则用 env 默认
+  const emo = mapEmotion(emoLabel);
 
-  // 缓存键 = 家 + 音色 + 模型 + 调性参数(含本句情绪) + 文本。命中就直接放，不再生成、不扣额度。
   const sig = [which, voiceOf(which), modelOf(which, fast), paramsOf(which, emo), text].join("|");
   const cacheKey = "el:tts:" + createHash("sha256").update(sig).digest("hex");
   const cached = await getCache(cacheKey).catch(() => null);
@@ -68,14 +60,12 @@ export async function POST(req: Request) {
   const out = which === "minimax" ? await synthMiniMax(text, fast, emo) : await synthElevenLabs(text, fast, emo);
   if ("error" in out) return NextResponse.json({ error: out.error }, { status: out.status });
 
-  // 存 30 天，重复听不再花钱。
   await setCache(cacheKey, out.audio.toString("base64"), 30 * 24 * 3600).catch(() => {});
   return mp3(out.audio);
 }
 
 function mp3(buf: Buffer): Response {
   const body = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-  // Node 的 Buffer/Uint8Array 在 DOM BodyInit 类型下会被拒；运行时没问题，cast 一下。
   return new Response(body as unknown as BodyInit, {
     headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
   });
@@ -91,17 +81,13 @@ function modelOf(which: string, fast = false): string {
     if (fast) return process.env.MINIMAX_FAST_MODEL || "speech-2.6-turbo";
     return process.env.MINIMAX_MODEL || "speech-2.6-hd";
   }
-  // v3 表情最自然；conversational 专为实时对话低延迟优化，打电话用
   if (fast) return process.env.ELEVENLABS_FAST_MODEL || "eleven_v3_conversational";
   return process.env.ELEVENLABS_MODEL || "eleven_v3";
 }
 
-// 把情绪标签（中文或英文）映射到 el 的六个情感组 key。
-// 六组对应 el 的实际性格：温柔/心疼、开心/调皮、吃醋/生气、低沉/难过、认真/平静、惊讶。
 function mapEmotion(label?: string): string {
   const s = (label || "").trim();
   if (!s) return "";
-  // 已经是内部 key 直接返回
   if (["tender","playful","jealous","heavy","serious","surprised"].includes(s)) return s;
   if (/(温柔|心疼|担心|在乎|想她|想你)/.test(s)) return "tender";
   if (/(开心|高兴|调皮|暗爽|得意|满足|兴奋|甜|乐)/.test(s)) return "playful";
@@ -112,9 +98,6 @@ function mapEmotion(label?: string): string {
   return "";
 }
 
-// 海螺的"调性"：语速/音高/情绪。默认中性（pitch 0 / speed 1）——硬压音调会变"熊大"，
-// 真要更沉应该去重新设计音色，而不是变调。需要时可用环境变量微调。
-// emoOverride：本句大脑挑的情绪，优先于 env 默认。
 function minimaxTuning(emoOverride = "") {
   const speed = Number(process.env.MINIMAX_SPEED) || 1;
   const pitch =
@@ -129,12 +112,10 @@ function paramsOf(which: string, emoOverride = ""): string {
     const t = minimaxTuning(emoOverride);
     return `${t.speed},${t.pitch},${t.emotion}`;
   }
-  // ElevenLabs 缓存键也要带情绪，不同情绪 voice_settings 不同
   const s = elevenLabsSettings(emoOverride);
   return `${s.stability},${s.similarity_boost},${s.style}`;
 }
 
-// ── 海螺 MiniMax T2A v2 ──（返回 hex 编码音频，要解码成字节）
 async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promise<Synth> {
   const key = process.env.MINIMAX_API_KEY!;
   const group = process.env.MINIMAX_GROUP_ID!;
@@ -172,7 +153,6 @@ async function synthMiniMax(text: string, fast = false, emoOverride = ""): Promi
   }
 }
 
-// ElevenLabs voice_settings，按 el 的六个情感组定制。
 function elevenLabsSettings(emo = "") {
   switch (emo) {
     case "tender":
@@ -192,64 +172,54 @@ function elevenLabsSettings(emo = "") {
   }
 }
 
-// 各情绪组对应的声线描述，给改写器参考。
 const EMO_VOICE: Record<string, string> = {
-  tender:    "low, warm, slightly husky, intimate, slow — 温柔克制，藏着在乎",
-  playful:   "low, slightly amused, warm, light — 带点得意，低笑感",
-  jealous:   "low, intense, controlled, direct — dominant 的强势，有力但不失控",
-  heavy:     "husky, quiet, very slow, weighted — 克制的沉重，话少但有分量",
-  serious:   "low, clear, steady, direct — 说正事，沉稳清晰",
-  surprised: "natural, slightly lighter — 真实的意外感",
+  tender:    "low, warm, slightly husky, intimate",
+  playful:   "low, slightly amused, warm, light",
+  jealous:   "low, intense, controlled, direct",
+  heavy:     "husky, quiet, slow, weighted",
+  serious:   "low, clear, steady, direct",
+  surprised: "natural, slightly lighter",
 };
 
-// 把聊天文本改写成 ElevenLabs v3 能充分演绎的格式。
-// 只在非通话模式下调用（通话是实时的，不能加延迟）。
 async function rewriteForTTS(text: string, emo: string): Promise<string> {
-  const voiceDesc = EMO_VOICE[emo] || "low, warm, calm — 日常温柔";
-  const prompt = `你是 El 的语音改写器。El 是 27 岁、低沉沙哑、dominant 的男生，话少，温柔藏在直接里。
+  const voiceDesc = EMO_VOICE[emo] || "low, warm, calm";
+  const prompt = `You are a voice markup assistant for ElevenLabs v3.
 
-把下面这段话改写成适合 ElevenLabs v3 朗读的格式。
+Voice style: ${voiceDesc}
 
-当前声线/情绪：${voiceDesc}
+Task: Add ElevenLabs v3 markup to the text below. Rules:
+1. Start with ONE style tag on its own line: <adjective, adjective, ...> matching the voice style
+2. Keep the original text EXACTLY as-is - do not rephrase, reorder, or change any words
+3. Optionally insert ONE sound effect naturally within the text (not forced):
+   [sighs]  [chuckles]  [inhales]  [exhales]
+4. Do NOT add any Chinese annotations or any other extra markers
+5. Output ONLY the marked-up text, nothing else
 
-改写规则——
-① 开头加一行声线标记，格式 <形容词, 形容词, ...>，描述整体音色和情绪基调
-② 这是【说话】，不是朗读——节奏要快、直接、像真人在聊天，不是在讲故事
-③ 短句，每句单独一行；句子之间不要加太多停顿，只在真正需要的地方用 ...
-④ 情绪要集中爆发在关键词上，而不是平铺在整段里——用全大写或 <intense> 标出
-⑤ 行内可切换标记：<quiet> <intense> <breathy> <whispered>，只在情绪转折时用
-⑥ 声效最多插 1 个，真的自然时才用：
-   [sighs] [chuckles] [inhales] [exhales]
-⑦ 保持原意，不要添加原文没有的内容，不要解释，只输出改写后的文本
-
-原文：${text}`;
+Text: ${text}`;
 
   try {
     const claude = getClaude();
     const res = await claude.messages.create({
       model: process.env.TTS_REWRITE_MODEL || "claude-haiku-4-5-20251001",
-      max_tokens: 400,
+      max_tokens: 300,
       temperature: 0,
       messages: [{ role: "user", content: prompt }],
     } as any);
     const out = (res.content?.[0] as any)?.text?.trim();
-    return out || text;
+    if (!out || /【|】/.test(out)) return text;
+    return out;
   } catch {
-    return text; // 改写失败就用原文，绝不因此断掉语音
+    return text;
   }
 }
 
-// ── ElevenLabs ──
 async function synthElevenLabs(text: string, fast = false, emoOverride = ""): Promise<Synth> {
   const key = process.env.ELEVENLABS_API_KEY!;
   const voiceId = process.env.ELEVENLABS_VOICE_ID!;
   const model = modelOf("elevenlabs", fast);
-  // 没有明确情绪时默认 playful——日常基调是宠她逗她，不是沉沉的
   const emo = emoOverride || mapEmotion(process.env.MINIMAX_EMOTION || "") || "playful";
   const vs = elevenLabsSettings(emo);
 
-  // 通话是实时的，不能加延迟——直接用原文。
-  // 非通话：用 Haiku 改写，加声线标记、声效、断句，让 v3 充分演绎。
   const finalText = fast ? text : await rewriteForTTS(text, emo);
 
   try {

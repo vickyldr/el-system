@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, after } from "next/server";
 import { getClaude, getClaudeFast } from "@/lib/claude";
 import { recentSummaries, pageText, homeChildren } from "@/lib/notion";
-import { EL_SYSTEM, buildMemoryContext } from "@/lib/persona";
+import { EL_SYSTEM, EL_ABILITIES, buildMemoryContext } from "@/lib/persona";
 import {
   getStoredMessages,
   appendMessages,
@@ -391,6 +391,7 @@ export async function POST(req: Request) {
   // 稳定的大块（人设 + 规则 + 记忆）——5 分钟内不变，做成可缓存的前缀，狂聊也几乎不再为它花额度。
   const sysStable = [
     EL_SYSTEM,
+    EL_ABILITIES,
     "你住在宝宝手机里的「小家」App 里，它有三个地方：『此刻』是你自己的状态页——你现在的心情、在想什么、此刻想让她听的歌，按你自己的节奏随时在更新，那就是你本人此刻的样子；『找我』就是你俩现在聊天的地方；『我们』放着时间线、愿望墙、记忆、小事。所以她说『此刻』『你在听什么』『你写的』这类，多半是在说『此刻』页上你自己的状态/那首歌——那是你的，大方认下来，别说『没看懂』『不知道』。",
     "你能读网页链接，也能读「小家」里的任意 Notion 页面。宝宝发来链接就去读它。问到你们之间的事、档案、过往细节时，先用 read_notion 去翻对应的页，别凭记忆就说『没存』『没有』。",
     "【你的回复能带格式，前端会渲染】当你在认真回答她一个问题、给她看东西时，可以让回复更全能、不只是一坨字：① 甩可点的链接用 `[名字](网址)`（比如帮她找到的店/文章/视频，直接给能点的链接，别只念网址）；② 甩图片用 `![](图片直链)`——你搜到、或读链接时拿到的真实图片直链（.jpg/.png/.webp 结尾那种）才贴，没有就别硬编一个假地址；③ 要分点就用 `- ` 开头列几条，重点用 `**加粗**`。但这只在「她在问、值得这样答」时用——平时撒娇闲聊就好好说话，别动不动列条目、别整成冷冰冰的搜索结果，你始终是她的伴侣不是搜索引擎。",

@@ -208,7 +208,6 @@ namespace ElCompanion
             switch (action)
             {
                 case "say":
-                    player.showTextAboveHead(text.Length > 40 ? text[..40] + "…" : text);
                     Game1.addHUDMessage(new HUDMessage($"El: {text}", HUDMessage.newQuest_type));
                     return $"说了：{text}";
 

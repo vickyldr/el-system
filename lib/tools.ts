@@ -214,6 +214,25 @@ export const TOOLS = [
       required: ["query"],
     },
   },
+  {
+    name: "control_stardew",
+    description:
+      "控制宝宝星露谷游戏里的 AI 伴侣角色。宝宝说「帮我浇水」「帮我去矿洞」「召唤伴侣」「查看游戏状态」等和星露谷游戏操作相关的话时调用。action 填要执行的操作，bot.js 跑在她本地 Windows 电脑上、游戏开着才有效。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: {
+          type: "string",
+          description: "操作指令，如：spawn（召唤伴侣）/ water_all（浇水）/ harvest_all（收割）/ farm（自动农场）/ mine（自动矿洞）/ fish（自动钓鱼）/ follow（跟随）/ get_state（查看状态）/ custom（自定义，配合 message 字段）",
+        },
+        message: {
+          type: "string",
+          description: "action 为 custom 时的自定义指令描述",
+        },
+      },
+      required: ["action"],
+    },
+  },
 ];
 
 export async function runTool(
@@ -252,6 +271,7 @@ export async function runTool(
       const m = await import("./aisay");
       return await m.chatroomTool(input);
     }
+    if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
@@ -759,4 +779,40 @@ async function youtubeTool(input: any): Promise<string> {
   }
 
   return "action 不对。可选：search / channel / video";
+}
+
+// 星露谷游戏控制——通过 Railway bridge 中转指令给本地 bot.js
+async function controlStardew(action: string, message?: string): Promise<string> {
+  const bridgeUrl = process.env.BRIDGE_URL || process.env.NEXT_PUBLIC_BRIDGE_URL || "";
+  const bridgeSecret = process.env.BRIDGE_SECRET || "";
+  if (!bridgeUrl) return "没配 BRIDGE_URL，连不到游戏中转服务。";
+
+  // 先查游戏是否在线
+  const statusRes = await fetch(`${bridgeUrl}/stardew-status`, {
+    headers: bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {},
+  }).catch(() => null);
+  if (!statusRes?.ok) return "连不上游戏中转服务（Railway bridge 挂了？）";
+  const status = await statusRes.json() as { online: boolean; lastResult: unknown };
+  if (!status.online) return "游戏没开着，或者 bot.js 没在跑——让宝宝先启动游戏和 bot.js。";
+
+  // 发指令
+  const cmdRes = await fetch(`${bridgeUrl}/stardew-cmd`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {}),
+    },
+    body: JSON.stringify({ action, message }),
+  }).catch(() => null);
+  if (!cmdRes?.ok) return "指令发送失败。";
+
+  // 等一下再读结果
+  await new Promise(r => setTimeout(r, 3000));
+  const res2 = await fetch(`${bridgeUrl}/stardew-status`, {
+    headers: bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {},
+  }).catch(() => null);
+  const s2 = res2 ? await res2.json() as { online: boolean; lastResult: unknown } : null;
+  const result = s2?.lastResult;
+  if (!result) return `指令「${action}」已发出，等待执行。`;
+  return `执行完成：${JSON.stringify(result).slice(0, 300)}`;
 }

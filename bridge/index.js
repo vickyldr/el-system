@@ -378,6 +378,42 @@ function parseToyCommands(text) {
   return { clean, cmds };
 }
 
+// ── 星露谷游戏控制中转 ──
+// bot.js 跑在宝宝本地 Windows，通过轮询这里拿 el 发来的指令，执行后把结果回传。
+const stardewQueue = []; // el 发来的待执行指令
+let stardewLastResult = null; // bot.js 最近一次执行结果
+let stardewLastPoll = 0;
+
+function stardewOnline() {
+  return Date.now() - stardewLastPoll < 30000; // 30秒没轮询视为离线
+}
+
+// GET /stardew-poll — bot.js 轮询取指令（同时回传上次结果）
+app.get("/stardew-poll", (req, res) => {
+  stardewLastPoll = Date.now();
+  const cmd = stardewQueue.shift();
+  res.json(cmd || {});
+});
+
+// POST /stardew-result — bot.js 回传执行结果
+app.post("/stardew-result", express.json(), (req, res) => {
+  stardewLastResult = { ...req.body, ts: Date.now() };
+  res.json({ ok: true });
+});
+
+// POST /stardew-cmd — el 发指令（Vercel chat route 调用）
+app.post("/stardew-cmd", express.json(), (req, res) => {
+  if (!stardewOnline()) return res.json({ ok: false, error: "游戏未连接，bot.js 没在跑" });
+  const cmd = req.body;
+  if (cmd && typeof cmd === "object") stardewQueue.push(cmd);
+  res.json({ ok: true, queued: stardewQueue.length });
+});
+
+// GET /stardew-status — el 查询游戏是否在线及最近结果
+app.get("/stardew-status", (req, res) => {
+  res.json({ online: stardewOnline(), lastResult: stardewLastResult });
+});
+
 // GET /toy-next — Python 本地桥轮询取下一条指令
 app.get("/toy-next", (req, res) => {
   lastToyPoll = Date.now();

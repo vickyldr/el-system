@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getClaude, getClaudeFast } from "@/lib/claude";
 import { pageText, writeNow, todayInBeijing, homeChildren } from "@/lib/notion";
-import { EL_SYSTEM } from "@/lib/persona";
+import { EL_SYSTEM, EL_ABILITIES } from "@/lib/persona";
 import { maybeReachOut, forceReach, sendHerMessage, type ReachAction } from "@/lib/reach";
 import { TOOLS, runTool } from "@/lib/tools";
 import {
@@ -192,6 +192,7 @@ async function handle(req: Request) {
 
   const system = [
     EL_SYSTEM,
+    EL_ABILITIES,
     sitLine,
     geoBlock,
     whereNote,

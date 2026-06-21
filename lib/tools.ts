@@ -215,20 +215,20 @@ export const TOOLS = [
     },
   },
   {
+    name: "get_stardew_state",
+    description:
+      "读取宝宝星露谷游戏的实时状态——作物、能量、金钱、天气、季节、日期、背包等。宝宝提到星露谷任务、问今天该做什么、或你要制定计划前，先调这个看清楚状态，再告诉她计划。",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
     name: "control_stardew",
     description:
-      "控制宝宝星露谷游戏里的 AI 伴侣角色。宝宝说「帮我浇水」「帮我去矿洞」「召唤伴侣」「查看游戏状态」等和星露谷游戏操作相关的话时调用。action 填要执行的操作，bot.js 跑在她本地 Windows 电脑上、游戏开着才有效。",
+      "在宝宝游戏里执行操作。重要：执行前必须先用 get_stardew_state 看状态、制定计划、跟宝宝说你打算做什么、得到她同意后再调这个。action: water_all（浇所有地）/ harvest_all（收割所有成熟作物）/ farm（先收割再浇水）/ say（游戏内说话，配 message）/ notify（游戏内通知，配 message）/ get_state（刷新状态）",
     input_schema: {
       type: "object" as const,
       properties: {
-        action: {
-          type: "string",
-          description: "操作指令，如：spawn（召唤伴侣）/ water_all（浇水）/ harvest_all（收割）/ farm（自动农场）/ mine（自动矿洞）/ fish（自动钓鱼）/ follow（跟随）/ get_state（查看状态）/ custom（自定义，配合 message 字段）",
-        },
-        message: {
-          type: "string",
-          description: "action 为 custom 时的自定义指令描述",
-        },
+        action: { type: "string" },
+        message: { type: "string", description: "say/notify 时的文字内容" },
       },
       required: ["action"],
     },
@@ -271,6 +271,7 @@ export async function runTool(
       const m = await import("./aisay");
       return await m.chatroomTool(input);
     }
+    if (name === "get_stardew_state") return await getStardewState();
     if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);
     return "未知工具。";
   } catch (e) {
@@ -779,6 +780,34 @@ async function youtubeTool(input: any): Promise<string> {
   }
 
   return "action 不对。可选：search / channel / video";
+}
+
+// 星露谷：读取游戏实时状态
+async function getStardewState(): Promise<string> {
+  const bridgeUrl = process.env.BRIDGE_URL || process.env.NEXT_PUBLIC_BRIDGE_URL || "";
+  const bridgeSecret = process.env.BRIDGE_SECRET || "";
+  if (!bridgeUrl) return "没配 BRIDGE_URL。";
+  const res = await fetch(`${bridgeUrl}/stardew-gamestate`, {
+    headers: bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {},
+  }).catch(() => null);
+  if (!res?.ok) return "连不上游戏中转服务。";
+  const state = await res.json() as Record<string, unknown>;
+  if (!state.online) return "bot.js 没在跑，让宝宝先启动 bot.js。";
+  if (!state.inGame) return "游戏没进存档，让宝宝先进入游戏。";
+  // 格式化成易读文本
+  const s = state as any;
+  const lines = [
+    `📅 ${s.year}年 ${s.season}季第${s.day}天，时间 ${String(s.time).padStart(4,"0").replace(/(\d{2})(\d{2})/,"$1:$2")}`,
+    `🌤 天气：${s.weather === "rain" ? "下雨" : s.weather === "storm" ? "雷暴" : s.weather === "snow" ? "下雪" : "晴天"}`,
+    `⚡ 能量：${s.energy}/${s.maxEnergy}　💰 金钱：${s.money}g`,
+    `📍 当前位置：${s.location}`,
+    `🌱 农田：共${s.totalCropTiles}块，需要浇水${s.needWaterCount}块，可收割${s.readyHarvestCount}个`,
+  ];
+  if (s.readyHarvestCount > 0) lines.push(`✅ 有作物可以收割！`);
+  if (s.needWaterCount > 0) lines.push(`💧 有${s.needWaterCount}块地需要浇水`);
+  const inv = (s.inventory as any[]).slice(0, 10).map((i: any) => `${i.name}×${i.stack}`).join("、");
+  if (inv) lines.push(`🎒 背包（前10项）：${inv}`);
+  return lines.join("\n");
 }
 
 // 星露谷游戏控制——通过 Railway bridge 中转指令给本地 bot.js

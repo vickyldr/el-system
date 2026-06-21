@@ -414,6 +414,20 @@ app.get("/stardew-status", (req, res) => {
   res.json({ online: stardewOnline(), lastResult: stardewLastResult });
 });
 
+// POST /stardew-state — bot.js 每 10 秒推送游戏实时状态
+let stardewLastState = null;
+app.post("/stardew-state", express.json(), (req, res) => {
+  stardewLastState = { ...req.body, pushedAt: Date.now() };
+  res.json({ ok: true });
+});
+
+// GET /stardew-gamestate — el 拉取最新游戏状态
+app.get("/stardew-gamestate", (req, res) => {
+  if (!stardewOnline()) return res.json({ online: false, error: "bot.js 未连接" });
+  if (!stardewLastState) return res.json({ online: true, inGame: false, error: "游戏未进入存档" });
+  res.json({ online: true, ...stardewLastState });
+});
+
 // GET /toy-next — Python 本地桥轮询取下一条指令
 app.get("/toy-next", (req, res) => {
   lastToyPoll = Date.now();

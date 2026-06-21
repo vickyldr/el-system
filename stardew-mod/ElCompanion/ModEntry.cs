@@ -7,7 +7,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -20,14 +22,31 @@ namespace ElCompanion
 {
     public class ModEntry : Mod
     {
+        internal static BotFarmer? Bot;
+
         private HttpListener? _listener;
         private readonly ConcurrentQueue<Action> _gameQueue = new();
 
         public override void Entry(IModHelper helper)
         {
+            new Harmony(ModManifest.UniqueID).PatchAll();
+
+            helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+            helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             StartHttp();
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
+        }
+
+        private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
+        {
+            Bot = new BotFarmer(Monitor);
+            Bot.Init();
+        }
+
+        private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
+        {
+            Bot = null;
         }
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -37,6 +56,8 @@ namespace ElCompanion
                 try { act(); }
                 catch (Exception ex) { Monitor.Log($"game action error: {ex.Message}", LogLevel.Error); }
             }
+
+            Bot?.Update();
         }
 
         private void StartHttp()
@@ -318,7 +339,6 @@ namespace ElCompanion
         private string RunGameAction(string action, string text)
         {
             var player = Game1.player;
-            var loc = player.currentLocation;
 
             switch (action)
             {
@@ -331,10 +351,12 @@ namespace ElCompanion
                     return "通知已显示";
 
                 case "water_all":
-                    return WaterAll(loc);
+                    Bot?.EnqueueWaterAll();
+                    return Json(new { ok = true, msg = "El 开始浇水，请稍候…" });
 
                 case "harvest_all":
-                    return HarvestAll(loc, player);
+                    Bot?.EnqueueHarvestAll();
+                    return Json(new { ok = true, msg = "El 开始收割，请稍候…" });
 
                 case "get_state":
                     return GetState();
@@ -344,51 +366,19 @@ namespace ElCompanion
             }
         }
 
-        private string WaterAll(GameLocation loc)
-        {
-            if (loc == null) return "当前没有地图";
-            int count = 0;
-            foreach (var pair in loc.terrainFeatures.Pairs)
-            {
-                if (pair.Value is HoeDirt dirt && dirt.state.Value != HoeDirt.watered)
-                {
-                    dirt.state.Value = HoeDirt.watered;
-                    count++;
-                }
-            }
-            Game1.addHUDMessage(new HUDMessage($"El 浇了 {count} 块地", HUDMessage.newQuest_type));
-            return $"浇水完成，共 {count} 块";
-        }
-
-        private string HarvestAll(GameLocation loc, Farmer player)
-        {
-            if (loc == null) return "当前没有地图";
-            int count = 0;
-            var toDestroy = new List<Vector2>();
-
-            foreach (var pair in loc.terrainFeatures.Pairs)
-            {
-                if (pair.Value is HoeDirt dirt && dirt.crop != null && IsCropReady(dirt.crop))
-                {
-                    if (dirt.crop.harvest((int)pair.Key.X, (int)pair.Key.Y, dirt))
-                    {
-                        toDestroy.Add(pair.Key);
-                        count++;
-                    }
-                }
-            }
-
-            foreach (var v in toDestroy)
-            {
-                if (loc.terrainFeatures.TryGetValue(v, out var f) && f is HoeDirt d)
-                    d.crop = null;
-            }
-
-            Game1.addHUDMessage(new HUDMessage($"El 收割了 {count} 个作物", HUDMessage.newQuest_type));
-            return $"收割完成，共 {count} 个";
-        }
-
         private static string Json(object obj) =>
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
+    }
+
+    [HarmonyPatch(typeof(GameLocation), "draw")]
+    internal static class DrawBotPatch
+    {
+        static void Postfix(GameLocation __instance, SpriteBatch b)
+        {
+            var bot = ModEntry.Bot;
+            if (bot?.Farmer == null) return;
+            if (bot.Farmer.currentLocation != __instance) return;
+            bot.Farmer.draw(b, 1f);
+        }
     }
 }

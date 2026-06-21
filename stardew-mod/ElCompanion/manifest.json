@@ -1,0 +1,10 @@
+{
+  "Name": "El Companion",
+  "Author": "vicky",
+  "Version": "1.0.0",
+  "Description": "El AI companion — exposes HTTP API for game state reading and action execution",
+  "UniqueID": "vicky.ElCompanion",
+  "EntryDll": "ElCompanion.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

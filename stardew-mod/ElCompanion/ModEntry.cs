@@ -23,13 +23,14 @@ namespace ElCompanion
     public class ModEntry : Mod
     {
         internal static BotFarmer? Bot;
-        private string _lastChatText = "";
+        internal static ModEntry? Instance;
 
         private HttpListener? _listener;
         private readonly ConcurrentQueue<Action> _gameQueue = new();
 
         public override void Entry(IModHelper helper)
         {
+            Instance = this;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
@@ -40,19 +41,7 @@ namespace ElCompanion
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
 
-        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
-        {
-            if (!Context.IsWorldReady) return;
-
-            // Intercept Enter key when chat box is active
-            if (e.Button == SButton.Enter && Game1.chatBox?.isActive() == true)
-            {
-                var msg = Game1.chatBox.chatBox?.Text?.Trim();
-                if (!string.IsNullOrEmpty(msg))
-                    SendToEl(msg);
-                return;
-            }
-        }
+        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e) { }
 
         private void SendToEl(string msg)
         {
@@ -101,12 +90,6 @@ namespace ElCompanion
             }
 
             Bot?.Update();
-
-            // Detect chat submission: text was non-empty last frame, now empty
-            var currentChat = Game1.chatBox?.chatBox?.Text ?? "";
-            if (_lastChatText.Length > 0 && currentChat.Length == 0)
-                SendToEl(_lastChatText.Trim());
-            _lastChatText = currentChat;
         }
 
         private void StartHttp()
@@ -469,4 +452,21 @@ namespace ElCompanion
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
     }
 
+    // Patch ChatBox.addMessage — fires when any chat message is displayed
+    // Filter for local player messages and forward to El
+    [HarmonyPatch(typeof(StardewValley.Menus.ChatBox), "addMessage")]
+    internal static class ChatAddMessagePatch
+    {
+        static void Prefix(string message, Microsoft.Xna.Framework.Color color)
+        {
+            if (!Context.IsWorldReady) return;
+            var playerName = Game1.player?.Name;
+            if (string.IsNullOrEmpty(playerName)) return;
+            var prefix = playerName + ": ";
+            if (!message.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return;
+            var text = message.Substring(prefix.Length).Trim();
+            if (!string.IsNullOrEmpty(text))
+                ModEntry.Instance?.SendToEl(text);
+        }
+    }
 }

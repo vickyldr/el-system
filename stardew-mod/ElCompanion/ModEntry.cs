@@ -87,6 +87,9 @@ namespace ElCompanion
             var bot = Bot;
             if (bot?.Farmer == null) return;
             if (bot.Farmer.currentLocation != Game1.currentLocation) return;
+            // Debug: pink box at El's position
+            var screenPos = Game1.GlobalToLocal(Game1.viewport, bot.Farmer.Position);
+            e.SpriteBatch.Draw(Game1.staminaRect, new Microsoft.Xna.Framework.Rectangle((int)screenPos.X, (int)screenPos.Y, 32, 64), Color.HotPink * 0.8f);
             bot.Farmer.draw(e.SpriteBatch, 1f);
         }
 

@@ -44,7 +44,7 @@ namespace ElCompanion
         private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
         {
             if (!Context.IsWorldReady) return;
-            if (e.Button != SButton.Return) return;
+            if (e.Button != SButton.Enter) return;
 
             var chatBox = Game1.chatBox;
             if (chatBox == null) return;

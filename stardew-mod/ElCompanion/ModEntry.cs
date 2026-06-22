@@ -11,6 +11,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
+using HarmonyLib;
 using StardewValley;
 using StardewValley.Buildings;
 using StardewValley.Characters;
@@ -33,6 +34,7 @@ namespace ElCompanion
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.RenderedWorld += OnRenderedWorld;
             helper.Events.Input.ButtonPressed += OnButtonPressed;
+            new Harmony(ModManifest.UniqueID).PatchAll();
             StartHttp();
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
@@ -465,6 +467,33 @@ namespace ElCompanion
 
         private static string Json(object obj) =>
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
+    }
+
+    [HarmonyPatch(typeof(StardewValley.Menus.ChatBox), "sendMessage")]
+    internal static class ChatBoxPatch
+    {
+        static void Prefix(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+            // Send to bridge asynchronously — fire and forget, game chat still proceeds normally
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL")
+                        ?? "https://el-system-production.up.railway.app";
+                    var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
+                    using var client = new System.Net.Http.HttpClient();
+                    if (!string.IsNullOrEmpty(secret))
+                        client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
+                    var payload = System.Text.Json.JsonSerializer.Serialize(
+                        new { message, from = "player_chat" });
+                    await client.PostAsync($"{bridgeUrl}/stardew-inbox",
+                        new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+                }
+                catch { }
+            });
+        }
     }
 
 }

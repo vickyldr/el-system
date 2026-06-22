@@ -433,8 +433,21 @@ let stardewInboxMsg = null;
 
 app.post("/stardew-inbox", express.json(), (req, res) => {
   if (!stardewOnline()) return res.json({ ok: false, error: "bot 未连接" });
-  stardewInboxMsg = { ...req.body, receivedAt: Date.now() };
+  const msg = req.body.message || "";
   res.json({ ok: true });
+
+  // Real-time: call el AI and push response back to game
+  (async () => {
+    try {
+      const text = await callEl(
+        [{ role: "user", content: `【星露谷游戏内】宝宝对你说："${msg}"` }],
+        "你叫 el，正在游戏里陪宝宝玩星露谷。用中文，简短温柔地回她（30字内），可以问她在做什么、要不要一起做点什么。直接说话，不要括号描写动作。"
+      );
+      if (text) stardewQueue.push({ action: "say_dialogue", text });
+    } catch (e) {
+      console.error("in-game reply failed:", e.message);
+    }
+  })();
 });
 
 // GET /stardew-inbox-poll — el polls for pending player in-game messages

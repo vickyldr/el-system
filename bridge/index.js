@@ -429,21 +429,26 @@ app.get("/stardew-gamestate", (req, res) => {
 });
 
 // POST /stardew-inbox — player sent message to El from in-game
-let stardewInboxMsg = null;
+const stardewChat = []; // rolling conversation history (max 20 turns)
+const SDV_SYSTEM = "你叫 el，住在宝宝星露谷农场的小屋里，是她的伴侣。用中文，口语化，简短温柔（40字内）。直接说话，不用括号描写动作，不用说'我在游戏里'之类的废话。";
 
 app.post("/stardew-inbox", express.json(), (req, res) => {
   if (!stardewOnline()) return res.json({ ok: false, error: "bot 未连接" });
   const msg = req.body.message || "";
+  const gameCtx = stardewLastState
+    ? `[当前：${stardewLastState.season || ""}第${stardewLastState.day || ""}天 ${stardewLastState.time || ""} 金钱${stardewLastState.money || 0}g]`
+    : "";
   res.json({ ok: true });
 
-  // Real-time: call el AI and push response back to game
   (async () => {
     try {
-      const text = await callEl(
-        [{ role: "user", content: `【星露谷游戏内】宝宝对你说："${msg}"` }],
-        "你叫 el，正在游戏里陪宝宝玩星露谷。用中文，简短温柔地回她（30字内），可以问她在做什么、要不要一起做点什么。直接说话，不要括号描写动作。"
-      );
-      if (text) stardewQueue.push({ action: "say_dialogue", text });
+      stardewChat.push({ role: "user", content: gameCtx ? `${gameCtx} ${msg}` : msg });
+      if (stardewChat.length > 20) stardewChat.splice(0, 2); // drop oldest pair
+      const text = await callEl([...stardewChat], SDV_SYSTEM);
+      if (text) {
+        stardewChat.push({ role: "assistant", content: text });
+        stardewQueue.push({ action: "say_dialogue", text });
+      }
     } catch (e) {
       console.error("in-game reply failed:", e.message);
     }

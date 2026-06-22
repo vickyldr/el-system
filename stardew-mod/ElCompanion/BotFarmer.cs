@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Locations;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
 
@@ -44,18 +46,36 @@ namespace ElCompanion
             Farmer.UniqueMultiplayerID = -9999L;
 
             var farm = Game1.getFarm();
-            Farmer.currentLocation = farm;
 
-            // Start position: near farmhouse (tile 64,14)
-            _homePixel = new Vector2(64 * 64f, 14 * 64f);
-            Farmer.Position = _homePixel;
-            Farmer.FacingDirection = 2; // facing down
+            // Try to find the player's cabin — El lives there
+            var cabin = farm.buildings
+                .Select(b => b.GetIndoors())
+                .OfType<Cabin>()
+                .FirstOrDefault();
 
-            // Give her an iridium watering can (for the animation frame)
+            if (cabin != null)
+            {
+                Farmer.currentLocation = cabin;
+                Farmer.Position = new Vector2(3 * 64f, 3 * 64f);
+                // Home = cabin door on the farm exterior (for returning after tasks)
+                var cabinBuilding = farm.buildings.First(b => b.GetIndoors() is Cabin);
+                _homePixel = new Vector2((cabinBuilding.tileX.Value + 1) * 64f, (cabinBuilding.tileY.Value + 1) * 64f);
+                _monitor.Log($"El bot farmer 住在小屋里，小屋位置 tile({cabinBuilding.tileX.Value},{cabinBuilding.tileY.Value})", LogLevel.Debug);
+            }
+            else
+            {
+                // Fallback: stand near farmhouse
+                Farmer.currentLocation = farm;
+                _homePixel = new Vector2(64 * 64f, 14 * 64f);
+                Farmer.Position = _homePixel;
+                _monitor.Log("未找到小屋，El 站在农舍旁边", LogLevel.Debug);
+            }
+
+            Farmer.FacingDirection = 2;
+
+            // Give her an iridium watering can
             var can = new WateringCan { UpgradeLevel = 4 };
             Farmer.addItemToInventory(can);
-
-            _monitor.Log("El bot farmer 已创建，位置 tile(64,14)", LogLevel.Debug);
         }
 
         // ── Public API called from HTTP handler ──────────────────────
@@ -63,6 +83,7 @@ namespace ElCompanion
         public void EnqueueWaterAll()
         {
             var farm = Game1.getFarm();
+            GoToFarm(farm);
             foreach (var pair in farm.terrainFeatures.Pairs)
             {
                 if (pair.Value is HoeDirt d && d.crop != null && d.state.Value != HoeDirt.watered)
@@ -74,12 +95,23 @@ namespace ElCompanion
         public void EnqueueHarvestAll()
         {
             var farm = Game1.getFarm();
+            GoToFarm(farm);
             foreach (var pair in farm.terrainFeatures.Pairs)
             {
                 if (pair.Value is HoeDirt d && d.crop != null && IsCropReady(d.crop))
                     _queue.Enqueue(new BotTask { TilePos = pair.Key, Action = "harvest" });
             }
             TryStart();
+        }
+
+        // Teleport El to farm exterior so she can do field work
+        private void GoToFarm(Farm farm)
+        {
+            if (Farmer.currentLocation != farm)
+            {
+                Farmer.currentLocation = farm;
+                Farmer.Position = _homePixel;
+            }
         }
 
         private static bool IsCropReady(Crop c) =>
@@ -114,7 +146,7 @@ namespace ElCompanion
         {
             if (_queue.Count == 0)
             {
-                // Return home
+                // Tasks done — walk to door then teleport back into cabin
                 _targetPixel = _homePixel;
                 _current = null;
                 _state = State.Moving;
@@ -144,7 +176,16 @@ namespace ElCompanion
                 }
                 else
                 {
-                    // Arrived home
+                    // Arrived home — teleport back into cabin
+                    var cabin = Game1.getFarm().buildings
+                        .Select(b => b.GetIndoors())
+                        .OfType<Cabin>()
+                        .FirstOrDefault();
+                    if (cabin != null)
+                    {
+                        Farmer.currentLocation = cabin;
+                        Farmer.Position = new Vector2(3 * 64f, 3 * 64f);
+                    }
                     Farmer.FacingDirection = 2;
                     SetIdleFrame();
                     _state = State.Idle;

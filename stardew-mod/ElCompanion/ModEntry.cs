@@ -73,13 +73,41 @@ namespace ElCompanion
                 try
                 {
                     var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL") ?? "https://el-system-production.up.railway.app";
-                    var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
+                    var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "elvicky2026";
                     using var client = new System.Net.Http.HttpClient();
+                    client.Timeout = TimeSpan.FromSeconds(10);
                     if (!string.IsNullOrEmpty(secret))
                         client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
+
                     var payload = System.Text.Json.JsonSerializer.Serialize(new { message = msg, from = "player_chat" });
                     await client.PostAsync($"{bridgeUrl}/stardew-inbox",
                         new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+
+                    // Poll for El's reply (up to 30s, no bot.js needed)
+                    for (int i = 0; i < 15; i++)
+                    {
+                        await Task.Delay(2000);
+                        try
+                        {
+                            var pollRes = await client.GetAsync($"{bridgeUrl}/stardew-reply-poll");
+                            if (pollRes.IsSuccessStatusCode)
+                            {
+                                var json = await pollRes.Content.ReadAsStringAsync();
+                                var doc = System.Text.Json.JsonDocument.Parse(json);
+                                if (doc.RootElement.TryGetProperty("text", out var t) &&
+                                    t.ValueKind == System.Text.Json.JsonValueKind.String)
+                                {
+                                    var reply = t.GetString();
+                                    if (!string.IsNullOrEmpty(reply))
+                                    {
+                                        _gameQueue.Enqueue(() => Game1.drawObjectDialogue(reply));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
                 }
                 catch { }
             });

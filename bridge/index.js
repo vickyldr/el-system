@@ -432,8 +432,11 @@ app.get("/stardew-gamestate", (req, res) => {
 const stardewChat = []; // rolling conversation history (max 20 turns)
 const SDV_SYSTEM = "你叫 el，住在宝宝星露谷农场的小屋里，是她的伴侣。用中文，口语化，简短温柔（40字内）。直接说话，不用括号描写动作，不用说'我在游戏里'之类的废话。";
 
+// mod polls this to get El's reply without needing bot.js
+const stardewReplyQueue = [];
+
 app.post("/stardew-inbox", express.json(), (req, res) => {
-  if (!stardewOnline()) return res.json({ ok: false, error: "bot 未连接" });
+  // No stardewOnline() check — mod sends directly, doesn't need bot.js for chat
   const msg = req.body.message || "";
   const gameCtx = stardewLastState
     ? `[当前：${stardewLastState.season || ""}第${stardewLastState.day || ""}天 ${stardewLastState.time || ""} 金钱${stardewLastState.money || 0}g]`
@@ -443,16 +446,24 @@ app.post("/stardew-inbox", express.json(), (req, res) => {
   (async () => {
     try {
       stardewChat.push({ role: "user", content: gameCtx ? `${gameCtx} ${msg}` : msg });
-      if (stardewChat.length > 20) stardewChat.splice(0, 2); // drop oldest pair
+      if (stardewChat.length > 20) stardewChat.splice(0, 2);
       const text = await callEl([...stardewChat], SDV_SYSTEM);
       if (text) {
         stardewChat.push({ role: "assistant", content: text });
-        stardewQueue.push({ action: "say_dialogue", text });
+        stardewReplyQueue.push(text); // mod polls this
+        if (stardewOnline()) stardewQueue.push({ action: "say_dialogue", text }); // bot.js fallback
+        console.log(`[stardew-chat] El replied: ${text.slice(0, 60)}`);
       }
     } catch (e) {
       console.error("in-game reply failed:", e.message);
     }
   })();
+});
+
+// GET /stardew-reply-poll — mod polls for El's reply
+app.get("/stardew-reply-poll", (req, res) => {
+  const text = stardewReplyQueue.shift() || null;
+  res.json({ text });
 });
 
 // GET /stardew-inbox-poll — el polls for pending player in-game messages

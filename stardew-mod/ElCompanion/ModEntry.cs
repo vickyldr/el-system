@@ -28,12 +28,6 @@ namespace ElCompanion
         private HttpListener? _listener;
         internal readonly ConcurrentQueue<Action> _gameQueue = new();
 
-        // Chat monitoring via reflection
-        private int _lastChatCount = 0;
-        private System.Reflection.FieldInfo? _fMessages;
-        private System.Reflection.FieldInfo? _fSnippets;
-        private System.Reflection.FieldInfo? _fSnippetText;
-        private string _lastSent = "";
 
         public override void Entry(IModHelper helper)
         {
@@ -48,82 +42,28 @@ namespace ElCompanion
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
 
-        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e) { }
-
-        private void CheckChat()
+        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
         {
             if (!Context.IsWorldReady) return;
-            var chatBox = Game1.chatBox;
-            if (chatBox == null) return;
+            if (e.Button != SButton.T) return;
+            if (Game1.activeClickableMenu != null) return;
 
-            // Lazy-init reflection fields
-            if (_fMessages == null)
+            var bot = Bot;
+            if (bot?.Farmer == null) return;
+            if (bot.Farmer.currentLocation != Game1.player.currentLocation) return;
+
+            // Within 3 tiles of El
+            float dist = Vector2.Distance(Game1.player.Position, bot.Farmer.Position);
+            if (dist > 3 * 64f) return;
+
+            Helper.Input.Suppress(e.Button);
+            Game1.activeClickableMenu = new ChatInputMenu(text =>
             {
-                _fMessages = chatBox.GetType().GetField("messages",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic |
-                    System.Reflection.BindingFlags.Public);
-                if (_fMessages == null)
-                {
-                    Monitor.Log("[Chat] messages field not found on ChatBox", LogLevel.Warn);
-                    return;
-                }
-            }
-
-            var messages = _fMessages.GetValue(chatBox) as System.Collections.IList;
-            if (messages == null) return;
-
-            int count = messages.Count;
-            if (count < _lastChatCount) _lastChatCount = count; // list was reset (e.g. load)
-            if (count <= _lastChatCount) return;
-
-            var playerName = Game1.player?.Name ?? "";
-            var prefix = playerName + ": ";
-
-            for (int i = _lastChatCount; i < count; i++)
-            {
-                var chatMsg = messages[i];
-                if (chatMsg == null) continue;
-
-                // Get List<ChatSnippet> message field
-                if (_fSnippets == null)
-                    _fSnippets = chatMsg.GetType().GetField("message",
-                        System.Reflection.BindingFlags.Instance |
-                        System.Reflection.BindingFlags.Public |
-                        System.Reflection.BindingFlags.NonPublic);
-                if (_fSnippets == null) continue;
-
-                var snippets = _fSnippets.GetValue(chatMsg) as System.Collections.IList;
-                if (snippets == null) continue;
-
-                var sb = new StringBuilder();
-                foreach (var sn in snippets)
-                {
-                    if (sn == null) continue;
-                    if (_fSnippetText == null)
-                        _fSnippetText = sn.GetType().GetField("message",
-                            System.Reflection.BindingFlags.Instance |
-                            System.Reflection.BindingFlags.Public |
-                            System.Reflection.BindingFlags.NonPublic);
-                    if (_fSnippetText != null)
-                        sb.Append(_fSnippetText.GetValue(sn) as string ?? "");
-                }
-
-                var full = sb.ToString();
-                Monitor.Log($"[Chat] saw message: '{full}'", LogLevel.Debug);
-
-                if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                var text = full.Substring(prefix.Length).Trim();
-                if (string.IsNullOrEmpty(text) || text == _lastSent) continue;
-
-                _lastSent = text;
-                Monitor.Log($"[Chat] forwarding to El: '{text}'", LogLevel.Info);
                 var t = text;
                 _gameQueue.Enqueue(() =>
                     Game1.addHUDMessage(new HUDMessage($"El收到: {t}", HUDMessage.newQuest_type)));
                 SendToEl(text);
-            }
-            _lastChatCount = count;
+            });
         }
 
         internal void SendToEl(string msg)
@@ -173,7 +113,6 @@ namespace ElCompanion
             }
 
             Bot?.Update();
-            CheckChat();
         }
 
         private void StartHttp()

@@ -7,7 +7,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
@@ -29,11 +28,10 @@ namespace ElCompanion
 
         public override void Entry(IModHelper helper)
         {
-            new Harmony(ModManifest.UniqueID).PatchAll();
-
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
             helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+            helper.Events.Display.RenderedWorld += OnRenderedWorld;
             StartHttp();
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
@@ -47,6 +45,14 @@ namespace ElCompanion
         private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
         {
             Bot = null;
+        }
+
+        private void OnRenderedWorld(object? sender, StardewModdingAPI.Events.RenderedWorldEventArgs e)
+        {
+            var bot = Bot;
+            if (bot?.Farmer == null) return;
+            if (bot.Farmer.currentLocation != Game1.currentLocation) return;
+            bot.Farmer.draw(e.SpriteBatch, 1f);
         }
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -370,15 +376,4 @@ namespace ElCompanion
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
     }
 
-    [HarmonyPatch(typeof(GameLocation), "draw")]
-    internal static class DrawBotPatch
-    {
-        static void Postfix(GameLocation __instance, SpriteBatch b)
-        {
-            var bot = ModEntry.Bot;
-            if (bot?.Farmer == null) return;
-            if (bot.Farmer.currentLocation != __instance) return;
-            bot.Farmer.draw(b, 1f);
-        }
-    }
 }

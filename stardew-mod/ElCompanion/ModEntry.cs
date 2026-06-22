@@ -63,6 +63,9 @@ namespace ElCompanion
                             var payload = System.Text.Json.JsonSerializer.Serialize(new { message = msg, from = "player_ingame" });
                             await client.PostAsync($"{bridgeUrl}/stardew-inbox",
                                 new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+                            // Show confirmation in-game
+                            _gameQueue.Enqueue(() =>
+                                Game1.addHUDMessage(new HUDMessage($"El 收到了：{msg}", HUDMessage.newQuest_type)));
                         }
                         catch { }
                     });

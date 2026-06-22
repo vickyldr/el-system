@@ -431,8 +431,6 @@ namespace ElCompanion
                     return BotActions.Forage(root);
 
                 case "sleep":
-                    // Warp player to bed and end day
-                    Game1.player.position.Set(new Vector2(Game1.player.getTileX() * 64, Game1.player.getTileY() * 64));
                     Game1.NewDay(0.0f);
                     return Json(new { ok = true, msg = "晚安~" });
 

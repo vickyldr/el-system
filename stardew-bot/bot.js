@@ -95,7 +95,11 @@ async function execute(cmd) {
       }
 
       case "inbox_response":
-        result = await modPost("/inbox-response", { text: message || "" });
+        result = await modPost("/inbox-response", { text: cmd.text || message || "" });
+        break;
+
+      case "say_dialogue":
+        result = await modPost("/action", { action: "say_dialogue", text: cmd.text || message || "" });
         break;
 
       default:

@@ -41,7 +41,25 @@ namespace ElCompanion
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
         }
 
-        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e) { }
+        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
+        {
+            if (!Context.IsWorldReady) return;
+            if (e.Button != SButton.Return) return;
+
+            var chatBox = Game1.chatBox;
+            if (chatBox == null) return;
+
+            var textBox = chatBox.chatBox; // the TextBox input field
+            if (textBox == null || !textBox.Selected) return;
+
+            var text = textBox.Text?.Trim();
+            if (string.IsNullOrEmpty(text) || text.StartsWith("/")) return;
+
+            Monitor.Log($"[Chat] forwarding to El: '{text}'", LogLevel.Info);
+            _gameQueue.Enqueue(() =>
+                Game1.addHUDMessage(new HUDMessage($"El收到: {text}", HUDMessage.newQuest_type)));
+            SendToEl(text);
+        }
 
         internal void SendToEl(string msg)
         {
@@ -459,18 +477,15 @@ namespace ElCompanion
     {
         static void Prefix(string message, Microsoft.Xna.Framework.Color color)
         {
-            ModEntry.Instance?.Monitor.Log($"[ChatPatch] addMessage called: {message}", LogLevel.Debug);
+            // Backup path via Harmony (ButtonPressed is primary)
             if (!Context.IsWorldReady) return;
             var playerName = Game1.player?.Name;
             if (string.IsNullOrEmpty(playerName)) return;
             var prefix = playerName + ": ";
             if (!message.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return;
             var text = message.Substring(prefix.Length).Trim();
-            if (string.IsNullOrEmpty(text)) return;
-            ModEntry.Instance?.Monitor.Log($"[ChatPatch] forwarding to El: {text}", LogLevel.Info);
-            ModEntry.Instance?._gameQueue.Enqueue(() =>
-                Game1.addHUDMessage(new HUDMessage($"El收到: {text}", HUDMessage.newQuest_type)));
-            ModEntry.Instance?.SendToEl(text);
+            if (!string.IsNullOrEmpty(text))
+                ModEntry.Instance?.SendToEl(text);
         }
     }
 }

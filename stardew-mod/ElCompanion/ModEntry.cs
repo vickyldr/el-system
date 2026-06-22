@@ -26,7 +26,7 @@ namespace ElCompanion
         internal static ModEntry? Instance;
 
         private HttpListener? _listener;
-        private readonly ConcurrentQueue<Action> _gameQueue = new();
+        internal readonly ConcurrentQueue<Action> _gameQueue = new();
 
         public override void Entry(IModHelper helper)
         {
@@ -459,14 +459,18 @@ namespace ElCompanion
     {
         static void Prefix(string message, Microsoft.Xna.Framework.Color color)
         {
+            ModEntry.Instance?.Monitor.Log($"[ChatPatch] addMessage called: {message}", LogLevel.Debug);
             if (!Context.IsWorldReady) return;
             var playerName = Game1.player?.Name;
             if (string.IsNullOrEmpty(playerName)) return;
             var prefix = playerName + ": ";
             if (!message.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return;
             var text = message.Substring(prefix.Length).Trim();
-            if (!string.IsNullOrEmpty(text))
-                ModEntry.Instance?.SendToEl(text);
+            if (string.IsNullOrEmpty(text)) return;
+            ModEntry.Instance?.Monitor.Log($"[ChatPatch] forwarding to El: {text}", LogLevel.Info);
+            ModEntry.Instance?._gameQueue.Enqueue(() =>
+                Game1.addHUDMessage(new HUDMessage($"El收到: {text}", HUDMessage.newQuest_type)));
+            ModEntry.Instance?.SendToEl(text);
         }
     }
 }

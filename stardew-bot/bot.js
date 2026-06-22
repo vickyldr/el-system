@@ -94,6 +94,10 @@ async function execute(cmd) {
         break;
       }
 
+      case "inbox_response":
+        result = await modPost("/inbox-response", { text: message || "" });
+        break;
+
       default:
         await postResult({ ok: false, action, error: `未知 action: ${action}` });
         return;

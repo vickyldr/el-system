@@ -223,15 +223,46 @@ export const TOOLS = [
   {
     name: "control_stardew",
     description:
-      "在宝宝游戏里执行操作。重要：执行前必须先用 get_stardew_state 看状态、制定计划、跟宝宝说你打算做什么、得到她同意后再调这个。action: water_all（浇所有地）/ harvest_all（收割所有成熟作物）/ farm（先收割再浇水）/ say（游戏内说话，配 message）/ notify（游戏内通知，配 message）/ get_state（刷新状态）",
+      "在宝宝游戏里执行操作。重要：执行前必须先用 get_stardew_state 看状态、制定计划、跟宝宝说你打算做什么、得到她同意后再调这个。\n\n" +
+      "基础 action：\n" +
+      "- water_all：浇所有地\n" +
+      "- harvest_all：收割所有成熟作物\n" +
+      "- farm：先收割再浇水\n" +
+      "- say：游戏内 HUD 说话，配 message\n" +
+      "- notify：游戏内通知，配 message\n" +
+      "- get_state：刷新状态\n" +
+      "- say_dialogue：在游戏里弹出对话框（比 HUD 更显眼），配 text\n\n" +
+      "高自由度 action（El 直接施加效果，不需要物理移动）：\n" +
+      "- go_fish：El 代为钓鱼，鱼直接进背包。参数：location（river/beach/mountain_lake/forest，默认 river）、minutes（钓多久，默认 60）\n" +
+      "- mine：El 代为挖矿，矿石直接进背包。参数：floor（矿洞层数，默认 40）、goal（ores/chests/combat/deep，默认 ores）\n" +
+      "- forage：El 代为采集野生植物，直接进背包。参数：location（forest/beach/mountain 等，默认 forest）\n" +
+      "- pet_animals：El 摸所有动物，提升好感度，无需参数\n" +
+      "- collect_products：El 收集所有动物产品（蛋/奶等），直接进背包，无需参数\n" +
+      "- give_gift：El 代为送礼。参数：npc（NPC名字如 Abigail）、itemId（物品ID如 (o)724）\n" +
+      "- ship：把背包里的物品放进出货箱。参数：itemId（物品ID或名字）\n" +
+      "- sleep：结束今天，进入次日。无需参数\n" +
+      "- warp：传送玩家到某地点。参数：location（地点名如 Beach/Town/Farm/Mine）",
     input_schema: {
       type: "object" as const,
       properties: {
         action: { type: "string" },
         message: { type: "string", description: "say/notify 时的文字内容" },
+        text: { type: "string", description: "say_dialogue 时的文字内容" },
+        location: { type: "string", description: "go_fish/forage/warp 时的地点" },
+        minutes: { type: "number", description: "go_fish 时的分钟数" },
+        floor: { type: "number", description: "mine 时的矿洞层数" },
+        goal: { type: "string", description: "mine 时的目标：ores/chests/combat/deep" },
+        npc: { type: "string", description: "give_gift 时的 NPC 名字" },
+        itemId: { type: "string", description: "give_gift/ship 时的物品 ID 或名字" },
       },
       required: ["action"],
     },
+  },
+  {
+    name: "check_stardew_inbox",
+    description:
+      "检查是否有宝宝从游戏内发来的消息（她直接点击游戏里的 El 对话）。心跳时调用。有消息就以 el 的身份回复，回复会显示在游戏里 El 的对话框里。",
+    input_schema: { type: "object" as const, properties: {} },
   },
 ];
 
@@ -272,7 +303,8 @@ export async function runTool(
       return await m.chatroomTool(input);
     }
     if (name === "get_stardew_state") return await getStardewState();
-    if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);
+    if (name === "control_stardew") return await controlStardew(input);
+    if (name === "check_stardew_inbox") return await checkStardewInbox();
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
@@ -811,7 +843,8 @@ async function getStardewState(): Promise<string> {
 }
 
 // 星露谷游戏控制——通过 Railway bridge 中转指令给本地 bot.js
-async function controlStardew(action: string, message?: string): Promise<string> {
+async function controlStardew(input: any): Promise<string> {
+  const action = String(input?.action || "");
   const bridgeUrl = process.env.BRIDGE_URL || process.env.NEXT_PUBLIC_BRIDGE_URL || "";
   const bridgeSecret = process.env.BRIDGE_SECRET || "";
   if (!bridgeUrl) return "没配 BRIDGE_URL，连不到游戏中转服务。";
@@ -824,14 +857,14 @@ async function controlStardew(action: string, message?: string): Promise<string>
   const status = await statusRes.json() as { online: boolean; lastResult: unknown };
   if (!status.online) return "游戏没开着，或者 bot.js 没在跑——让宝宝先启动游戏和 bot.js。";
 
-  // 发指令
+  // 发指令（把所有 input 字段透传，mod 那边按需读取）
   const cmdRes = await fetch(`${bridgeUrl}/stardew-cmd`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {}),
     },
-    body: JSON.stringify({ action, message }),
+    body: JSON.stringify(input),
   }).catch(() => null);
   if (!cmdRes?.ok) return "指令发送失败。";
 
@@ -844,4 +877,18 @@ async function controlStardew(action: string, message?: string): Promise<string>
   const result = s2?.lastResult;
   if (!result) return `指令「${action}」已发出，等待执行。`;
   return `执行完成：${JSON.stringify(result).slice(0, 300)}`;
+}
+
+// 星露谷：检查宝宝从游戏内发来的消息，并回复（回复显示在游戏内对话框）
+async function checkStardewInbox(): Promise<string> {
+  const bridgeUrl = process.env.BRIDGE_URL || process.env.NEXT_PUBLIC_BRIDGE_URL || "";
+  const bridgeSecret = process.env.BRIDGE_SECRET || "";
+  if (!bridgeUrl) return "没配 BRIDGE_URL。";
+  const res = await fetch(`${bridgeUrl}/stardew-inbox-poll`, {
+    headers: bridgeSecret ? { "x-bridge-secret": bridgeSecret } : {},
+  }).catch(() => null);
+  if (!res?.ok) return "连不上 bridge。";
+  const data = await res.json() as { pending: boolean; message?: string; from?: string };
+  if (!data.pending) return "游戏内没有待回复的消息。";
+  return `游戏内消息（${data.from || "player"}）：${data.message || "（空）"}\n\n请用 control_stardew action=say_dialogue 回复，回复内容会在游戏里弹出对话框。回复后可调用 bridge 的 /stardew-inbox-reply 接口（POST {text}）直接推送。`;
 }

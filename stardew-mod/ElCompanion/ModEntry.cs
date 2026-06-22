@@ -365,7 +365,7 @@ namespace ElCompanion
                 return Json(new { ok = false, error = "游戏未进入存档" });
 
             JsonElement root;
-            try { root = JsonDocument.Parse(reqBody).RootElement; }
+            try { root = JsonDocument.Parse(reqBody).RootElement.Clone(); }
             catch { return Json(new { ok = false, error = "JSON 解析失败" }); }
 
             var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";

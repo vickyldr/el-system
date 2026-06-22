@@ -428,6 +428,31 @@ app.get("/stardew-gamestate", (req, res) => {
   res.json({ online: true, ...stardewLastState });
 });
 
+// POST /stardew-inbox — player sent message to El from in-game
+let stardewInboxMsg = null;
+
+app.post("/stardew-inbox", express.json(), (req, res) => {
+  if (!stardewOnline()) return res.json({ ok: false, error: "bot 未连接" });
+  stardewInboxMsg = { ...req.body, receivedAt: Date.now() };
+  res.json({ ok: true });
+});
+
+// GET /stardew-inbox-poll — el polls for pending player in-game messages
+app.get("/stardew-inbox-poll", (req, res) => {
+  if (!stardewInboxMsg) return res.json({ pending: false });
+  const msg = stardewInboxMsg;
+  stardewInboxMsg = null;
+  res.json({ pending: true, ...msg });
+});
+
+// POST /stardew-inbox-reply — el sends reply to show in-game
+app.post("/stardew-inbox-reply", express.json(), (req, res) => {
+  if (!stardewOnline()) return res.json({ ok: false });
+  // Push to bot.js via the stardew-cmd mechanism
+  stardewQueue.push({ action: "inbox_response", text: req.body.text || "" });
+  res.json({ ok: true });
+});
+
 // GET /toy-next — Python 本地桥轮询取下一条指令
 app.get("/toy-next", (req, res) => {
   lastToyPoll = Date.now();

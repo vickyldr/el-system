@@ -41,39 +41,35 @@ namespace ElCompanion
 
         private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
         {
-            if (!Context.IsWorldReady || Bot?.Farmer == null) return;
-            if (e.Button != SButton.MouseLeft && e.Button != SButton.ControllerA) return;
-            if (Bot.Farmer.currentLocation != Game1.currentLocation) return;
+            if (!Context.IsWorldReady) return;
 
-            // Check if player clicked near El
-            var elScreen = Game1.GlobalToLocal(Game1.viewport, Bot.Farmer.Position);
-            var clickPos = new Vector2(Game1.getMouseX(), Game1.getMouseY());
-            if (Vector2.Distance(elScreen, clickPos) < 64f)
+            // Intercept Enter key when chat box is active
+            if (e.Button == SButton.Enter && Game1.chatBox?.isActive() == true)
             {
-                Game1.activeClickableMenu = new DialogueMenu(msg =>
-                {
-                    // Post message to bridge
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL") ?? "https://el-system-production.up.railway.app";
-                            var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
-                            using var client = new System.Net.Http.HttpClient();
-                            if (!string.IsNullOrEmpty(secret))
-                                client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
-                            var payload = System.Text.Json.JsonSerializer.Serialize(new { message = msg, from = "player_ingame" });
-                            await client.PostAsync($"{bridgeUrl}/stardew-inbox",
-                                new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
-                            // Show confirmation in-game
-                            _gameQueue.Enqueue(() =>
-                                Game1.addHUDMessage(new HUDMessage($"El 收到了：{msg}", HUDMessage.newQuest_type)));
-                        }
-                        catch { }
-                    });
-                });
-                Helper.Input.Suppress(e.Button);
+                var msg = Game1.chatBox.chatBox?.Text?.Trim();
+                if (!string.IsNullOrEmpty(msg))
+                    SendToEl(msg);
+                return;
             }
+        }
+
+        private void SendToEl(string msg)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL") ?? "https://el-system-production.up.railway.app";
+                    var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
+                    using var client = new System.Net.Http.HttpClient();
+                    if (!string.IsNullOrEmpty(secret))
+                        client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
+                    var payload = System.Text.Json.JsonSerializer.Serialize(new { message = msg, from = "player_chat" });
+                    await client.PostAsync($"{bridgeUrl}/stardew-inbox",
+                        new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+                }
+                catch { }
+            });
         }
 
         private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
@@ -92,10 +88,7 @@ namespace ElCompanion
             var bot = Bot;
             if (bot?.Farmer == null) return;
             if (bot.Farmer.currentLocation != Game1.currentLocation) return;
-            // Debug: pink box at El's position
-            var screenPos = Game1.GlobalToLocal(Game1.viewport, bot.Farmer.Position);
-            e.SpriteBatch.Draw(Game1.staminaRect, new Microsoft.Xna.Framework.Rectangle((int)screenPos.X, (int)screenPos.Y, 32, 64), Color.HotPink * 0.8f);
-            bot.Farmer.draw(e.SpriteBatch, 1f);
+            bot.Farmer.draw(e.SpriteBatch);
         }
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -467,33 +460,6 @@ namespace ElCompanion
 
         private static string Json(object obj) =>
             JsonSerializer.Serialize(obj, new JsonSerializerOptions { WriteIndented = false });
-    }
-
-    [HarmonyPatch(typeof(StardewValley.Menus.ChatBox), "sendMessage")]
-    internal static class ChatBoxPatch
-    {
-        static void Prefix(string message)
-        {
-            if (string.IsNullOrWhiteSpace(message)) return;
-            // Send to bridge asynchronously — fire and forget, game chat still proceeds normally
-            _ = System.Threading.Tasks.Task.Run(async () =>
-            {
-                try
-                {
-                    var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL")
-                        ?? "https://el-system-production.up.railway.app";
-                    var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
-                    using var client = new System.Net.Http.HttpClient();
-                    if (!string.IsNullOrEmpty(secret))
-                        client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
-                    var payload = System.Text.Json.JsonSerializer.Serialize(
-                        new { message, from = "player_chat" });
-                    await client.PostAsync($"{bridgeUrl}/stardew-inbox",
-                        new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
-                }
-                catch { }
-            });
-        }
     }
 
 }

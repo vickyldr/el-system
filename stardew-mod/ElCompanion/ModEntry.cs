@@ -23,6 +23,7 @@ namespace ElCompanion
     public class ModEntry : Mod
     {
         internal static BotFarmer? Bot;
+        private string _lastChatText = "";
 
         private HttpListener? _listener;
         private readonly ConcurrentQueue<Action> _gameQueue = new();
@@ -100,6 +101,12 @@ namespace ElCompanion
             }
 
             Bot?.Update();
+
+            // Detect chat submission: text was non-empty last frame, now empty
+            var currentChat = Game1.chatBox?.chatBox?.Text ?? "";
+            if (_lastChatText.Length > 0 && currentChat.Length == 0)
+                SendToEl(_lastChatText.Trim());
+            _lastChatText = currentChat;
         }
 
         private void StartHttp()

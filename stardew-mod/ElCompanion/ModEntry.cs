@@ -43,7 +43,7 @@ namespace ElCompanion
 
         private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e) { }
 
-        private void SendToEl(string msg)
+        internal void SendToEl(string msg)
         {
             _ = Task.Run(async () =>
             {

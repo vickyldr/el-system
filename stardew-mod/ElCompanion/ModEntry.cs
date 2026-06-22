@@ -32,8 +32,43 @@ namespace ElCompanion
             helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Display.RenderedWorld += OnRenderedWorld;
+            helper.Events.Input.ButtonPressed += OnButtonPressed;
             StartHttp();
             Monitor.Log("El Companion loaded — HTTP on http://localhost:7421/", LogLevel.Info);
+        }
+
+        private void OnButtonPressed(object? sender, StardewModdingAPI.Events.ButtonPressedEventArgs e)
+        {
+            if (!Context.IsWorldReady || Bot?.Farmer == null) return;
+            if (e.Button != SButton.MouseLeft && e.Button != SButton.ControllerA) return;
+            if (Bot.Farmer.currentLocation != Game1.currentLocation) return;
+
+            // Check if player clicked near El
+            var elScreen = Game1.GlobalToLocal(Game1.viewport, Bot.Farmer.Position);
+            var clickPos = new Vector2(Game1.getMouseX(), Game1.getMouseY());
+            if (Vector2.Distance(elScreen, clickPos) < 64f)
+            {
+                Game1.activeClickableMenu = new DialogueMenu(msg =>
+                {
+                    // Post message to bridge
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var bridgeUrl = System.Environment.GetEnvironmentVariable("BRIDGE_URL") ?? "https://el-system-production.up.railway.app";
+                            var secret = System.Environment.GetEnvironmentVariable("BRIDGE_SECRET") ?? "";
+                            using var client = new System.Net.Http.HttpClient();
+                            if (!string.IsNullOrEmpty(secret))
+                                client.DefaultRequestHeaders.Add("x-bridge-secret", secret);
+                            var payload = System.Text.Json.JsonSerializer.Serialize(new { message = msg, from = "player_ingame" });
+                            await client.PostAsync($"{bridgeUrl}/stardew-inbox",
+                                new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"));
+                        }
+                        catch { }
+                    });
+                });
+                Helper.Input.Suppress(e.Button);
+            }
         }
 
         private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
@@ -111,6 +146,18 @@ namespace ElCompanion
                 {
                     using var sr = new System.IO.StreamReader(req.InputStream, Encoding.UTF8);
                     body = DoAction(sr.ReadToEnd());
+                }
+                else if (req.HttpMethod == "POST" && path == "/inbox-response")
+                {
+                    using var sr2 = new System.IO.StreamReader(req.InputStream, Encoding.UTF8);
+                    var rawBody = sr2.ReadToEnd();
+                    var doc2 = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(rawBody);
+                    string resp = doc2.TryGetProperty("text", out var rt) ? rt.GetString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(resp))
+                    {
+                        _gameQueue.Enqueue(() => Game1.drawObjectDialogue(resp));
+                    }
+                    body = Json(new { ok = true });
                 }
                 else
                 {
@@ -325,12 +372,13 @@ namespace ElCompanion
             var text = root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
 
             var tcs = new TaskCompletionSource<string>();
+            var rootCopy = root;
 
             _gameQueue.Enqueue(() =>
             {
                 try
                 {
-                    var result = RunGameAction(action, text);
+                    var result = RunGameAction(action, text, rootCopy);
                     tcs.TrySetResult(Json(new { ok = true, action, result }));
                 }
                 catch (Exception ex)
@@ -342,7 +390,7 @@ namespace ElCompanion
             return tcs.Task.Wait(5000) ? tcs.Task.Result : Json(new { ok = false, error = "游戏线程超时" });
         }
 
-        private string RunGameAction(string action, string text)
+        private string RunGameAction(string action, string text, JsonElement root)
         {
             var player = Game1.player;
 
@@ -366,6 +414,45 @@ namespace ElCompanion
 
                 case "get_state":
                     return GetState();
+
+                case "say_dialogue":
+                    // Shows dialogue box above El's head (different from HUD message)
+                    string dlgText = root.TryGetProperty("text", out var dt) ? dt.GetString() ?? "" : text;
+                    Game1.drawObjectDialogue(dlgText);
+                    return Json(new { ok = true });
+
+                case "go_fish":
+                    return BotActions.GoFish(root);
+
+                case "mine":
+                    return BotActions.Mine(root);
+
+                case "forage":
+                    return BotActions.Forage(root);
+
+                case "sleep":
+                    // Warp player to bed and end day
+                    Game1.player.position.Set(new Vector2(Game1.player.getTileX() * 64, Game1.player.getTileY() * 64));
+                    Game1.NewDay(0.0f);
+                    return Json(new { ok = true, msg = "晚安~" });
+
+                case "ship":
+                    return BotActions.ShipItem(root);
+
+                case "pet_animals":
+                    return BotActions.PetAllAnimals();
+
+                case "collect_products":
+                    return BotActions.CollectAnimalProducts();
+
+                case "give_gift":
+                    return BotActions.GiveGift(root);
+
+                case "warp":
+                    string warpDest = root.TryGetProperty("location", out var wd) ? wd.GetString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(warpDest))
+                        Game1.warpFarmer(warpDest, 0, 0, false);
+                    return Json(new { ok = true });
 
                 default:
                     return $"未知 action: {action}";

@@ -208,19 +208,19 @@ namespace ElCompanion
         private void SetWalkFrame()
         {
             int row = FacingToRow();
-            Farmer.Sprite.setCurrentFrame(row * 16 + _walkFrame);
+            Farmer.Sprite.currentFrame = row * 16 + _walkFrame;
         }
 
         private void SetIdleFrame()
         {
             int row = FacingToRow();
-            Farmer.Sprite.setCurrentFrame(row * 16);
+            Farmer.Sprite.currentFrame = row * 16;
         }
 
         private void SetToolFrame()
         {
             // Watering can use frame area (rough estimate; SDV uses row 8-9 region)
-            Farmer.Sprite.setCurrentFrame(FacingToRow() * 16 + 58 % 16);
+            Farmer.Sprite.currentFrame = FacingToRow() * 16 + 58 % 16;
         }
 
         private void FaceTowardCenter()

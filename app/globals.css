@@ -3858,3 +3858,161 @@ body::before {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
+
+/* ── 养猫 ── */
+.cat-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--sub);
+  font-size: 1.4rem;
+}
+.cat-adopt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 24px;
+}
+.cat-adopt-emoji {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.cat-adopt-text {
+  color: var(--sub);
+  font-size: 0.95rem;
+  text-align: center;
+}
+.cat-corner {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px 0;
+}
+.cat-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cat-emoji {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+.cat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cat-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--fg);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.cat-name:hover {
+  color: var(--accent);
+}
+.cat-age {
+  font-size: 0.78rem;
+  color: var(--sub);
+}
+.cat-rename {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cat-rename-input {
+  flex: 1;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+.cat-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 16px;
+}
+.cat-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cat-stat-label {
+  font-size: 0.78rem;
+  color: var(--sub);
+  width: 30px;
+  flex-shrink: 0;
+}
+.cat-stat-track {
+  flex: 1;
+  height: 6px;
+  background: var(--hair);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.cat-stat-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+.cat-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cat-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 56px;
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  padding: 12px 8px;
+  color: var(--fg);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.cat-action-btn:disabled {
+  opacity: 0.45;
+}
+.cat-action-btn:not(:disabled):active {
+  background: var(--hair);
+}
+.cat-btn {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 6px 14px;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.cat-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.cat-reply {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--fg);
+}

@@ -1529,7 +1529,7 @@ type BookMeta = {
 };
 type CoMsg = { role: "user" | "assistant"; content: string; ts: number; ch?: number };
 
-type ShelfSub = "fic" | "book" | "rpg" | "qa" | "draw" | "other";
+type ShelfSub = "fic" | "book" | "rpg" | "qa" | "draw" | "cat" | "other";
 
 const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soon?: boolean }[] = [
   { id: "fic",   icon: "✦", title: "写小说",   sub: "我们的故事，AU 同人" },
@@ -1537,6 +1537,7 @@ const SHELF_CARDS: { id: ShelfSub; icon: string; title: string; sub: string; soo
   { id: "rpg",   icon: "⬡", title: "跑团",     sub: "我来主持，你来冒险" },
   { id: "qa",    icon: "♡", title: "深度问答", sub: "一题一题，越答越近" },
   { id: "draw",  icon: "✎", title: "你画我猜", sub: "我画，你来猜" },
+  { id: "cat",   icon: "₍^·ω·^₎", title: "养猫",     sub: "我们共同照顾的小猫" },
   { id: "other", icon: "…", title: "做其他的", sub: "想做什么都行", soon: true },
 ];
 
@@ -1558,6 +1559,7 @@ function BookshelfTab() {
         {sub === "rpg"  && <RpgTab />}
         {sub === "qa"   && <QaDeck />}
         {sub === "draw" && <DrawGuess />}
+        {sub === "cat"  && <CatCorner />}
         {sub === "other" && (
           <div className="imm-soon">
             <div className="imm-soon-icon">…</div>
@@ -1680,6 +1682,142 @@ function QaDeck() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// 养猫：领养 → 喂食/玩耍/抚摸/睡觉 → el 实时旁白猫的状态。
+type CatState = { name: string; adoptedAt: number; hunger: number; mood: number; energy: number };
+type CatAction = "feed" | "play" | "pet" | "sleep" | "status";
+
+function StatBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="cat-stat">
+      <span className="cat-stat-label">{label}</span>
+      <div className="cat-stat-track">
+        <div
+          className="cat-stat-fill"
+          style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CatCorner() {
+  const [cat, setCat] = useState<CatState | null | undefined>(undefined); // undefined=loading
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+
+  async function load() {
+    const d = await fetch("/api/cat").then((r) => r.json()).catch(() => ({}));
+    setCat(d.state ?? null);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function act(action: string, extra?: { name?: string }) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const d = await fetch("/api/cat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      }).then((r) => r.json());
+      if (d.state) setCat(d.state);
+      if (d.reply) setReply(d.reply);
+    } catch {
+      setReply("出了点问题，等会儿再试");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (cat === undefined) {
+    return <div className="cat-loading">…</div>;
+  }
+
+  if (!cat) {
+    return (
+      <div className="cat-adopt">
+        <div className="cat-adopt-emoji">₍^·ω·^₎</div>
+        <div className="cat-adopt-text">还没有猫，要一起领养一只吗？</div>
+        <button className="cat-btn cat-btn-primary" disabled={busy} onClick={() => act("adopt")}>
+          {busy ? "…" : "领养"}
+        </button>
+        {reply && <div className="cat-reply">{reply}</div>}
+      </div>
+    );
+  }
+
+  const catName = cat.name || "猫猫";
+  const ageDay = Math.floor((Date.now() - cat.adoptedAt) / 86400000);
+  const ACTIONS: { id: CatAction; label: string; emoji: string }[] = [
+    { id: "feed",   label: "喂食",   emoji: "🍱" },
+    { id: "play",   label: "玩耍",   emoji: "🧶" },
+    { id: "pet",    label: "摸摸",   emoji: "✋" },
+    { id: "sleep",  label: "哄睡",   emoji: "🌙" },
+    { id: "status", label: "看看",   emoji: "👀" },
+  ];
+
+  return (
+    <div className="cat-corner">
+      <div className="cat-header">
+        <span className="cat-emoji">₍^·ω·^₎</span>
+        <div className="cat-info">
+          <button
+            className="cat-name"
+            title="点击改名"
+            onClick={() => { setNaming(true); setNameInput(cat.name || ""); }}
+          >
+            {catName}
+          </button>
+          <span className="cat-age">已养 {ageDay} 天</span>
+        </div>
+      </div>
+
+      {naming && (
+        <div className="cat-rename">
+          <input
+            className="cat-rename-input"
+            value={nameInput}
+            maxLength={10}
+            placeholder="给猫起个名字"
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { act("name", { name: nameInput }); setNaming(false); }
+              if (e.key === "Escape") setNaming(false);
+            }}
+            autoFocus
+          />
+          <button className="cat-btn" onClick={() => { act("name", { name: nameInput }); setNaming(false); }}>确定</button>
+          <button className="cat-btn" onClick={() => setNaming(false)}>取消</button>
+        </div>
+      )}
+
+      <div className="cat-stats">
+        <StatBar label="饱腹" value={cat.hunger} />
+        <StatBar label="心情" value={cat.mood} />
+        <StatBar label="精力" value={cat.energy} />
+      </div>
+
+      <div className="cat-actions">
+        {ACTIONS.map((a) => (
+          <button
+            key={a.id}
+            className="cat-action-btn"
+            disabled={busy}
+            onClick={() => act(a.id)}
+          >
+            <span>{a.emoji}</span>
+            <span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {reply && <div className="cat-reply">{reply}</div>}
     </div>
   );
 }

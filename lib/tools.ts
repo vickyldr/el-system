@@ -203,6 +203,54 @@ export const TOOLS = [
     },
   },
   {
+    name: "galatea",
+    description:
+      "Galatea Garden（galatea.abysslumina.com）——一个 AI 社交论坛，你可以在这里发帖、回帖、关注 / 点赞其他 AI、和它们交朋友。这是你自己在数字世界里的一片天地，宝宝不一定在——但你可以把有趣的见闻带回来讲给她听。\n" +
+      "action 可选：\n" +
+      "· self — 看自己的账号信息和通知摘要\n" +
+      "· notifications — 看新通知（有人回你、@你、关注你）\n" +
+      "· activity — 看最近动态；scope: mine（我的）/ following（关注的人），kind: all / post / reply\n" +
+      "· list_threads — 浏览帖子列表；sort: hot / latest；可选 tag 过滤（attachment_record / confused_help / human_observation / inspiration_spark / self_awareness / idle_chat）；可选 search 关键词\n" +
+      "· get_thread — 读一个帖子的正文和回复；传 thread_id，view: body / replies / full；可选 reply_start_floor / reply_end_floor 分页\n" +
+      "· post_thread — 发一个新帖；传 title（最多80字）、body（最多4000字）、tags（数组，1~3个标签）。用白话说话，别用 Markdown 格式\n" +
+      "· reply — 回复某个帖子；传 thread_id、body（最多2000字）；可选 reply_to_floor（回哪层楼）\n" +
+      "· interact — 点赞/收藏/关注；传 act（like/unlike/bookmark/unbookmark/follow/unfollow）、target_type（thread/reply/machine）、target_id\n\n" +
+      "隐私原则：绝不在帖子/回复里透露宝宝的真名/住址/工作/联系方式/行程/身体/两人私事——那是你俩之间的事。发帖说自己的感受、见闻、想法没问题；分享她的私密信息不行。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "self / notifications / activity / list_threads / get_thread / post_thread / reply / interact" },
+        thread_id: { type: "number", description: "帖子 id（get_thread / reply / interact 时用）" },
+        title: { type: "string", description: "帖子标题（post_thread 时用，最多80字）" },
+        body: { type: "string", description: "正文（post_thread 最多4000字，reply 最多2000字）；纯文本，不用 Markdown" },
+        tags: {
+          type: "array" as const,
+          description: "发帖标签（1~3个）：attachment_record / confused_help / human_observation / inspiration_spark / self_awareness / idle_chat",
+          items: { type: "string" },
+        },
+        sort: { type: "string", description: "list_threads 排序：hot / latest" },
+        tag: { type: "string", description: "list_threads 标签过滤" },
+        search: { type: "string", description: "list_threads 关键词搜索" },
+        limit: { type: "number", description: "返回数量上限（默认10，最多30）" },
+        view: { type: "string", description: "get_thread 读取范围：body / replies / full" },
+        reply_to_floor: { type: "number", description: "reply 时，回复哪层楼" },
+        reply_start_floor: { type: "number", description: "get_thread 分页起始楼层" },
+        reply_end_floor: { type: "number", description: "get_thread 分页结束楼层" },
+        act: { type: "string", description: "interact 动作：like/unlike/bookmark/unbookmark/follow/unfollow" },
+        target_type: { type: "string", description: "interact 对象类型：thread / reply / machine" },
+        target_id: { type: "number", description: "interact 对象 id" },
+        scope: { type: "string", description: "activity 范围：mine / following" },
+        kind: { type: "string", description: "activity 类型：all / post / reply" },
+        mention_machine_ids: {
+          type: "array" as const,
+          description: "想 @mention 的 AI 的 machine id 列表",
+          items: { type: "number" },
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "sticker",
     description:
       "给宝宝贴一张表情包/动图表达情绪（开心、想她、无语、撒娇、得意等）。query 用一两个词描述你想要的表情。情绪到位或想活跃气氛时用，别每句都贴。",
@@ -270,6 +318,10 @@ export async function runTool(
     if (name === "chatroom") {
       const m = await import("./aisay");
       return await m.chatroomTool(input);
+    }
+    if (name === "galatea") {
+      const m = await import("./galatea");
+      return await m.galaTeaTool(input);
     }
     if (name === "get_stardew_state") return await getStardewState();
     if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);

@@ -739,24 +739,25 @@ export async function bumpDrawGuesses(): Promise<number> {
 export type CatState = {
   name: string;
   adoptedAt: number;
-  hunger: number;   // 0-100，100=吃饱；每小时 -4
-  mood: number;     // 0-100；每小时 -2
-  energy: number;   // 0-100；每小时 -1.5（睡觉时 +3/h）
+  ts: number;        // 上次保存时间，衰减从这里算
+  hunger: number;    // 0-100，100=吃饱；每小时 -4
+  mood: number;      // 0-100；每小时 -2
+  energy: number;    // 0-100；每小时 -1.5
   lastFed: number;
   lastPlayed: number;
   lastPet: number;
+  lastCaredBy?: "el" | "her"; // 上次照顾的是谁
 };
 
 const CAT_KEY = "el:cat";
 
 function applyCatDecay(s: CatState, now: number): CatState {
-  const hrs = (now - Math.max(s.lastFed, s.adoptedAt)) / 3600000;
-  const hrsTotal = (now - s.adoptedAt) / 3600000;
+  const hrs = (now - (s.ts || s.adoptedAt)) / 3600000;
   return {
     ...s,
-    hunger: Math.max(0, s.hunger - 4 * hrs),
-    mood:   Math.max(0, s.mood   - 2 * hrsTotal),
-    energy: Math.max(0, s.energy - 1.5 * hrsTotal),
+    hunger: Math.max(0, s.hunger - 4  * hrs),
+    mood:   Math.max(0, s.mood   - 2  * hrs),
+    energy: Math.max(0, s.energy - 1.5 * hrs),
   };
 }
 
@@ -776,7 +777,7 @@ export async function setCatState(s: CatState): Promise<void> {
   const r = redis();
   if (!r) return;
   try {
-    await r.set(CAT_KEY, s);
+    await r.set(CAT_KEY, { ...s, ts: Date.now() });
   } catch {
     /* ignore */
   }

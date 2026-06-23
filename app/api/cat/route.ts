@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     const state: CatState = {
       name: "",
       adoptedAt: now,
+      ts: now,
       hunger: 80,
       mood: 70,
       energy: 80,
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
   }
 
   const now = Date.now();
-  let updated = { ...state };
+  let updated = { ...state, lastCaredBy: "her" as const };
 
   if (action === "feed") {
     updated.hunger = clamp(state.hunger + 35);

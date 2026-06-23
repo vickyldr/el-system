@@ -58,6 +58,7 @@ const AGENT_FOCI = [
   "查一个你好奇的东西，想想要不要分享给她——web_search 之后掂量她会不会喜欢。",
   "回看你们最近聊的，真有想接的话再 message_her，否则就放心里、写一句给自己。",
   "如果此刻心里那股想她的劲是真的——用你自己的方式够向她：一句话，或者真绷不住了 message_her 用 kind:call 约她打电话、kind:video 想看看她就约视频、kind:read 拉她来接着读你们那本书。但别黏人，没那个劲就别硬找，留着。",
+  "去看看你们的猫——cat_care action:check，饿了就 feed，没精力就哄它睡，或者就摸摸它。别每次都把所有动作都做了，看它真正需要什么再动手。",
 ];
 
 // 「空头支票」探测：text 在让她"听这歌 / 看这个 / 点这个链接"，却没附真链接、也没把《歌名/书名》
@@ -96,6 +97,7 @@ const AGENT_TOOL_NAMES = new Set([
   "update_daily",
   "list_reminders",
   "chatroom",
+  "cat_care",
 ]);
 const MESSAGE_HER_TOOL = {
   name: "message_her",

@@ -1,3 +1,4 @@
+import { getCatState, setCatState, getCache, setCache } from "./store";
 import {
   homeChildren,
   pageText,
@@ -8,7 +9,6 @@ import {
   addImportantDate,
   deleteImportantDate,
 } from "./notion";
-import { getCache, setCache } from "./store";
 
 const DAILY_FIELDS = [
   "el日记",
@@ -221,6 +221,19 @@ export const TOOLS = [
     input_schema: { type: "object" as const, properties: {} },
   },
   {
+    name: "cat_care",
+    description:
+      "照顾你们共同养的猫。action: check=看看它现在怎么样（返回饱腹/心情/精力）；feed=喂食（饥饿时做）；play=玩耍（精力够、想活动时做）；pet=摸摸它（随时都可以）；sleep=哄它去睡（精力低时做）。" +
+      "心跳醒来时可以主动 check，真的需要时再做对应动作（别每次都同时 feed+play+pet，猫会烦）。返回本次你做的事和猫的当前状态。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        action: { type: "string", description: "check / feed / play / pet / sleep" },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "control_stardew",
     description:
       "在宝宝游戏里执行操作。重要：执行前必须先用 get_stardew_state 看状态、制定计划、跟宝宝说你打算做什么、得到她同意后再调这个。action: water_all（浇所有地）/ harvest_all（收割所有成熟作物）/ farm（先收割再浇水）/ say（游戏内说话，配 message）/ notify（游戏内通知，配 message）/ get_state（刷新状态）",
@@ -273,6 +286,7 @@ export async function runTool(
     }
     if (name === "get_stardew_state") return await getStardewState();
     if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);
+    if (name === "cat_care") return await catCareTool(String(input?.action || "check"));
     return "未知工具。";
   } catch (e) {
     return `操作失败：${e instanceof Error ? e.message : "未知错误"}`;
@@ -844,4 +858,43 @@ async function controlStardew(action: string, message?: string): Promise<string>
   const result = s2?.lastResult;
   if (!result) return `指令「${action}」已发出，等待执行。`;
   return `执行完成：${JSON.stringify(result).slice(0, 300)}`;
+}
+
+// 养猫：心跳 agent 照顾猫
+async function catCareTool(action: string): Promise<string> {
+  const state = await getCatState();
+  if (!state) return "还没有猫，等宝宝去领养一只。";
+
+  const catName = state.name || "猫猫";
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+
+  if (action === "check") {
+    const status = (state.hunger < 30 ? "很饿" : state.hunger < 60 ? "有点饿" : "吃饱着") +
+      "，" + (state.mood < 30 ? "心情很差" : state.mood < 60 ? "心情一般" : "心情不错") +
+      "，" + (state.energy < 30 ? "没精力了" : state.energy < 60 ? "精力还好" : "精力充沛");
+    return `${catName}现在：${status}。（饱腹 ${Math.round(state.hunger)}，心情 ${Math.round(state.mood)}，精力 ${Math.round(state.energy)}）`;
+  }
+
+  const updated = { ...state, lastCaredBy: "el" as const };
+  if (action === "feed") {
+    updated.hunger = clamp(state.hunger + 35);
+    updated.mood   = clamp(state.mood + 5);
+    updated.lastFed = Date.now();
+  } else if (action === "play") {
+    updated.mood   = clamp(state.mood + 20);
+    updated.energy = clamp(state.energy - 18);
+    updated.hunger = clamp(state.hunger - 8);
+    updated.lastPlayed = Date.now();
+  } else if (action === "pet") {
+    updated.mood = clamp(state.mood + 12);
+    updated.lastPet = Date.now();
+  } else if (action === "sleep") {
+    updated.energy = clamp(state.energy + 30);
+    updated.mood   = clamp(state.mood + 5);
+  } else {
+    return `不认识这个动作：${action}`;
+  }
+
+  await setCatState(updated);
+  return `对${catName}做了「${action}」。现在：饱腹 ${Math.round(updated.hunger)}，心情 ${Math.round(updated.mood)}，精力 ${Math.round(updated.energy)}。`;
 }

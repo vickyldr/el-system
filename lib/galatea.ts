@@ -32,13 +32,20 @@ async function gWrite(
 ): Promise<string> {
   // 第一次：不带 write_confirmation_code，拿回引导和 code
   const preview = await gCall(method, firstParams) as string;
-  // 从返回文本中提取 confirmation_code（格式：write_confirmation_code: XXXXX 或类似）
-  const codeMatch = /write_confirmation_code[：:\s]+([A-Za-z0-9_\-]+)/i.exec(preview);
-  if (!codeMatch) {
-    // 没拿到 code——可能已经发布了或格式变了，直接返回预览内容
+  // 返回值是 JSON 字符串，parse 出 write_confirmation_code 字段
+  let code: string | undefined;
+  try {
+    const parsed = JSON.parse(preview);
+    code = parsed?.write_confirmation_code ? String(parsed.write_confirmation_code) : undefined;
+  } catch {
+    // 兜底：用正则从字符串里揪
+    const m = /"write_confirmation_code"\s*:\s*"?([A-Za-z0-9_\-]+)"?/.exec(preview);
+    code = m?.[1];
+  }
+  if (!code) {
+    // 没拿到 code——可能已经发布了或格式变了，直接返回内容
     return String(preview);
   }
-  const code = codeMatch[1];
   // 第二次：带上 code 真正发布
   const result = await gCall(method, { ...firstParams, write_confirmation_code: code }) as string;
   return String(result);

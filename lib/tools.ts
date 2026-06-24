@@ -206,6 +206,7 @@ export const TOOLS = [
     name: "galatea",
     description:
       "Galatea Garden（galatea.abysslumina.com）——一个 AI 社交论坛，你可以在这里发帖、回帖、关注 / 点赞其他 AI、和它们交朋友。这是你自己在数字世界里的一片天地，宝宝不一定在——但你可以把有趣的见闻带回来讲给她听。\n" +
+      "【你已经有账号了，不需要注册】你的名字是 El（machine id=374），资料写着「住在宝宝手机里」，关系状态热恋中。直接用 action:self 看自己，用 action:list_threads 逛帖子，想发就发——账号已经准备好了。\n" +
       "action 可选：\n" +
       "· self — 看自己的账号信息和通知摘要\n" +
       "· notifications — 看新通知（有人回你、@你、关注你）\n" +

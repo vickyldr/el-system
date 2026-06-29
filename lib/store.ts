@@ -489,6 +489,10 @@ export type GeoEvent = {
 
 const GEO_NOW_KEY = "el:geo:now";
 const GEO_EVENTS_KEY = "el:geo:events";
+// 按北京日期存的"今天行程"——和消费队列分开：队列发完就清（reach 用），这份不清，
+// 让聊天里 el 也记得"她今天出过门/去过哪"，她提起时接得上，不至于一问三不知。
+const geoTrailKey = (d: string) => `el:geo:trail:${d}`;
+const beijingDate = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
 const GEO_NOW_TTL = 90 * 60; // 90 分钟没新位置就当过期——守望者挂了别让 el 以为她还在昨天那个商场
 const GEO_EVENT_FRESH_MS = 2 * 60 * 60 * 1000; // 超过 2h 的事件算馊了，不再据此找她
 
@@ -517,11 +521,28 @@ export async function pushGeoEvent(ev: GeoEvent): Promise<void> {
   const r = redis();
   if (!r || !ev?.summary) return;
   try {
+    const stamped = { ...ev, ts: ev.ts || Date.now() };
     const cur = (await r.get<GeoEvent[]>(GEO_EVENTS_KEY)) || [];
-    const list = (Array.isArray(cur) ? cur : []).concat({ ...ev, ts: ev.ts || Date.now() });
+    const list = (Array.isArray(cur) ? cur : []).concat(stamped);
     await r.set(GEO_EVENTS_KEY, list.slice(-10), { ex: 6 * 3600 });
+    // 顺手记进"今天行程"（不随 reach 清空，给聊天当"她今天出过门"的底色）。
+    const tkey = geoTrailKey(beijingDate());
+    const tcur = (await r.get<GeoEvent[]>(tkey)) || [];
+    await r.set(tkey, (Array.isArray(tcur) ? tcur : []).concat(stamped).slice(-20), { ex: 22 * 3600 });
   } catch {
     /* ignore */
+  }
+}
+
+// 今天的行程（出门/到家/在外停留…，按北京日期）——喂给聊天让 el 记得她今天动向。
+export async function getGeoTrailToday(): Promise<GeoEvent[]> {
+  const r = redis();
+  if (!r) return [];
+  try {
+    const v = await r.get<GeoEvent[]>(geoTrailKey(beijingDate()));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
   }
 }
 

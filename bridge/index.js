@@ -1,6 +1,11 @@
 import express from "express";
 import { WebSocketServer } from "ws";
 import { GoogleGenAI } from "@google/genai";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -426,6 +431,49 @@ app.get("/stardew-gamestate", (req, res) => {
   if (!stardewOnline()) return res.json({ online: false, error: "bot.js 未连接" });
   if (!stardewLastState) return res.json({ online: true, inGame: false, error: "游戏未进入存档" });
   res.json({ online: true, ...stardewLastState });
+});
+
+// POST /pond — 瓶中生态（造物主小游戏）的纯函数执行器。
+// el 玩这局池塘的「身体」：引擎是纯 Python（pond_engine.py，零依赖），状态存 Vercel 那边的 KV、
+// 每次调用由 Vercel 把当前存档(state)和这条指令(cmd)一起送来；这里起一个 python3 子进程
+// 喂进 stdin、拿回 {out, 新state}，bridge 自身不存任何池塘状态（无状态执行）。
+// ⚠ 盲玩边界：el 永远只看到 out 文本，引擎源码/公式绝不喂给它——别把 pond_engine.py 的内容塞进任何 prompt。
+const POND_SCRIPT = join(__dirname, "pond_run.py");
+const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
+app.post("/pond", (req, res) => {
+  const payload = JSON.stringify({
+    state: req.body?.state ?? null,
+    cmd: String(req.body?.cmd ?? "help"),
+  });
+  let py;
+  try {
+    py = spawn(PYTHON_BIN, [POND_SCRIPT], { stdio: ["pipe", "pipe", "pipe"] });
+  } catch (e) {
+    return res.status(500).json({ error: "spawn 失败：" + (e?.message || e) });
+  }
+  let out = "";
+  let err = "";
+  const killer = setTimeout(() => py.kill("SIGKILL"), 20000); // 兜底：单局推进很快，20s 必够
+  py.stdout.on("data", (d) => (out += d));
+  py.stderr.on("data", (d) => (err += d));
+  py.on("error", (e) => {
+    clearTimeout(killer);
+    if (!res.headersSent) res.status(500).json({ error: "python 起不来：" + (e?.message || e) });
+  });
+  py.on("close", (code) => {
+    clearTimeout(killer);
+    if (res.headersSent) return;
+    if (code !== 0) {
+      return res.status(500).json({ error: "引擎异常退出(" + code + ")", detail: err.slice(0, 800) });
+    }
+    try {
+      res.json(JSON.parse(out));
+    } catch {
+      res.status(500).json({ error: "引擎输出无法解析", detail: out.slice(0, 800) });
+    }
+  });
+  py.stdin.write(payload);
+  py.stdin.end();
 });
 
 // GET /toy-next — Python 本地桥轮询取下一条指令

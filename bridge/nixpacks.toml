@@ -1,3 +1,7 @@
+[phases.setup]
+# 瓶中生态引擎是纯 Python 零依赖，但 nixpacks 的 Node 镜像不保证带 python3，显式装一个。
+aptPkgs = ["python3"]
+
 [phases.install]
 cmds = ["npm install"]
 

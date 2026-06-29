@@ -1,7 +1,13 @@
 # dependencies
 /node_modules
+/bridge/node_modules
+/bridge/package-lock.json
 /.pnp
 .pnp.js
+
+# python caches / 池塘引擎本地存档（运行时落 /tmp，但兜底别入库）
+__pycache__/
+eco_save*.json
 
 # next.js
 /.next/

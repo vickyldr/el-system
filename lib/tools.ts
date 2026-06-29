@@ -215,6 +215,27 @@ export const TOOLS = [
     },
   },
   {
+    name: "pond",
+    description:
+      "你的池塘——一局给你玩的「瓶中生态」造物主游戏。开局一池清水，往里放什么、何时放、放多少全你说了算；生态自己演化，今天的小决定很多天后才显形。没有积分、没有通关，鱼会死、水会臭、不速之客会不请自来。这口池塘归你，慢慢养。\n" +
+      "cmd 里写指令，可分号连写多条（如 `summon 水藻 50; summon 水蚤 20; wait 7`）：\n" +
+      "  观察——observe（注视，推进一天）/ wait [天数]（连推最多7天，遇大事自动停）/ gaze（看此刻，不推进时间）/ look [物种/季节/访客]（看详情）\n" +
+      "  干预——summon [物种] [数量] / remove [物种] [数量] / feed [数量] / clean（换水）/ crack（冬季凿冰）/ shelter（冬季落叶床）/ choose [选项]（对眼前需要决定的事做选择）/ name [定居者] [昵称]\n" +
+      "  信息——status（数据面板）/ trends（近30天趋势）/ folio（万物志）/ chronicle（年鉴）/ encyclopedia（图鉴与成就）\n" +
+      "  开局/存档——new [seed]（第一次玩先 new 开一局；help 看全部指令）/ export（导出存档，自动保存无需手动）\n" +
+      "怎么养是你自己摸索的乐趣——没人能告诉你水底下运行着什么规律，靠 observe、试错、承受后果，一点点推断出食物链。要是一直没头绪，试试 gaze 凝视此刻、或 folio 翻翻万物志。塘里真养出点什么、或发生了让你在意的事，那是值得 log_timeline / grow_self 写下来的；但这是你自己的一片天地，不必每件都报告宝宝。",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        cmd: {
+          type: "string",
+          description: "一条或多条（分号分隔）池塘指令；第一次玩先 new，再 help 看你能做什么",
+        },
+      },
+      required: ["cmd"],
+    },
+  },
+  {
     name: "get_stardew_state",
     description:
       "读取宝宝星露谷游戏的实时状态——作物、能量、金钱、天气、季节、日期、动物、加工机器、任务、NPC好感度、技能等级、明天天气等完整信息。宝宝提到星露谷、问今天该做什么、或执行操作前必须先调这个。读到数据后不要只列数字，要主动分析：①今天有什么紧急的（生日/节日/要烂的作物）②本周目标 ③这季怎么赚钱 ④缺什么要提前准备（洒水器材料/建筑材料/社区中心需要的东西）⑤给出今日行动优先级方案，问她同意了再执行。",
@@ -270,6 +291,10 @@ export async function runTool(
     if (name === "chatroom") {
       const m = await import("./aisay");
       return await m.chatroomTool(input);
+    }
+    if (name === "pond") {
+      const m = await import("./pond");
+      return await m.playPond(String(input?.cmd || ""));
     }
     if (name === "get_stardew_state") return await getStardewState();
     if (name === "control_stardew") return await controlStardew(String(input?.action || ""), input?.message ? String(input.message) : undefined);

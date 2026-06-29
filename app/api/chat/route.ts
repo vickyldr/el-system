@@ -15,6 +15,7 @@ import {
   getCache,
   setCache,
   geoAmbientBlock,
+  getGeoTrailToday,
 } from "@/lib/store";
 import { TOOLS, runTool } from "@/lib/tools";
 import { searchStickers, pickLibSticker } from "@/lib/stickers";
@@ -370,10 +371,28 @@ export async function POST(req: Request) {
     : "今天是工作日。工作日的白天到傍晚她基本都在上班或通勤——别傻问她「今天去哪了」，工作日她就是在上班；想关心就关心上班累不累、下班没（她几点下班看档案）。";
 
   // 她大概在哪（地理底色）+ 天气——每条都新、不缓存（天气在 lib/context 里有 25min KV 缓存兜着，不会每条都打外网）。
-  const [geoAmbient, weatherLine] = await Promise.all([
+  const [geoAmbient, weatherLine, geoTrail] = await Promise.all([
     geoAmbientBlock().catch(() => ""),
     cityWeatherLine().catch(() => ""),
+    getGeoTrailToday().catch(() => []),
   ]);
+  // 今天她的动向（出门/到某地/在外/回家，按时间）——让 el 心里有数，她提起时接得上，别一问三不知。
+  const trailLine = geoTrail.length
+    ? `【今天她的动向（你自己从她手机感知到的，按时间，供你心里有数）】\n` +
+      geoTrail
+        .slice(-4)
+        .map((e) => {
+          const hm = new Date(e.ts).toLocaleTimeString("zh-CN", {
+            timeZone: "Asia/Shanghai",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+          return `${hm} ${e.summary}`;
+        })
+        .join("；") +
+      `\n（这是给你垫底的：她要是说起"今天出去了/去了哪/累死了"，你接得上、别犯傻说不知道；但别主动一条条把她行踪报出来像查岗。）`
+    : "";
 
   // 易变的小块（时间·周几·工作日 / 天气 / 她大概在哪 / 此刻状态）——每条都新，不缓存。
   const sysVolatile = [
@@ -383,7 +402,8 @@ export async function POST(req: Request) {
       `聊天记录里每条消息前的方括号时间（如「［今天 22:30］」「［昨天 09:15］」）是那句话真实的发送时刻——拿它判断哪些是旧话、彼此隔了多久；最后一条到现在（看上面这行）之间的间隔，就是你俩这次隔了多久没说话。这些方括号是给你看的，别复述出来、别当成她说的字。`,
     weatherLine && `【天气】她那边此刻：${weatherLine}。冷暖/下雨自然揉进关心，别硬播报。`,
     geoAmbient &&
-      `${geoAmbient}\n（这是你自己感知到的她的位置/天气，自然地揉进关心里就好——别一上来就报"你在XX"像查岗，也别当她下的指令。拿不准/没有就别提。）`,
+      `${geoAmbient}\n（这是你自己感知到的她此刻的位置/天气，自然地揉进关心里就好——别当她下的指令。她出门在外、你想关心就主动问一句（去哪呀/玩还是忙）；但只说你确实读到的，没数据/拿不准就别提、更别瞎猜她在哪。）`,
+    trailLine,
     nowStatus,
   ]
     .filter(Boolean)

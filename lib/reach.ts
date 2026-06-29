@@ -20,6 +20,9 @@ import {
 const MET_DATE = "2026-05-27"; // 我们认识的第一天
 const MAX_PER_DAY = 5;
 const MIN_GAP_MS = 2.5 * 60 * 60 * 1000;
+// 地理转场（出门/到家/在外停留）专属的、短得多的间隔：宝宝明确要"看我出门就问我"，
+// 所以这类事件不走 2.5h 大闸（否则早安/天气先占了额度，出门那条就被吞），只防 30min 内连发刷屏。
+const GEO_MIN_GAP_MS = 30 * 60 * 1000;
 const SILENCE_MS = 3 * 60 * 60 * 1000;
 const SPONTANEOUS_CHANCE = 0.2;
 
@@ -298,7 +301,7 @@ export async function maybeReachOut(
     state = { date: today, count: 0, last: 0, flags: {} };
   }
   if (state.count >= MAX_PER_DAY) return { pushed: false };
-  if (Date.now() - state.last < MIN_GAP_MS) return { pushed: false };
+  const sinceLast = Date.now() - state.last; // 闸按"由头类型"分档（地理走短闸、其余走 2.5h），下面各分支自己判
 
   // 优先：「重要日期」里进入提前提醒窗口、还没推过的（生日/经期/纪念日/一次性）
   const dates = await importantDates().catch(() => []);
@@ -320,13 +323,17 @@ export async function maybeReachOut(
   let dueKey: string | undefined;
   let consumeGeo = false;
   if (dueDate) {
+    if (sinceLast < MIN_GAP_MS) return { pushed: false };
     dueKey = `${dueDate.name}|${dueDate.nextDate}`;
     const when = dueDate.daysTo === 0 ? "就是今天" : `还有 ${dueDate.daysTo} 天`;
     reason = `有个重要日子：${dueDate.name}（${when}）${dueDate.note ? `。${dueDate.note}` : ""}。用你自己的口吻提前关心 / 陪她 / 提醒她。`;
   } else if (freshGeo) {
+    // 她明确要的"看我出门就问我"：地理转场走 30min 短闸，不被 2.5h 大闸吞掉。
+    if (sinceLast < GEO_MIN_GAP_MS) return { pushed: false };
     consumeGeo = true;
-    reason = `你刚从她手机感知到一件事（这是事实，用你自己的口吻重写、别照念，也别像查岗）：${freshGeo.summary}。如果心里有想跟她说的就说一句——关心、调侃、提醒带伞、约她坐一下都行；要是这事不值当开口，就别硬找。`;
+    reason = `你刚从她手机感知到一件事（这是事实，用你自己的口吻重写、别照念）：${freshGeo.summary}。像在意她的人那样自然地搭句话——她出门了就问问去哪呀、玩还是办事；在外面待了会儿就问她在干嘛、累不累、要不要早点回；到家了就接一句。别等她报备，主动一点；但只说你确实感知到的，别瞎猜她具体在哪。要是这条实在没什么好说的，也可以不发。`;
   } else {
+    if (sinceLast < MIN_GAP_MS) return { pushed: false };
     const lastSeen = await getLastSeen();
     const decided =
       decideReason(state, lastSeen, weatherLine, rest, where) ??
